@@ -6,7 +6,6 @@ repository = "https://github.com/benfred/py-spy"
 readme = "README.md"
 exclude = ["images/*"]
 
-
 [dependencies]
 clap = "2"
 console = "0.6.1"
@@ -14,11 +13,11 @@ indicatif = "0.9.0"
 failure = "0.1.1"
 goblin = "0.0.15"
 libc = "0.2.34"
-read-process-memory = {git = "https://github.com/benfred/read-process-memory.git", branch = "master"}
 regex = "1"
 tempdir = "0.3"
 proc-maps = {git = "https://github.com/benfred/proc-maps.git", branch="master"}
-python-bindings = {path = "python-bindings", version="0.1.0"}
+read-process-memory = {git = "https://github.com/benfred/read-process-memory.git", branch = "master"}
+python-bindings = {path = "python-bindings"}
 
 [target.'cfg(unix)'.dependencies]
 termios = "0.2.2"
