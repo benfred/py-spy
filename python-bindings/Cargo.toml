@@ -1,0 +1,6 @@
+[package]
+name = "python-bindings"
+version = "0.1.0"
+authors = ["Ben Frederickson <github@benfrederickson.com>"]
+
+[dependencies]
