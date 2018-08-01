@@ -2,20 +2,6 @@ language: python
 
 matrix:
   include:
-    - sudo: required
-      services:
-        - docker
-      env:
-        - CIBW_SKIP=*manylinux1_i686*
-        - PIP=pip
-        - PYTHON=python
-    - sudo: required
-      services:
-        - docker
-      env:
-        - CIBW_SKIP=*manylinux1_x86_64*
-        - PIP=pip
-        - PYTHON=python
     - os: osx
       language: generic
       env:

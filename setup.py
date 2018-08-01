@@ -26,7 +26,8 @@ class PostInstallCommand(install):
 
         # we're going to install the py-spy executable into the scripts directory
         # but first make sure the scripts directory exists
-        os.makedirs(self.install_scripts, exist_ok=True)
+        if not os.path.isdir(self.install_scripts):
+            os.makedirs(self.install_scripts)
 
         # copy the binary over
         source_dir = os.path.dirname(os.path.abspath(__file__))
