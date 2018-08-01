@@ -11,6 +11,11 @@ matrix:
 script:
   - $PIP install cibuildwheel setuptools_rust
   - export CIBW_BEFORE_BUILD='pip install setuptools-rust && source {project}/ci/install_rust.sh'
-  - export CIBW_SKIP='cp2* cp33-* cp34-* cp35-* $CIBW_SKIP'
+  - export CIBW_SKIP='cp33-* cp34-* $CIBW_SKIP'
   - export CIBW_ENVIRONMENT='PATH="$HOME/rust/bin:$PATH"'
   - cibuildwheel --output-dir wheelhouse
+  - |
+    if [[ $TRAVIS_TAG ]]; then
+      $PIP install twine
+      $PYTHON -m twine upload wheelhouse/*.whl
+    fi
