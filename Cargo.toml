@@ -17,12 +17,15 @@ libc = "0.2.34"
 log = "0.4"
 regex = "1"
 tempdir = "0.3"
-proc-maps = {git = "https://github.com/benfred/proc-maps.git", branch="master"}
-read-process-memory = {git = "https://github.com/benfred/read-process-memory.git", branch = "master"}
+read-process-memory = "0.1"
 python-bindings = {path = "python-bindings"}
+proc-maps = {git = "https://github.com/benfred/proc-maps.git", branch="master"}
 
 [target.'cfg(unix)'.dependencies]
 termios = "0.2.2"
 
 [target.'cfg(windows)'.dependencies]
-winapi = {git = "https://github.com/benfred/winapi-rs.git", branch= "0.3", features = ["winbase", "consoleapi", "wincon", "handleapi", "processenv" ]}
+winapi = {version = "0.3", features = ["winbase", "consoleapi", "wincon", "handleapi", "processenv" ]}
+
+[patch.crates-io]
+read-process-memory = {git = "https://github.com/benfred/read-process-memory.git"}
