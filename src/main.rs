@@ -51,7 +51,7 @@ fn print_traces(traces: &[StackTrace], show_idle: bool) {
 
 // Given a failure::Error, tries to see if it is because the process exitted
 fn process_exitted(err: &Error) -> bool {
-    err.causes().any(|cause| {
+    err.iter_chain().any(|cause| {
         if let Some(ioerror) = cause.downcast_ref::<std::io::Error>() {
             if let Some(err_code) = ioerror.raw_os_error() {
                 if err_code == 3 || err_code == 60 || err_code == 299 {
@@ -64,7 +64,7 @@ fn process_exitted(err: &Error) -> bool {
 }
 
 fn permission_denied(err: &Error) -> bool {
-    err.causes().any(|cause| {
+    err.iter_chain().any(|cause| {
         if let Some(ioerror) = cause.downcast_ref::<std::io::Error>() {
             ioerror.kind() == std::io::ErrorKind::PermissionDenied
         } else {
@@ -181,7 +181,7 @@ fn pyspy_main() -> Result<(), Error> {
         .get_matches();
 
     if let Some(pid_str) = matches.value_of("pid") {
-        let pid: u32 = pid_str.parse().expect("invalid pid");
+        let pid: read_process_memory::Pid = pid_str.parse().expect("invalid pid");
         let process = PythonSpy::retry_new(pid, 3)?;
 
         if matches.occurrences_of("dump") > 0{
@@ -210,7 +210,7 @@ fn pyspy_main() -> Result<(), Error> {
             // sleep just in case: https://jvns.ca/blog/2018/01/28/mac-freeze/
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
-        let result = match PythonSpy::retry_new(command.id(), 8) {
+        let result = match PythonSpy::retry_new(command.id() as read_process_memory::Pid, 8) {
             Ok(process) => {
                 if let Some(flame_file) = matches.value_of("flame") {
                     sample_flame(&process, flame_file)
@@ -273,7 +273,7 @@ fn main() {
         }
 
         eprintln!("Error: {}", err);
-        for (i, suberror) in err.causes().enumerate() {
+        for (i, suberror) in err.iter_chain().enumerate() {
             if i > 0 {
                 eprintln!("Reason: {}", suberror);
             }

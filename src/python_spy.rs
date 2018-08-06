@@ -5,7 +5,7 @@ use std::path::Path;
 
 use failure::{Error, ResultExt};
 use read_process_memory::{Pid, TryIntoProcessHandle, copy_address, ProcessHandle};
-use proc_maps::{get_process_maps, MapRange, maps_contain_addr, pid_t};
+use proc_maps::{get_process_maps, MapRange, maps_contain_addr};
 use python_bindings::{v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0};
 
 use python_interpreters;
@@ -16,7 +16,7 @@ use python_interpreters::{InterpreterState, ThreadState};
 
 #[derive(Debug)]
 pub struct PythonSpy {
-    pub pid: u32,
+    pub pid: Pid,
     pub process: ProcessHandle,
     pub version: Version,
     pub interpreter_address: usize,
@@ -27,8 +27,8 @@ pub struct PythonSpy {
 }
 
 impl PythonSpy {
-    pub fn new(pid: u32) -> Result<PythonSpy, Error> {
-        let process = (pid as Pid).try_into_process_handle().context("Failed to open target process")?;
+    pub fn new(pid: Pid) -> Result<PythonSpy, Error> {
+        let process = pid.try_into_process_handle().context("Failed to open target process")?;
 
         // get basic process information (memory maps/symbols etc)
         let python_info = PythonProcessInfo::new(pid)?;
@@ -67,7 +67,7 @@ impl PythonSpy {
     /// Creates a PythonSpy object, retrying up to max_retries times
     /// mainly useful for the case where the process is just started and
     /// symbols/python interpreter might not be loaded yet
-    pub fn retry_new(pid: u32, max_retries:u64) -> Result<PythonSpy, Error> {
+    pub fn retry_new(pid: Pid, max_retries:u64) -> Result<PythonSpy, Error> {
         let mut retries = 0;
         loop {
             let err = match PythonSpy::new(pid) {
@@ -290,9 +290,9 @@ pub struct PythonProcessInfo {
 }
 
 impl PythonProcessInfo {
-    fn new(pid: u32) -> Result<PythonProcessInfo, Error> {
+    fn new(pid: Pid) -> Result<PythonProcessInfo, Error> {
         // get virtual memory layout
-        let maps = get_process_maps(pid as pid_t)?;
+        let maps = get_process_maps(pid)?;
 
         // parse the main python binary
         let (python_binary, python_filename) = {
@@ -381,7 +381,7 @@ impl PythonProcessInfo {
 #[cfg(windows)]
 use std::collections::HashMap;
 #[cfg(windows)]
-pub fn get_windows_python_symbols(pid: u32, filename: &str, base_addr: u64) -> std::io::Result<HashMap<String, u64>> {
+pub fn get_windows_python_symbols(pid: Pid, filename: &str, base_addr: u64) -> std::io::Result<HashMap<String, u64>> {
     use proc_maps::win_maps::SymbolLoader;
 
     let handler = SymbolLoader::new(pid as u64)?;
