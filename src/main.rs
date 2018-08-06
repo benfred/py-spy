@@ -210,7 +210,7 @@ fn pyspy_main() -> Result<(), Error> {
             // sleep just in case: https://jvns.ca/blog/2018/01/28/mac-freeze/
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
-        let result = match PythonSpy::retry_new(command.id(), 3) {
+        let result = match PythonSpy::retry_new(command.id(), 8) {
             Ok(process) => {
                 if let Some(flame_file) = matches.value_of("flame") {
                     sample_flame(&process, flame_file)

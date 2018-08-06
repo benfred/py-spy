@@ -88,7 +88,7 @@ impl PythonSpy {
             }
             // TODO: logging
             // println!("Failed to connect to process, retrying. Error: {}", err);
-            std::thread::sleep(std::time::Duration::from_millis(10));
+            std::thread::sleep(std::time::Duration::from_millis(20));
         }
     }
 
