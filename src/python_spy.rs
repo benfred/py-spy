@@ -34,12 +34,17 @@ impl PythonSpy {
         let python_info = PythonProcessInfo::new(pid)?;
 
         let version = get_python_version(&python_info, process)?;
+        info!("python version {} detected", version);
+
         let interpreter_address = get_interpreter_address(&python_info, process, &version)?;
 
         // lets us figure out which thread has the GIL
         let threadstate_address = match python_info.get_symbol("_PyThreadState_Current") {
             Some(&addr) => addr as usize,
-            None => 0
+            None => {
+                warn!("Failed to find _PyThreadState_Current symbol - won't be able to detect GIL usage");
+                0
+            }
         };
 
         // Figure out the base path of the python install
@@ -86,8 +91,7 @@ impl PythonSpy {
             if retries >= max_retries {
                 return Err(err);
             }
-            // TODO: logging
-            // println!("Failed to connect to process, retrying. Error: {}", err);
+            info!("Failed to connect to process, retrying. Error: {}", err);
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
     }
@@ -165,30 +169,34 @@ fn get_python_version(python_info: &PythonProcessInfo, process: ProcessHandle)
         -> Result<Version, Error> {
     // If possible, grab the sys.version string from the processes memory (mac osx).
     if let Some(&addr) = python_info.get_symbol("Py_GetVersion.version") {
+        info!("Getting version from symbol address");
         return Ok(Version::scan_bytes(&copy_address(addr as usize, 128, &process)?)?);
     }
 
     // otherwise get version info from scanning BSS section for sys.version string
+    info!("Getting version from python binary BSS");
     let bss = copy_address(python_info.python_binary.bss_addr as usize,
                            python_info.python_binary.bss_size as usize, &process)?;
     match Version::scan_bytes(&bss) {
         Ok(version) => return Ok(version),
         Err(err) => {
+            info!("Failed to get version from BSS section: {}", err);
             // try again if there is a libpython.so
             if let Some(ref libpython) = python_info.libpython_binary {
+                info!("Getting version from libpython BSS");
                 let bss = copy_address(libpython.bss_addr as usize,
                                         libpython.bss_size as usize, &process)?;
-                let version = Version::scan_bytes(&bss);
-                if version.is_ok() {
-                    return version;
+                match Version::scan_bytes(&bss) {
+                    Ok(version) => return Ok(version),
+                    Err(err) => info!("Failed to get version from libpython BSS section: {}", err)
                 }
             }
-            // TODO: log err here?
         }
     }
 
     // the python_filename might have the version encoded in it (/usr/bin/python3.5 etc).
     // try reading that in (will miss patch level on python, but that shouldn't matter)
+    info!("Trying to get version from path: {}", python_info.python_filename);
     let path = std::path::Path::new(&python_info.python_filename);
     if let Some(python) = path.file_name() {
         if let Some(python) = python.to_str() {
@@ -203,7 +211,6 @@ fn get_python_version(python_info: &PythonProcessInfo, process: ProcessHandle)
             }
         }
     }
-
     return Err(format_err!("Failed to find python version from target process"));
 }
 
@@ -227,6 +234,7 @@ fn get_interpreter_address(python_info: &PythonProcessInfo,
             }
         }
     };
+    info!("Failed to get interp_head from symbols, scanning BSS section");
 
     // try scanning the BSS section of the binary for things that might be the interpreterstate
     match get_interpreter_address_from_binary(&python_info.python_binary, &python_info.maps, process, version) {
@@ -330,6 +338,8 @@ impl PythonProcessInfo {
                 }).ok_or_else(|| format_err!("Couldn't find python binary"))?;
 
             let filename = map.filename().clone().unwrap();
+            info!("Found python binary @ {}", filename);
+
             // TODO: consistent types? u64 -> usize? for map.start etc
             let mut python_binary = parse_binary(&filename, map.start() as u64)?;
 
@@ -371,6 +381,7 @@ impl PythonProcessInfo {
             let mut libpython_binary: Option<BinaryInfo> = None;
             if let Some(libpython) = libmap {
                 if let Some(filename) = &libpython.filename() {
+                    info!("Found libpython binary @ {}", filename);
                     let mut parsed = parse_binary(filename, libpython.start() as u64)?;
                     #[cfg(windows)]
                     parsed.symbols.extend(get_windows_python_symbols(pid, filename, libpython.start() as u64)?);
@@ -442,6 +453,7 @@ impl Version {
             let major = std::str::from_utf8(&cap[2])?.parse::<u64>()?;
             let minor = std::str::from_utf8(&cap[3])?.parse::<u64>()?;
             let patch = std::str::from_utf8(&cap[4])?.parse::<u64>()?;
+            info!("Found matching version string '{}'", std::str::from_utf8(&cap[0])?);
             return Ok(Version{major, minor, patch, release_flags:release.to_owned()});
         }
         Err(format_err!("failed to find version string"))

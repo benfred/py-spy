@@ -1,8 +1,13 @@
 extern crate clap;
 extern crate console;
-extern crate indicatif;
+extern crate env_logger;
+#[macro_use]
+extern crate failure;
 extern crate goblin;
+extern crate indicatif;
 extern crate libc;
+#[macro_use]
+extern crate log;
 extern crate read_process_memory;
 extern crate regex;
 extern crate tempdir;
@@ -11,8 +16,6 @@ extern crate termios;
 #[cfg(windows)]
 extern crate winapi;
 
-#[macro_use]
-extern crate failure;
 extern crate proc_maps;
 extern crate python_bindings;
 
@@ -180,6 +183,16 @@ fn pyspy_main() -> Result<(), Error> {
             )
         .get_matches();
 
+
+    #[cfg(target_os="macos")]
+    {
+        if unsafe { libc::geteuid() } != 0 {
+            eprintln!("This program requires root on OSX.");
+            eprintln!("Try running again with elevated permissions by going 'sudo !!'");
+            std::process::exit(1)
+        }
+    }
+
     if let Some(pid_str) = matches.value_of("pid") {
         let pid: read_process_memory::Pid = pid_str.parse().expect("invalid pid");
         let process = PythonSpy::retry_new(pid, 3)?;
@@ -257,14 +270,7 @@ fn pyspy_main() -> Result<(), Error> {
 }
 
 fn main() {
-    #[cfg(target_os="macos")]
-    {
-        if unsafe { libc::geteuid() } != 0 {
-            eprintln!("This program requires root on OSX.");
-            eprintln!("Try running again with elevated permissions by going 'sudo !!'");
-            std::process::exit(1)
-        }
-    }
+    env_logger::init();
 
     if let Err(err) = pyspy_main() {
         if permission_denied(&err) {
