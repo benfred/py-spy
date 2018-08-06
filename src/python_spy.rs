@@ -172,19 +172,39 @@ fn get_python_version(python_info: &PythonProcessInfo, process: ProcessHandle)
     let bss = copy_address(python_info.python_binary.bss_addr as usize,
                            python_info.python_binary.bss_size as usize, &process)?;
     match Version::scan_bytes(&bss) {
-        Ok(version) => Ok(version),
+        Ok(version) => return Ok(version),
         Err(err) => {
-            match python_info.libpython_binary {
-                // Before giving up, try again if there is a libpython.so
-                Some(ref libpython) => {
-                    let bss = copy_address(libpython.bss_addr as usize,
-                                           libpython.bss_size as usize, &process)?;
-                    Ok(Version::scan_bytes(&bss)?)
-                },
-                None => Err(err)
+            // try again if there is a libpython.so
+            if let Some(ref libpython) = python_info.libpython_binary {
+                let bss = copy_address(libpython.bss_addr as usize,
+                                        libpython.bss_size as usize, &process)?;
+                let version = Version::scan_bytes(&bss);
+                if version.is_ok() {
+                    return version;
+                }
+            }
+            // TODO: log err here?
+        }
+    }
+
+    // the python_filename might have the version encoded in it (/usr/bin/python3.5 etc).
+    // try reading that in (will miss patch level on python, but that shouldn't matter)
+    let path = std::path::Path::new(&python_info.python_filename);
+    if let Some(python) = path.file_name() {
+        if let Some(python) = python.to_str() {
+            if python.starts_with("python") {
+                let tokens: Vec<&str> = python[6..].split(".").collect();
+                if tokens.len() >= 2 {
+                    match (tokens[0].parse::<u64>(), tokens[1].parse::<u64>()) {
+                        (Ok(major), Ok(minor)) => return Ok(Version{major, minor, patch:0, release_flags: "".to_owned()}),
+                        _ => ()
+                    }
+                }
             }
         }
     }
+
+    return Err(format_err!("Failed to find python version from target process"));
 }
 
 fn get_interpreter_address(python_info: &PythonProcessInfo,
@@ -412,7 +432,7 @@ pub struct Version {
 impl Version {
     pub fn scan_bytes(data: &[u8]) -> Result<Version, Error> {
         use regex::bytes::Regex;
-        let re = Regex::new(r"(?:\D|^)((\d)\.(\d)\.(\d{1,2}))((a|b|c|rc)\d{1,2})? (.{1,64})").unwrap();
+        let re = Regex::new(r"((\d)\.(\d)\.(\d{1,2}))((a|b|c|rc)\d{1,2})? (.{1,64})").unwrap();
 
         if let Some(cap) = re.captures_iter(data).next() {
             let release = match cap.get(5) {
@@ -449,9 +469,6 @@ mod tests {
 
         let version = Version::scan_bytes(b"Python 3.7.0rc1 (v3.7.0rc1:dfad352267, Jul 20 2018, 13:27:54)").unwrap();
         assert_eq!(version, Version{major: 3, minor: 7, patch: 0, release_flags: "rc1".to_owned()});
-
-        let version = Version::scan_bytes(b"53.7.0rc1 (v53.7.0rc1:dfad352267, Jul 20 2018, 13:27:54)");
-        assert!(version.is_err(), "Shouldn't allow v53 of python (yet)");
 
         let version = Version::scan_bytes(b"3.7 10 ");
         assert!(version.is_err(), "needs dotted version");
