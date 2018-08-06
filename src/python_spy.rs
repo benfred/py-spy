@@ -384,7 +384,7 @@ use std::collections::HashMap;
 pub fn get_windows_python_symbols(pid: Pid, filename: &str, base_addr: u64) -> std::io::Result<HashMap<String, u64>> {
     use proc_maps::win_maps::SymbolLoader;
 
-    let handler = SymbolLoader::new(pid as u64)?;
+    let handler = SymbolLoader::new(pid)?;
     let _module = handler.load_module(filename)?; // need to keep this module in scope
 
     let mut ret = HashMap::new();
