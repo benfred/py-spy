@@ -48,4 +48,4 @@ Which will generate a SVG file looking like:
 
 ### Credits
 
-py-spy is heavily inspired by [Julia Evans](https://github.com/jvns/) excellent work on [rbspy](http://github.com/rbspy/rbspy). In particular the code to generate the flamegraphs is taken directly from rbspy, and this project use several crates ([read-process-memory](https://github.com/luser/read-process-memory) and [proc-maps](#TODO)) that were spun off from rbspy.
+py-spy is heavily inspired by [Julia Evans](https://github.com/jvns/) excellent work on [rbspy](http://github.com/rbspy/rbspy). In particular the code to generate the flamegraphs is taken directly from rbspy, and this project use several crates ([read-process-memory](https://github.com/luser/read-process-memory) and [proc-maps](https://github.com/benfred/proc-maps)) that were spun off from rbspy.

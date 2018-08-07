@@ -412,7 +412,7 @@ impl PythonProcessInfo {
 #[cfg(windows)]
 use std::collections::HashMap;
 #[cfg(windows)]
-pub fn get_windows_python_symbols(pid: Pid, filename: &str, base_addr: u64) -> std::io::Result<HashMap<String, u64>> {
+pub fn get_windows_python_symbols(pid: Pid, filename: &str, offset: u64) -> std::io::Result<HashMap<String, u64>> {
     use proc_maps::win_maps::SymbolLoader;
 
     let handler = SymbolLoader::new(pid)?;
@@ -425,7 +425,10 @@ pub fn get_windows_python_symbols(pid: Pid, filename: &str, base_addr: u64) -> s
     // do for goblin, just load the the couple we need directly.
     for symbol in ["_PyThreadState_Current", "interp_head", "_PyRuntime"].iter() {
         if let Ok((base, addr)) = handler.address_from_name(symbol) {
-            ret.insert(String::from(*symbol), base_addr + addr  - base as u64);
+            // If we have a module base (ie from PDB), need to adjust by the offset
+            // otherwise seems like we can take address directly
+            let addr = if base == 0 { addr } else { offset + addr - base };
+            ret.insert(String::from(*symbol), addr);
         }
     }
 

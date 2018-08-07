@@ -18,8 +18,8 @@ log = "0.4"
 regex = "1"
 tempdir = "0.3"
 read-process-memory = "0.1"
+proc-maps = "0.1"
 python-bindings = {path = "python-bindings"}
-proc-maps = {git = "https://github.com/benfred/proc-maps.git", branch="master"}
 
 [target.'cfg(unix)'.dependencies]
 termios = "0.2.2"
