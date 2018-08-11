@@ -17,13 +17,17 @@ pub struct ConsoleViewer {
     show_idle: bool,
     version: String,
     command: String,
+    sampling_rate: f64,
     running: Arc<atomic::AtomicBool>,
     options: Arc<Mutex<Options>>,
     stats: Stats
 }
 
 impl ConsoleViewer {
-    pub fn new(show_idle: bool, python_command: &str, version: &str) -> io::Result<ConsoleViewer> {
+    pub fn new(show_idle: bool,
+               python_command: &str,
+               version: &str,
+               sampling_rate: f64) -> io::Result<ConsoleViewer> {
         let running = Arc::new(atomic::AtomicBool::new(true));
         let options = Arc::new(Mutex::new(Options::new()));
 
@@ -39,10 +43,15 @@ impl ConsoleViewer {
                     options.dirty = true;
                     match key as char {
                         'R' | 'r' => options.reset = true,
-                        'L' | 'l' => options.show_linenumbers = !options.show_linenumbers,
-                        'T' | 't' => options.show_total = true,
-                        'C' | 'c' => options.show_total = false,
-                        _ => options.usage = true,
+                        'L' | 'l' => options.show_linenumbers = true,
+                        'N' | 'n' => options.show_linenumbers = false,
+                        'X' | 'x' => options.usage = false,
+                        '?' => options.usage = true,
+                        '1' => options.sort_column = 1,
+                        '2' => options.sort_column = 2,
+                        '3' => options.sort_column = 3,
+                        '4' => options.sort_column = 4,
+                        _ => {},
                     }
                 }
             }
@@ -56,13 +65,13 @@ impl ConsoleViewer {
         }
 
         Ok(ConsoleViewer{console_config,
-                      version:version.to_owned(),
-                      command: python_command.to_owned(),
-                      show_idle, running, options,
-                      stats: Stats::new()})
+                         version:version.to_owned(),
+                         command: python_command.to_owned(),
+                         show_idle, running, options, sampling_rate,
+                         stats: Stats::new()})
     }
 
-    pub fn increment(&mut self, traces: &[StackTrace]) {
+    pub fn increment(&mut self, traces: &[StackTrace]) -> Result<(), Error> {
         self.maybe_reset();
         self.stats.threads = 0;
         for trace in traces {
@@ -90,7 +99,15 @@ impl ConsoleViewer {
                 format!("{} ({})", frame.name, filename)
             });
         }
-        self.stats.total += 1;
+        self.stats.current_samples += 1;
+        self.stats.overall_samples += 1;
+        self.stats.elapsed += self.sampling_rate;
+
+        if self.should_refresh() {
+            self.display()?;
+            self.stats.reset_current();
+        }
+        Ok(())
     }
 
     pub fn display(&self) -> std::io::Result<()> {
@@ -100,85 +117,124 @@ impl ConsoleViewer {
         let counts = if options.show_linenumbers { &self.stats.line_counts } else { &self.stats.function_counts };
         let mut counts:Vec<(&FunctionStatistics, &str)> = counts.iter().map(|(x,y)| (y, x.as_ref())).collect();
 
-        if options.show_total {
-            counts.sort_unstable_by(|a, b| b.0.total.cmp(&a.0.total));
-        } else {
-            counts.sort_unstable_by(|a, b| b.0.cumulative.cmp(&a.0.cumulative));
+        // TODO: subsort ?
+        match options.sort_column {
+            1 => counts.sort_unstable_by(|a, b| b.0.current_own.cmp(&a.0.current_own)),
+            2 => counts.sort_unstable_by(|a, b| b.0.current_total.cmp(&a.0.current_total)),
+            3 => counts.sort_unstable_by(|a, b| b.0.overall_own.cmp(&a.0.overall_own)),
+            4 => counts.sort_unstable_by(|a, b| b.0.overall_total.cmp(&a.0.overall_total)),
+            _ => panic!("unknown sort column. this really shouldn't happen")
         }
 
         self.console_config.clear_screen()?;
 
-        let header_lines = 6;
         let term = Term::stdout();
         let (height, width) = term.size();
 
         // Display aggregate stats about the process
         println!("Collecting samples from '{}' (python v{})", style(&self.command).green(), &self.version);
 
-        let error_rate = self.stats.errors as f64 / self.stats.total as f64;
-        if error_rate >= 0.01 && self.stats.total > 100 {
+        let error_rate = self.stats.errors as f64 / self.stats.overall_samples as f64;
+        if error_rate >= 0.01 && self.stats.overall_samples > 100 {
             let error_string = self.stats.last_error.as_ref().unwrap();
             println!("Total Samples {}, Error Rate {:.2}% ({})",
-                     style(self.stats.total).bold(),
+                     style(self.stats.overall_samples).bold(),
                      style(error_rate * 100.0).bold().red(),
                      style(error_string).bold());
         } else {
-             println!("Total Samples {}", style(self.stats.total).bold());
+             println!("Total Samples {}", style(self.stats.overall_samples).bold());
         }
 
         println!("GIL: {:.2}%, Active: {:>.2}%, Threads: {}",
-            style(100.0 * self.stats.gil as f64 / self.stats.total as f64).bold(),
-            style(100.0 * self.stats.active as f64 / self.stats.total as f64).bold(),
+            style(100.0 * self.stats.gil as f64 / self.stats.overall_samples as f64).bold(),
+            style(100.0 * self.stats.active as f64 / self.stats.overall_samples as f64).bold(),
             style(self.stats.threads).bold());
 
-        if !options.usage {
-            println!();
-        } else if options.show_total {
-            println!("Press {} to quit, {} to toggle line numbers, {} to switch to cumulative view.",
-                style("Control-C").bold(), style("L").bold(), style("C").bold());
-        } else {
-            println!("Press {} to quit, {} to toggle line numbers, {} to switch to total view",
-                style("Control-C").bold(), style("L").bold(), style("T").bold());
-        }
-        options.usage = false;
+        println!();
 
         // Build up the header for the table
-        let mut total_header = style("Total").reverse();
-        let mut cumulative_header = style(" Cumulative").reverse();
-        if options.show_total {
-            total_header = total_header.bold();
-        } else {
-            cumulative_header = cumulative_header.bold();
+        let mut percent_own_header = style("%Own ").reverse();
+        let mut percent_total_header = style("%Total").reverse();
+        let mut time_own_header = style("OwnTime").reverse();
+        let mut time_total_header = style("TotalTime").reverse();
+        match options.sort_column {
+            1 => percent_own_header = percent_own_header.bold(),
+            2 => percent_total_header = percent_total_header.bold(),
+            3 => time_own_header = time_own_header.bold(),
+            4 => time_total_header = time_total_header.bold(),
+            _ => {}
         }
 
         let function_header = if options.show_linenumbers {
-            style("   Function (filename:line)").reverse()
+            style("  Function (filename:line)").reverse()
         } else {
-            style("   Function (filename)").reverse()
+            style("  Function (filename)").reverse()
         };
-        println!("{:>8}{:>13}{:width$}", total_header, cumulative_header, function_header, width=width as usize - 21);
 
+        let header_lines = if options.usage { 20 } else { 8 };
+
+        // If we aren't at least 50 characters wide, lets use two lines per entry
+        // Otherwise, truncate the filename so that it doesn't wrap around to the next line
+        let header_lines =       if width > 50 { header_lines } else { header_lines + height as usize / 2 };
+        let max_function_width = if width > 50 { width as usize - 35 } else { width as usize };
+
+        println!("{:>7}{:>8}{:>9}{:>11}{:width$}", percent_own_header, percent_total_header,
+                 time_own_header, time_total_header, function_header, width=max_function_width);
+
+        let mut written = 0;
         for (samples, label) in counts.iter().take(height as usize - header_lines) {
-            println!("{:>7.2}%{:>10.2}%     {}",
-                100.0 * samples.total as f64 / (self.stats.total as f64),
-                100.0 * samples.cumulative as f64 / (self.stats.total as f64),
-                label);
+            println!("{:>6.2}% {:>6.2}% {:>7}s {:>8}s   {:.width$}",
+                100.0 * samples.current_own as f64 / (self.stats.current_samples as f64),
+                100.0 * samples.current_total as f64 / (self.stats.current_samples as f64),
+                // TODO: sampling rate?
+                display_time(samples.overall_own as f64 * self.sampling_rate),
+                display_time(samples.overall_total as f64 * self.sampling_rate),
+                label, width=max_function_width - 2);
+                written += 1;
         }
+        for _ in written.. height as usize - header_lines {
+            println!();
+        }
+
+        println!();
+        if options.usage {
+            println!("{:width$}", style(" Keyboard Shortcuts ").reverse().bold(), width=width as usize);
+            println!();
+            println!("{:^12}{:<}", style("key").bold().green(), style("action").bold().green());
+            println!("{:^12}{:<}", "1", "Sort by %Own (% of time currently spent in the function)");
+            println!("{:^12}{:<}", "2", "Sort by %Total (% of time currently in the function and its children)");
+            println!("{:^12}{:<}", "3", "Sort by OwnTime (Overall time spent in the function)");
+            println!("{:^12}{:<}", "4", "Sort by TotalTime (Overall time spent in the function and its children)");
+            println!("{:^12}{:<}", "L,l", "Aggregate samples by line number");
+            println!("{:^12}{:<}", "N,n", "Aggregate samples by name of the function");
+            println!("{:^12}{:<}", "R,r", "Reset statistics");
+            println!("{:^12}{:<}", "X,x", "Exit this help screen");
+            println!();
+            //println!("{:^12}{:<}", "Control-C", "Quit py-spy");
+        } else {
+            print!("Press {} to quit, or {} for help.",
+                   style("Control-C").bold().reverse(),
+                   style("?").bold().reverse());
+            use std::io::Write;
+            std::io::stdout().flush()?;
+        }
+
         Ok(())
     }
 
     pub fn increment_error(&mut self, err: &Error) {
         self.maybe_reset();
         self.stats.errors += 1;
-        self.stats.total += 1;
+        self.stats.overall_samples += 1;
         self.stats.last_error = Some(format!("{}", err));
     }
 
     pub fn should_refresh(&self) -> bool {
         // update faster if we only have a few samples, or if we changed options
-        match self.stats.total {
+        match self.stats.overall_samples {
             10 | 100 | 500 => true,
-            _ => self.options.lock().unwrap().dirty
+            _ => self.options.lock().unwrap().dirty ||
+                 self.stats.elapsed >= 1.0
         }
     }
 
@@ -199,8 +255,10 @@ impl Drop for ConsoleViewer {
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Debug)]
 struct FunctionStatistics {
-    total: u64,
-    cumulative: u64
+    current_own: u64,
+    current_total: u64,
+    overall_own: u64,
+    overall_total: u64
 }
 
 fn update_function_statistics<K>(counts: &mut HashMap<String, FunctionStatistics>, trace: &StackTrace, key_func: K)
@@ -213,10 +271,14 @@ fn update_function_statistics<K>(counts: &mut HashMap<String, FunctionStatistics
     }
 
     for (key, order) in current {
-        let entry = counts.entry(key).or_insert_with(|| FunctionStatistics{total: 0, cumulative: 0});
-        entry.cumulative += 1;
+        let entry = counts.entry(key).or_insert_with(|| FunctionStatistics{current_own: 0, current_total: 0,
+                                                                           overall_own: 0, overall_total: 0});
+        entry.current_total += 1;
+        entry.overall_total += 1;
+
         if order == 0 {
-            entry.total += 1;
+            entry.current_own += 1;
+            entry.overall_own += 1;
         }
     }
 }
@@ -224,13 +286,15 @@ fn update_function_statistics<K>(counts: &mut HashMap<String, FunctionStatistics
 struct Options {
     dirty: bool,
     usage: bool,
-    show_total: bool,
+    sort_column: i32,
     show_linenumbers: bool,
     reset: bool,
 }
 
 struct Stats {
-    total: u64,
+    current_samples: u64,
+    overall_samples: u64,
+    elapsed: f64,
     errors: u64,
     threads: u64,
     active: u64,
@@ -242,13 +306,44 @@ struct Stats {
 
 impl Options {
     fn new() -> Options {
-        Options{dirty: false, usage: false, reset: false, show_total: true, show_linenumbers: true}
+        Options{dirty: false, usage: false, reset: false, sort_column: 1, show_linenumbers: true}
     }
 }
 
 impl Stats {
     fn new() -> Stats {
-        Stats{total: 0, errors: 0, threads: 0, gil: 0, active: 0, line_counts: HashMap::new(), function_counts: HashMap::new(), last_error: None}
+        Stats{current_samples: 0, overall_samples: 0, elapsed: 0.,
+              errors: 0, threads: 0, gil: 0, active: 0,
+              line_counts: HashMap::new(), function_counts: HashMap::new(),
+              last_error: None}
+    }
+
+    pub fn reset_current(&mut self) {
+        // reset current statistics
+        for  (_, val) in self.line_counts.iter_mut() {
+            val.current_total = 0;
+            val.current_own = 0;
+        }
+
+        for  (_, val) in self.function_counts.iter_mut() {
+            val.current_total = 0;
+            val.current_own = 0;
+        }
+        self.current_samples = 0;
+        self.elapsed = 0.;
+    }
+}
+
+// helper function for formating time values (hide decimals for larger values)
+fn display_time(val: f64) -> String {
+    if val > 1000.0 {
+        format!("{:.0}", val)
+    } else if val >= 100.0 {
+        format!("{:.1}", val)
+    } else if val >= 1.0 {
+        format!("{:.2}", val)
+    } else {
+        format!("{:.3}", val)
     }
 }
 

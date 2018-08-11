@@ -80,20 +80,20 @@ fn sample_console(process: &PythonSpy,
                   display: &str,
                   show_idle: bool) -> Result<(), Error> {
     let rate = 10;
-    let mut console = ConsoleViewer::new(show_idle, display, &format!("{}", process.version))?;
-
-    let mut elapsed = 0;
+    let mut console = ConsoleViewer::new(show_idle, display,
+                                         &format!("{}", process.version),
+                                         rate as f64 / 1000.)?;
     let mut exitted_count = 0;
     loop {
         match process.get_stack_traces() {
             Ok(traces) => {
-                console.increment(&traces);
+                console.increment(&traces)?;
             },
             Err(err) => {
                 if process_exitted(&err) {
                     exitted_count += 1;
                     if exitted_count > 5 {
-                        println!("process {} ended", process.pid);
+                        println!("\nprocess {} ended", process.pid);
                         break;
                     }
                 } else {
@@ -101,12 +101,7 @@ fn sample_console(process: &PythonSpy,
                 }
             }
         }
-        if console.should_refresh() || elapsed >= 1000  {
-            console.display()?;
-            elapsed = 0;
-        }
         std::thread::sleep(std::time::Duration::from_millis(rate));
-        elapsed += rate;
     }
     Ok(())
 }
