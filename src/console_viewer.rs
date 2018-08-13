@@ -43,8 +43,7 @@ impl ConsoleViewer {
                     options.dirty = true;
                     match key as char {
                         'R' | 'r' => options.reset = true,
-                        'L' | 'l' => options.show_linenumbers = true,
-                        'N' | 'n' => options.show_linenumbers = false,
+                        'L' | 'l' => options.show_linenumbers = !options.show_linenumbers,
                         'X' | 'x' => options.usage = false,
                         '?' => options.usage = true,
                         '1' => options.sort_column = 1,
@@ -146,8 +145,8 @@ impl ConsoleViewer {
         }
 
         println!("GIL: {:.2}%, Active: {:>.2}%, Threads: {}",
-            style(100.0 * self.stats.gil as f64 / self.stats.overall_samples as f64).bold(),
-            style(100.0 * self.stats.active as f64 / self.stats.overall_samples as f64).bold(),
+            style(100.0 * self.stats.gil as f64 / self.stats.current_samples as f64).bold(),
+            style(100.0 * self.stats.active as f64 / self.stats.current_samples as f64).bold(),
             style(self.stats.threads).bold());
 
         println!();
@@ -205,8 +204,7 @@ impl ConsoleViewer {
             println!("{:^12}{:<}", "2", "Sort by %Total (% of time currently in the function and its children)");
             println!("{:^12}{:<}", "3", "Sort by OwnTime (Overall time spent in the function)");
             println!("{:^12}{:<}", "4", "Sort by TotalTime (Overall time spent in the function and its children)");
-            println!("{:^12}{:<}", "L,l", "Aggregate samples by line number");
-            println!("{:^12}{:<}", "N,n", "Aggregate samples by name of the function");
+            println!("{:^12}{:<}", "L,l", "Toggle between aggregating by line number or by function");
             println!("{:^12}{:<}", "R,r", "Reset statistics");
             println!("{:^12}{:<}", "X,x", "Exit this help screen");
             println!();
@@ -329,6 +327,8 @@ impl Stats {
             val.current_total = 0;
             val.current_own = 0;
         }
+        self.gil = 0;
+        self.active = 0;
         self.current_samples = 0;
         self.elapsed = 0.;
     }
@@ -346,6 +346,8 @@ fn display_time(val: f64) -> String {
         format!("{:.3}", val)
     }
 }
+
+// TODO: https://github.com/redox-os/termion ?
 
 // operating system specific details on setting up console to recieve single characters without displaying
 #[cfg(unix)]
