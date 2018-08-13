@@ -17,6 +17,7 @@ libc = "0.2.34"
 log = "0.4"
 regex = "1"
 tempdir = "0.3"
+tempfile = "3.0.3"
 read-process-memory = "0.1"
 proc-maps = "0.1"
 python-bindings = {path = "python-bindings"}

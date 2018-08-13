@@ -11,6 +11,7 @@ extern crate log;
 extern crate read_process_memory;
 extern crate regex;
 extern crate tempdir;
+extern crate tempfile;
 #[cfg(unix)]
 extern crate termios;
 #[cfg(windows)]
@@ -205,12 +206,14 @@ fn pyspy_main() -> Result<(), Error> {
     }
 
     else if let Some(subprocess) = matches.values_of("python_program") {
+        // Dump out stdout/stderr from the process to a temp file, so we can view it later if needed
+        let mut process_output = tempfile::NamedTempFile::new()?;
         let subprocess: Vec<&str> = subprocess.collect();
         let mut command = std::process::Command::new(subprocess[0])
             .args(&subprocess[1..])
             .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::piped())
+            .stdout(process_output.reopen()?)
+            .stderr(process_output.reopen()?)
             .spawn()?;
 
         #[cfg(target_os="macos")]
@@ -240,17 +243,10 @@ fn pyspy_main() -> Result<(), Error> {
         // if we failed for any reason, dump out stderr from child process here
         // (could have useful error message)
         if !success || result.is_err() {
-            // Read from stderr in a thread to avoid blocking here (in case we have
-            // error but no output on stderr in child process).
-            let mut stderr = command.stderr.take().unwrap();
-            std::thread::spawn(move || {
-                let mut buffer = String::new();
-                if let Ok(_) = stderr.read_to_string(&mut buffer) {
-                    eprintln!("{}", buffer);
-                }
-            });
-            // Wait a short time for printing stderr before killing process
-            std::thread::sleep(std::time::Duration::from_millis(20));
+            let mut buffer = String::new();
+            if let Ok(_) = process_output.read_to_string(&mut buffer) {
+                eprintln!("{}", buffer);
+            }
         }
 
         // kill it so we don't have dangling processess
