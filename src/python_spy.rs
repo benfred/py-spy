@@ -286,7 +286,10 @@ fn check_addresses<I>(binary: &BinaryInfo,
         if maps_contain_addr(addr, maps) {
             // this address points to valid memory. try loading it up as a PyInterpreterState
             // to further check
-            let interp: I = copy_struct(addr, &process)?;
+            let interp: I = match copy_struct(addr, &process) {
+                Ok(interp) => interp,
+                Err(_) => continue
+            };
 
             // get the pythreadstate pointer from the interpreter object, and if it is also
             // a valid pointer then load it up.
@@ -294,7 +297,10 @@ fn check_addresses<I>(binary: &BinaryInfo,
             if maps_contain_addr(threads as usize, maps) {
                 // If the threadstate points back to the interpreter like we expect, then
                 // this is almost certainly the address of the intrepreter
-                let thread = copy_pointer(threads, &process)?;
+                let thread = match copy_pointer(threads, &process) {
+                    Ok(thread) => thread,
+                    Err(_) => continue
+                };
 
                 // as a final sanity check, try getting the stack_traces, and only return if this works
                 if thread.interp() as usize == addr && get_stack_traces(&interp, &process).is_ok() {
