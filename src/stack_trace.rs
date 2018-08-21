@@ -30,6 +30,10 @@ pub fn get_stack_traces<I, P>(interpreter: &I, process: &P) -> Result<(Vec<Stack
     while !threads.is_null() {
         let thread = copy_pointer(threads, process).context("Failed to copy PyThreadState")?;
         ret.push(get_stack_trace(&thread, process)?);
+        // This seems to happen occasionally when scanning BSS addresses for valid interpeters
+        if ret.len() > 4096 {
+            return Err(format_err!("Max thread recursion depth reached"));
+        }
         threads = thread.next();
     }
     Ok(ret)
@@ -49,6 +53,9 @@ pub fn get_stack_trace<T, P >(thread: &T, process: &P) -> Result<StackTrace, Err
         let line = get_line_number(&code, frame.lasti(), process).context("Failed to get line number")?;
 
         frames.push(Frame{name, filename, line, short_filename: None});
+        if frames.len() > 4096 {
+            return Err(format_err!("Max frame recursion depth reached"));
+        }
 
         frame_ptr = frame.back();
     }
