@@ -452,7 +452,7 @@ pub struct Version {
 impl Version {
     pub fn scan_bytes(data: &[u8]) -> Result<Version, Error> {
         use regex::bytes::Regex;
-        let re = Regex::new(r"((\d)\.(\d)\.(\d{1,2}))((a|b|c|rc)\d{1,2})? (.{1,64})").unwrap();
+        let re = Regex::new(r"((2|3)\.(3|4|5|6|7|8)\.(\d{1,2}))((a|b|c|rc)\d{1,2})? (.{1,64})").unwrap();
 
         if let Some(cap) = re.captures_iter(data).next() {
             let release = match cap.get(5) {
@@ -490,6 +490,9 @@ mod tests {
 
         let version = Version::scan_bytes(b"Python 3.7.0rc1 (v3.7.0rc1:dfad352267, Jul 20 2018, 13:27:54)").unwrap();
         assert_eq!(version, Version{major: 3, minor: 7, patch: 0, release_flags: "rc1".to_owned()});
+
+        let version = Version::scan_bytes(b"1.7.0rc1 (v1.7.0rc1:dfad352267, Jul 20 2018, 13:27:54)");
+        assert!(version.is_err(), "don't match unsupported ");
 
         let version = Version::scan_bytes(b"3.7 10 ");
         assert!(version.is_err(), "needs dotted version");
