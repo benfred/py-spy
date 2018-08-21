@@ -1,9 +1,9 @@
-Py-Spy: A fast sampling profiler for Python programs.
+Py-Spy: A sampling profiler for Python programs.
 =====
 [![Build Status](https://travis-ci.org/benfred/py-spy.svg?branch=master)](https://travis-ci.org/benfred/py-spy)
 [![Windows Build status](https://ci.appveyor.com/api/projects/status/x0jwd5ygaybsa0md?svg=true)](https://ci.appveyor.com/project/benfred/py-spy)
 
-Py-Spy is a fast sampling profiler for Python programs. It lets you visualize what your Python
+Py-Spy is a sampling profiler for Python programs. It lets you visualize what your Python
 program is spending time on without restarting the program or modifiying the code in any way.
 Py-Spy is extremely low overhead: it is written in Rust for speed and doesn't pause or slow down
 the profiled Python program. This means Py-Spy is safe to use in production.

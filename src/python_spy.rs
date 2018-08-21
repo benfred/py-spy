@@ -37,10 +37,14 @@ impl PythonSpy {
         info!("python version {} detected", version);
 
         let interpreter_address = get_interpreter_address(&python_info, process, &version)?;
+        info!("Found interpreter at 0x{:016x}", interpreter_address);
 
         // lets us figure out which thread has the GIL
         let threadstate_address = match python_info.get_symbol("_PyThreadState_Current") {
-            Some(&addr) => addr as usize,
+            Some(&addr) => {
+                info!("Found _PyThreadState_Current @ 0x{:016x}", addr);
+                addr as usize
+            },
             None => {
                 warn!("Failed to find _PyThreadState_Current symbol - won't be able to detect GIL usage");
                 0
@@ -201,17 +205,16 @@ fn get_python_version(python_info: &PythonProcessInfo, process: ProcessHandle)
     if let Some(python) = path.file_name() {
         if let Some(python) = python.to_str() {
             if python.starts_with("python") {
-                let tokens: Vec<&str> = python[6..].split(".").collect();
+                let tokens: Vec<&str> = python[6..].split('.').collect();
                 if tokens.len() >= 2 {
-                    match (tokens[0].parse::<u64>(), tokens[1].parse::<u64>()) {
-                        (Ok(major), Ok(minor)) => return Ok(Version{major, minor, patch:0, release_flags: "".to_owned()}),
-                        _ => ()
+                    if let (Ok(major), Ok(minor)) = (tokens[0].parse::<u64>(), tokens[1].parse::<u64>()) {
+                        return Ok(Version{major, minor, patch:0, release_flags: "".to_owned()})
                     }
                 }
             }
         }
     }
-    return Err(format_err!("Failed to find python version from target process"));
+    Err(format_err!("Failed to find python version from target process"))
 }
 
 fn get_interpreter_address(python_info: &PythonProcessInfo,
@@ -234,13 +237,14 @@ fn get_interpreter_address(python_info: &PythonProcessInfo,
             }
         }
     };
-    info!("Failed to get interp_head from symbols, scanning BSS section");
+    info!("Failed to get interp_head from symbols, scanning BSS section from main binary");
 
     // try scanning the BSS section of the binary for things that might be the interpreterstate
     match get_interpreter_address_from_binary(&python_info.python_binary, &python_info.maps, process, version) {
         Ok(addr) => Ok(addr),
         // Before giving up, try again if there is a libpython.so
         Err(err) => {
+            info!("Failed to get interpreter from binary BSS, scanning libpython BSS");
             match python_info.libpython_binary {
                 Some(ref libpython) => {
                     Ok(get_interpreter_address_from_binary(libpython, &python_info.maps, process, version)?)
@@ -327,6 +331,12 @@ impl PythonProcessInfo {
     fn new(pid: Pid) -> Result<PythonProcessInfo, Error> {
         // get virtual memory layout
         let maps = get_process_maps(pid)?;
+        info!("Got virtual memory maps from pid {}:", pid);
+        for map in &maps {
+            info!("map: {:016x}-{:016x} {}{}{} {}", map.start(), map.start() + map.size(),
+                if map.is_read() {'r'} else {'-'}, if map.is_write() {'w'} else {'-'}, if map.is_exec() {'x'} else {'-'},
+                map.filename().as_ref().unwrap_or(&"".to_owned()));
+        }
 
         // parse the main python binary
         let (python_binary, python_filename) = {
@@ -394,6 +404,43 @@ impl PythonProcessInfo {
                     libpython_binary = Some(parsed);
                 }
             }
+
+            // On OSX, it's possible that the Python library is a dylib loaded up from the system
+            // framework (like /System/Library/Frameworks/Python.framework/Versions/2.7/Python)
+            // In this case read in the dyld_info information and figure out the filename from there
+            #[cfg(target_os = "macos")]
+            {
+                if libpython_binary.is_none() {
+                    use proc_maps::mac_maps::get_dyld_info;
+                    let dyld_infos = get_dyld_info(pid)?;
+
+                    for dyld in &dyld_infos {
+                        let segname = unsafe { std::ffi::CStr::from_ptr(dyld.segment.segname.as_ptr()) };
+                        info!("dyld: {:016x}-{:016x} {:10} {}",
+                            dyld.segment.vmaddr, dyld.segment.vmaddr + dyld.segment.vmsize,
+                            segname.to_string_lossy(), dyld.filename);
+                    }
+
+                    let python_dyld_data = dyld_infos.iter()
+                        .find(|m| m.filename.ends_with("/Python") &&
+                                  m.filename.starts_with("/System/Library/Frameworks/") &&
+                                  m.segment.segname[0..7] == [95, 95, 68, 65, 84, 65, 0]);
+
+                    if let Some(libpython) = python_dyld_data {
+                        info!("Found libpython binary from dyld @ {}", libpython.filename);
+                        let mut binary = parse_binary(&libpython.filename, libpython.segment.vmaddr)?;
+
+                        // TODO: bss addr offsets returned from parsing binary are wrong
+                        // (assumes data section isn't split from text section like done here).
+                        // BSS occurs somewhere in the data section, just scan that
+                        // (could later tighten this up to look at segment sections too)
+                        binary.bss_addr = libpython.segment.vmaddr;
+                        binary.bss_size = libpython.segment.vmsize;
+                        libpython_binary = Some(binary);
+                    }
+                }
+            }
+
             libpython_binary
         };
 
