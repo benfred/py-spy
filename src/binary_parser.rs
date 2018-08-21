@@ -81,8 +81,8 @@ pub fn parse_binary(filename: &str, offset: u64) -> Result<BinaryInfo, GoblinErr
                 .find(|ref section| section.name.starts_with(b".data"))
                 .expect("Failed to find .data section in PE binary");
 
-            let bss_addr = data_section.virtual_address as u64 + offset;
-            let bss_size = data_section.virtual_size as u64;
+            let bss_addr = u64::from(data_section.virtual_address) + offset;
+            let bss_size = u64::from(data_section.virtual_size);
 
             Ok(BinaryInfo{symbols, bss_addr, bss_size, offset})
         },

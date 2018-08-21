@@ -112,7 +112,7 @@ fn sample_flame(process: &PythonSpy, filename: &str) -> Result<(), Error> {
     let max_samples = 2000;
     let mut flame = flamegraph::Flamegraph::new();
     use indicatif::ProgressBar;
-    let bar = ProgressBar::new(max_samples);
+    let progress = ProgressBar::new(max_samples);
 
     println!("Taking {} samples of process", max_samples);
     let mut errors = 0;
@@ -136,9 +136,9 @@ fn sample_flame(process: &PythonSpy, filename: &str) -> Result<(), Error> {
                 errors += 1;
             }
         }
-        bar.inc(1);
+        progress.inc(1);
     }
-    bar.finish();
+    progress.finish();
 
     let out_file = std::fs::File::create(filename)?;
     flame.write(out_file)?;
@@ -195,13 +195,10 @@ fn pyspy_main() -> Result<(), Error> {
 
         if matches.occurrences_of("dump") > 0{
             print_traces(&process.get_stack_traces()?, true);
+        } else if let Some(flame_file) = matches.value_of("flame") {
+            sample_flame(&process, flame_file)?;
         } else {
-            if let Some(flame_file) = matches.value_of("flame") {
-                sample_flame(&process, flame_file)?;
-
-            } else {
-                sample_console(&process, &format!("pid: {}", pid), false)?;
-            }
+            sample_console(&process, &format!("pid: {}", pid), false)?;
         }
     }
 
@@ -244,13 +241,13 @@ fn pyspy_main() -> Result<(), Error> {
         // (could have useful error message)
         if !success || result.is_err() {
             let mut buffer = String::new();
-            if let Ok(_) = process_output.read_to_string(&mut buffer) {
+            if process_output.read_to_string(&mut buffer).is_ok() {
                 eprintln!("{}", buffer);
             }
         }
 
         // kill it so we don't have dangling processess
-        if let Err(_) = command.kill() {
+        if command.kill().is_err() {
             // I don't actually care if we failed to kill ... most times process is already done
             // eprintln!("Error killing child process {}", e);
         }

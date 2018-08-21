@@ -317,12 +317,12 @@ impl Stats {
 
     pub fn reset_current(&mut self) {
         // reset current statistics
-        for  (_, val) in self.line_counts.iter_mut() {
+        for val in self.line_counts.values_mut() {
             val.current_total = 0;
             val.current_own = 0;
         }
 
-        for  (_, val) in self.function_counts.iter_mut() {
+        for val in self.function_counts.values_mut() {
             val.current_total = 0;
             val.current_own = 0;
         }

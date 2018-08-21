@@ -38,7 +38,7 @@ use tempdir;
 
 use stack_trace::StackTrace;
 
-const FLAMEGRAPH_SCRIPT: &'static [u8] = include_bytes!("../vendor/flamegraph/flamegraph.pl");
+const FLAMEGRAPH_SCRIPT: &[u8] = include_bytes!("../vendor/flamegraph/flamegraph.pl");
 
 pub struct Flamegraph {
     pub counts: HashMap<Vec<u8>, usize>,
@@ -51,7 +51,7 @@ impl Flamegraph {
         }
     }
 
-    pub fn increment(&mut self, traces: &Vec<StackTrace>) -> std::io::Result<()> {
+    pub fn increment(&mut self, traces: &[StackTrace]) -> std::io::Result<()> {
         for trace in traces {
             if !(trace.active) {
                 continue;
@@ -70,8 +70,8 @@ impl Flamegraph {
         let tempdir = tempdir::TempDir::new("flamegraph").unwrap();
         let stacks_file = tempdir.path().join("stacks.txt");
         let mut file = File::create(&stacks_file).expect("couldn't create file");
-        for (k, v) in self.counts.iter() {
-            file.write(&k)?;
+        for (k, v) in &self.counts {
+            file.write_all(&k)?;
             writeln!(file, " {}", v)?;
         }
         write_flamegraph(&stacks_file, w)
