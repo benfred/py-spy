@@ -385,7 +385,13 @@ impl PythonProcessInfo {
             let is_python_lib = |pathname: &str| pathname.contains("lib/libpython");
 
             #[cfg(windows)]
-            let is_python_lib = |pathname: &str| pathname.contains("\\python") && pathname.ends_with("dll");
+            let is_python_lib = |pathname: &str| {
+                use regex::Regex;
+                lazy_static! {
+                    static ref RE: Regex = Regex::new(r"\\python\d\d.dll$").unwrap();
+                }
+                RE.is_match(pathname)
+            };
 
             let libmap = maps.iter()
                 .find(|m| if let Some(ref pathname) = &m.filename() {
@@ -499,9 +505,11 @@ pub struct Version {
 impl Version {
     pub fn scan_bytes(data: &[u8]) -> Result<Version, Error> {
         use regex::bytes::Regex;
-        let re = Regex::new(r"((2|3)\.(3|4|5|6|7|8)\.(\d{1,2}))((a|b|c|rc)\d{1,2})? (.{1,64})").unwrap();
+        lazy_static! {
+            static ref RE: Regex = Regex::new(r"((2|3)\.(3|4|5|6|7|8)\.(\d{1,2}))((a|b|c|rc)\d{1,2})? (.{1,64})").unwrap();
+        }
 
-        if let Some(cap) = re.captures_iter(data).next() {
+        if let Some(cap) = RE.captures_iter(data).next() {
             let release = match cap.get(5) {
                 Some(x) => { std::str::from_utf8(x.as_bytes())? },
                 None => ""

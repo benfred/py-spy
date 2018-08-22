@@ -5,6 +5,8 @@ extern crate env_logger;
 extern crate failure;
 extern crate goblin;
 extern crate indicatif;
+#[macro_use]
+extern crate lazy_static;
 extern crate libc;
 #[macro_use]
 extern crate log;
