@@ -5,7 +5,7 @@ use std::path::Path;
 
 use failure::{Error, ResultExt};
 use read_process_memory::{Pid, TryIntoProcessHandle, copy_address, ProcessHandle};
-use proc_maps::{get_process_maps, MapRange, maps_contain_addr};
+use proc_maps::{get_process_maps, MapRange};
 use python_bindings::{v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0};
 
 use python_interpreters;
@@ -278,6 +278,14 @@ fn check_addresses<I>(binary: &BinaryInfo,
                       maps: &[MapRange],
                       process: ProcessHandle) -> Result<usize, Error>
         where I: python_interpreters::InterpreterState {
+    // On windows, we can't just check if a pointer is valid by looking to see if it points
+    // to something in the virtual memory map. Brute-force it instead
+    #[cfg(windows)]
+    fn maps_contain_addr(addr: usize, maps: &[MapRange]) -> bool { true }
+
+    #[cfg(not(windows))]
+    use proc_maps::maps_contain_addr;
+
     // We're going to scan the BSS/data section for things, and try to narrowly scan things that
     // look like pointers to PyinterpreterState
     let bss = copy_address(binary.bss_addr as usize, binary.bss_size as usize, &process)?;
@@ -286,7 +294,6 @@ fn check_addresses<I>(binary: &BinaryInfo,
     let addrs = unsafe { slice::from_raw_parts(bss.as_ptr() as *const usize, bss.len() / size_of::<usize>()) };
 
     for &addr in addrs {
-        // TODO: this doesn't seem to work on windows (pointer addresses outside of map ranges)
         if maps_contain_addr(addr, maps) {
             // this address points to valid memory. try loading it up as a PyInterpreterState
             // to further check
