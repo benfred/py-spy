@@ -21,7 +21,6 @@ tempdir = "0.3"
 tempfile = "3.0.3"
 read-process-memory = "0.1"
 proc-maps = "0.1"
-python-bindings = {path = "python-bindings"}
 
 [target.'cfg(unix)'.dependencies]
 termios = "0.2.2"

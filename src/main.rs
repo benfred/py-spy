@@ -10,6 +10,7 @@ extern crate lazy_static;
 extern crate libc;
 #[macro_use]
 extern crate log;
+extern crate proc_maps;
 extern crate read_process_memory;
 extern crate regex;
 extern crate tempdir;
@@ -19,10 +20,9 @@ extern crate termios;
 #[cfg(windows)]
 extern crate winapi;
 
-extern crate proc_maps;
-extern crate python_bindings;
 
 mod binary_parser;
+mod python_bindings;
 mod python_interpreters;
 mod python_spy;
 mod stack_trace;

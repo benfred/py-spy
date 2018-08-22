@@ -64,7 +64,7 @@ def extract_bindings(cpython_path, version, configure=False):
     """)
 
     # write the file out to the appropiate place, disabling some warnings
-    with open(os.path.join("python-bindings", "src", version.replace(".", "_") + ".rs"), "w") as o:
+    with open(os.path.join("src", "python_bindings", version.replace(".", "_") + ".rs"), "w") as o:
         o.write(f"// Generated bindings for python {version}\n")
         o.write("#![allow(dead_code)]\n")
         o.write("#![allow(non_upper_case_globals)]\n")

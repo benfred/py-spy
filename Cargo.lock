@@ -345,7 +345,6 @@ dependencies = [
  "libc 0.2.43 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "proc-maps 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "python-bindings 0.1.1",
  "read-process-memory 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "regex 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "tempdir 0.3.7 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -353,10 +352,6 @@ dependencies = [
  "termios 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "winapi 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
-
-[[package]]
-name = "python-bindings"
-version = "0.1.1"
 
 [[package]]
 name = "quick-error"
