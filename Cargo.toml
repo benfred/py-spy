@@ -1,6 +1,6 @@
 [package]
 name = "py-spy"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Ben Frederickson <github@benfrederickson.com>"]
 repository = "https://github.com/benfred/py-spy"
 readme = "README.md"
