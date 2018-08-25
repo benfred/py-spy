@@ -346,7 +346,16 @@ fn display_time(val: f64) -> String {
     }
 }
 
-// TODO: https://github.com/redox-os/termion ?
+/*
+This rest of this code is OS specific functions for setting up keyboard input appropiately
+(don't wait for a newline, and disable echo), and clearing the terminal window.
+
+This is all relatively low level, but there doesn't seem to be any great libraries out there
+for doing this:
+    https://github.com/redox-os/termion doesn't work on windows
+    https://github.com/gyscos/Cursive requires ncurses installed
+    https://github.com/ihalila/pancurses requires ncurses installed
+ */
 
 // operating system specific details on setting up console to recieve single characters without displaying
 #[cfg(unix)]
@@ -425,7 +434,7 @@ mod os_impl {
                 let stdout = GetStdHandle(STD_OUTPUT_HANDLE);
 
                 // Get information about the current console (size/background etc)
-                let mut csbi = CONSOLE_SCREEN_BUFFER_INFO{..Default::default()};
+                let mut csbi = CONSOLE_SCREEN_BUFFER_INFO::default();
                 if GetConsoleScreenBufferInfo(stdout, &mut csbi) == 0 {
                     return Err(io::Error::last_os_error());
                 }
@@ -443,7 +452,7 @@ mod os_impl {
                 let stdout = GetStdHandle(STD_OUTPUT_HANDLE);
 
                 // Get information about the current console (size/background etc)
-                let mut csbi = CONSOLE_SCREEN_BUFFER_INFO{..Default::default()};
+                let mut csbi = CONSOLE_SCREEN_BUFFER_INFO::default();
                 if GetConsoleScreenBufferInfo(stdout, &mut csbi) == 0 {
                     return Err(io::Error::last_os_error());
                 }

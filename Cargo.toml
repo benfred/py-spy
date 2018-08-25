@@ -19,7 +19,7 @@ log = "0.4"
 regex = "1"
 tempdir = "0.3"
 tempfile = "3.0.3"
-read-process-memory = "0.1"
+benfred-read-process-memory = "0.1.3"
 proc-maps = "0.1"
 
 [target.'cfg(unix)'.dependencies]
@@ -27,6 +27,3 @@ termios = "0.2.2"
 
 [target.'cfg(windows)'.dependencies]
 winapi = {version = "0.3", features = ["winbase", "consoleapi", "wincon", "handleapi", "processenv" ]}
-
-[patch.crates-io]
-read-process-memory = {git = "https://github.com/benfred/read-process-memory.git"}
