@@ -281,7 +281,7 @@ fn check_addresses<I>(binary: &BinaryInfo,
     // On windows, we can't just check if a pointer is valid by looking to see if it points
     // to something in the virtual memory map. Brute-force it instead
     #[cfg(windows)]
-    fn maps_contain_addr(addr: usize, maps: &[MapRange]) -> bool { true }
+    fn maps_contain_addr(_: usize, _: &[MapRange]) -> bool { true }
 
     #[cfg(not(windows))]
     use proc_maps::maps_contain_addr;
@@ -348,14 +348,14 @@ impl PythonProcessInfo {
         // parse the main python binary
         let (python_binary, python_filename) = {
             #[cfg(unix)]
-            let python_bin_pattern = "bin/python";
+            let is_python_bin = |pathname: &str| pathname.contains("bin/python");
 
             #[cfg(windows)]
-            let python_bin_pattern = "python.exe";
+            let is_python_bin = |pathname: &str| pathname.contains("\\python") && pathname.ends_with(".exe");
 
             let map = maps.iter()
                 .find(|m| if let Some(pathname) = &m.filename() {
-                    pathname.contains(python_bin_pattern) && m.is_exec()
+                    is_python_bin(pathname) && m.is_exec()
                 } else {
                     false
                 }).ok_or_else(|| format_err!("Couldn't find python binary"))?;
