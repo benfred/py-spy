@@ -55,15 +55,8 @@ impl ConsoleViewer {
                 }
             }
         });
-        let console_config = os_impl::ConsoleConfig::new()?;
 
-        // flush current screen so that when we clear, we don't overwrite history
-        let height = Term::stdout().size().0;
-        for _ in 0..height + 1 {
-            println!();
-        }
-
-        Ok(ConsoleViewer{console_config,
+        Ok(ConsoleViewer{console_config: os_impl::ConsoleConfig::new()?,
                          version:version.to_owned(),
                          command: python_command.to_owned(),
                          show_idle, running, options, sampling_rate,
@@ -170,7 +163,7 @@ impl ConsoleViewer {
             style("  Function (filename)").reverse()
         };
 
-        let header_lines = if options.usage { 20 } else { 8 };
+        let header_lines = if options.usage { 17 } else { 6 };
 
         // If we aren't at least 50 characters wide, lets use two lines per entry
         // Otherwise, truncate the filename so that it doesn't wrap around to the next line
@@ -196,7 +189,7 @@ impl ConsoleViewer {
 
         println!();
         if options.usage {
-            println!("{:width$}", style(" Keyboard Shortcuts ").reverse().bold(), width=width as usize);
+            println!("{:width$}", style(" Keyboard Shortcuts ").reverse(), width=width as usize);
             println!();
             println!("{:^12}{:<}", style("key").bold().green(), style("action").bold().green());
             println!("{:^12}{:<}", "1", "Sort by %Own (% of time currently spent in the function)");
@@ -370,12 +363,19 @@ mod os_impl {
 
     impl ConsoleConfig {
         pub fn new() -> io::Result<ConsoleConfig> {
+            // Set up stdin to not echo the input, and not wait for a return
             let stdin = 0;
             let termios = Termios::from_fd(stdin)?;
             {
                 let mut termios = termios;
                 termios.c_lflag &= !(ICANON | ECHO);
                 tcsetattr(stdin, TCSANOW, &termios)?;
+            }
+
+            // flush current screen so that when we clear, we don't overwrite history
+            let height = Term::stdout().size().0;
+            for _ in 0..height + 1 {
+                println!();
             }
 
             Ok(ConsoleConfig{termios, stdin})
@@ -433,15 +433,24 @@ mod os_impl {
 
                 let stdout = GetStdHandle(STD_OUTPUT_HANDLE);
 
+                // flush current screen so that when we clear, we don't overwrite history
+                let height = Term::stdout().size().0 as i16;
+                for _ in 0..height + 1 {
+                    println!();
+                }
+
                 // Get information about the current console (size/background etc)
                 let mut csbi = CONSOLE_SCREEN_BUFFER_INFO::default();
                 if GetConsoleScreenBufferInfo(stdout, &mut csbi) == 0 {
                     return Err(io::Error::last_os_error());
                 }
 
-                csbi.dwCursorPosition.X = 0;
+                // Figure out a consistent spot in the terminal buffer to write output to
+                let mut top_left = csbi.dwCursorPosition;
+                top_left.X = 0;
+                top_left.Y = if top_left.Y > height { top_left.Y - height } else { 0 };
 
-                Ok(ConsoleConfig{stdin, mode, top_left: csbi.dwCursorPosition})
+                Ok(ConsoleConfig{stdin, mode, top_left})
             }
         }
 
@@ -458,7 +467,7 @@ mod os_impl {
                 }
 
                 let mut written: DWORD = 0;
-                let console_size = ((csbi.srWindow.Bottom - csbi.srWindow.Top) * (csbi.srWindow.Right - csbi.srWindow.Left)) as DWORD;
+                let console_size = ((1 + csbi.srWindow.Bottom - csbi.srWindow.Top) * (csbi.srWindow.Right - csbi.srWindow.Left)) as DWORD;
 
                 // Set the entire buffer to whitespace
                 if FillConsoleOutputCharacterA(stdout, ' ' as i8, console_size, self.top_left, &mut written) == 0 {
@@ -474,6 +483,7 @@ mod os_impl {
                 if SetConsoleCursorPosition(stdout, self.top_left) == 0 {
                     return Err(io::Error::last_os_error());
                 }
+
                 Ok(())
             }
         }
