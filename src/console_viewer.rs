@@ -2,7 +2,7 @@ use std;
 use std::collections::HashMap;
 use std::vec::Vec;
 use std::io;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::sync::{Mutex, Arc, atomic};
 use std::thread;
 
@@ -117,32 +117,39 @@ impl ConsoleViewer {
             4 => counts.sort_unstable_by(|a, b| b.0.overall_total.cmp(&a.0.overall_total)),
             _ => panic!("unknown sort column. this really shouldn't happen")
         }
-
-        self.console_config.clear_screen()?;
-
         let term = Term::stdout();
         let (height, width) = term.size();
+        let width = width as usize;
+
+        // this macro acts like println but also clears the rest of the line if there is already text
+        // writtern there. This is to avoid flickering on redraw, and lets us update just by moving the cursor
+        // position to the top left.
+        macro_rules! out {
+            () => (println!("\x1B[K"));  // ANSI code to clear the rest of the line
+            ($($arg:tt)*) => { print!($($arg)*); out!(); }
+        }
+        self.console_config.reset_cursor()?;
 
         // Display aggregate stats about the process
-        println!("Collecting samples from '{}' (python v{})", style(&self.command).green(), &self.version);
+        out!("Collecting samples from '{}' (python v{})", style(&self.command).green(), &self.version);
 
         let error_rate = self.stats.errors as f64 / self.stats.overall_samples as f64;
         if error_rate >= 0.01 && self.stats.overall_samples > 100 {
             let error_string = self.stats.last_error.as_ref().unwrap();
-            println!("Total Samples {}, Error Rate {:.2}% ({})",
-                     style(self.stats.overall_samples).bold(),
-                     style(error_rate * 100.0).bold().red(),
-                     style(error_string).bold());
+            out!("Total Samples {}, Error Rate {:.2}% ({})",
+                 style(self.stats.overall_samples).bold(),
+                 style(error_rate * 100.0).bold().red(),
+                 style(error_string).bold());
         } else {
-             println!("Total Samples {}", style(self.stats.overall_samples).bold());
+             out!("Total Samples {}", style(self.stats.overall_samples).bold());
         }
 
-        println!("GIL: {:.2}%, Active: {:>.2}%, Threads: {}",
+        out!("GIL: {:.2}%, Active: {:>.2}%, Threads: {}",
             style(100.0 * self.stats.gil as f64 / self.stats.current_samples as f64).bold(),
             style(100.0 * self.stats.active as f64 / self.stats.current_samples as f64).bold(),
             style(self.stats.threads).bold());
 
-        println!();
+        out!();
 
         // Build up the header for the table
         let mut percent_own_header = style("%Own ").reverse();
@@ -163,19 +170,19 @@ impl ConsoleViewer {
             style("  Function (filename)").reverse()
         };
 
-        let header_lines = if options.usage { 17 } else { 6 };
+        let header_lines = if options.usage { 18 } else { 8 };
 
         // If we aren't at least 50 characters wide, lets use two lines per entry
         // Otherwise, truncate the filename so that it doesn't wrap around to the next line
         let header_lines =       if width > 50 { header_lines } else { header_lines + height as usize / 2 };
         let max_function_width = if width > 50 { width as usize - 35 } else { width as usize };
 
-        println!("{:>7}{:>8}{:>9}{:>11}{:width$}", percent_own_header, percent_total_header,
-                 time_own_header, time_total_header, function_header, width=max_function_width);
+        out!("{:>7}{:>8}{:>9}{:>11}{:width$}", percent_own_header, percent_total_header,
+             time_own_header, time_total_header, function_header, width=max_function_width);
 
         let mut written = 0;
         for (samples, label) in counts.iter().take(height as usize - header_lines) {
-            println!("{:>6.2}% {:>6.2}% {:>7}s {:>8}s   {:.width$}",
+            out!("{:>6.2}% {:>6.2}% {:>7}s {:>8}s   {:.width$}",
                 100.0 * samples.current_own as f64 / (self.stats.current_samples as f64),
                 100.0 * samples.current_total as f64 / (self.stats.current_samples as f64),
                 display_time(samples.overall_own as f64 * self.sampling_rate),
@@ -184,30 +191,29 @@ impl ConsoleViewer {
                 written += 1;
         }
         for _ in written.. height as usize - header_lines {
-            println!();
+            out!();
         }
 
-        println!();
+        out!();
         if options.usage {
-            println!("{:width$}", style(" Keyboard Shortcuts ").reverse(), width=width as usize);
-            println!();
-            println!("{:^12}{:<}", style("key").bold().green(), style("action").bold().green());
-            println!("{:^12}{:<}", "1", "Sort by %Own (% of time currently spent in the function)");
-            println!("{:^12}{:<}", "2", "Sort by %Total (% of time currently in the function and its children)");
-            println!("{:^12}{:<}", "3", "Sort by OwnTime (Overall time spent in the function)");
-            println!("{:^12}{:<}", "4", "Sort by TotalTime (Overall time spent in the function and its children)");
-            println!("{:^12}{:<}", "L,l", "Toggle between aggregating by line number or by function");
-            println!("{:^12}{:<}", "R,r", "Reset statistics");
-            println!("{:^12}{:<}", "X,x", "Exit this help screen");
-            println!();
+            out!("{:width$}", style(" Keyboard Shortcuts ").reverse(), width=width as usize);
+            out!();
+            out!("{:^12}{:<}", style("key").green(), style("action").green());
+            out!("{:^12}{:<}", "1", "Sort by %Own (% of time currently spent in the function)");
+            out!("{:^12}{:<}", "2", "Sort by %Total (% of time currently in the function and its children)");
+            out!("{:^12}{:<}", "3", "Sort by OwnTime (Overall time spent in the function)");
+            out!("{:^12}{:<}", "4", "Sort by TotalTime (Overall time spent in the function and its children)");
+            out!("{:^12}{:<}", "L,l", "Toggle between aggregating by line number or by function");
+            out!("{:^12}{:<}", "R,r", "Reset statistics");
+            out!("{:^12}{:<}", "X,x", "Exit this help screen");
+            out!();
             //println!("{:^12}{:<}", "Control-C", "Quit py-spy");
         } else {
-            print!("Press {} to quit, or {} for help.",
-                   style("Control-C").bold().reverse(),
-                   style("?").bold().reverse());
-            use std::io::Write;
-            std::io::stdout().flush()?;
+            out!("Press {} to quit, or {} for help.",
+                 style("Control-C").bold().reverse(),
+                 style("?").bold().reverse());
         }
+        std::io::stdout().flush()?;
 
         Ok(())
     }
@@ -381,9 +387,9 @@ mod os_impl {
             Ok(ConsoleConfig{termios, stdin})
         }
 
-        pub fn clear_screen(&self) -> io::Result<()> {
-            // reset cursor + clear screen: https://en.wikipedia.org/wiki/ANSI_escape_code
-            print!("\x1B[0f\x1B[J");
+        pub fn reset_cursor(&self) -> io::Result<()> {
+            // reset cursor to top left position https://en.wikipedia.org/wiki/ANSI_escape_code
+            print!("\x1B[H");
             Ok(())
         }
     }
@@ -406,7 +412,7 @@ mod os_impl {
     use winapi::um::handleapi::INVALID_HANDLE_VALUE;
     use winapi::um::consoleapi::{GetConsoleMode, SetConsoleMode};
     use winapi::um::wincon::{ENABLE_LINE_INPUT, ENABLE_ECHO_INPUT, CONSOLE_SCREEN_BUFFER_INFO, SetConsoleCursorPosition,
-                            GetConsoleScreenBufferInfo, FillConsoleOutputCharacterA, COORD, FillConsoleOutputAttribute};
+                             GetConsoleScreenBufferInfo, COORD};
 
     pub struct ConsoleConfig {
         stdin: HANDLE,
@@ -454,32 +460,12 @@ mod os_impl {
             }
         }
 
-        pub fn clear_screen(&self) -> io::Result<()> {
+        pub fn reset_cursor(&self) -> io::Result<()> {
             unsafe {
-                // on windows, this handles clearing screen while scrolling slightly better than
-                // using ansi clear codes like on unix
+                // Set cursor to top-left using the win32 api.
+                // (this works better than moving the cursor using ANSI escape codes in the
+                // case when the user is scrolling the terminal window)
                 let stdout = GetStdHandle(STD_OUTPUT_HANDLE);
-
-                // Get information about the current console (size/background etc)
-                let mut csbi = CONSOLE_SCREEN_BUFFER_INFO::default();
-                if GetConsoleScreenBufferInfo(stdout, &mut csbi) == 0 {
-                    return Err(io::Error::last_os_error());
-                }
-
-                let mut written: DWORD = 0;
-                let console_size = ((1 + csbi.srWindow.Bottom - csbi.srWindow.Top) * (csbi.srWindow.Right - csbi.srWindow.Left)) as DWORD;
-
-                // Set the entire buffer to whitespace
-                if FillConsoleOutputCharacterA(stdout, ' ' as i8, console_size, self.top_left, &mut written) == 0 {
-                    return Err(io::Error::last_os_error());
-                }
-
-                // And set the entire buffer to the background colour
-                if FillConsoleOutputAttribute(stdout, csbi.wAttributes, console_size, self.top_left, &mut written) == 0 {
-                    return Err(io::Error::last_os_error());
-                }
-
-                // Set cursor to top-left
                 if SetConsoleCursorPosition(stdout, self.top_left) == 0 {
                     return Err(io::Error::last_os_error());
                 }
