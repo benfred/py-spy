@@ -347,8 +347,12 @@ impl PythonProcessInfo {
 
         // parse the main python binary
         let (python_binary, python_filename) = {
-            #[cfg(unix)]
+            #[cfg(target_os="linux")]
             let is_python_bin = |pathname: &str| pathname.contains("bin/python");
+
+            #[cfg(target_os="macos")]
+            let is_python_bin = |pathname: &str| pathname.contains("bin/python") ||
+                                                 pathname.contains("Python.app");
 
             #[cfg(windows)]
             let is_python_bin = |pathname: &str| pathname.contains("\\python") && pathname.ends_with(".exe");
@@ -388,8 +392,12 @@ impl PythonProcessInfo {
 
         // likewise handle libpython for python versions compiled with --enabled-shared
         let libpython_binary = {
-            #[cfg(unix)]
+            #[cfg(target_os="linux")]
             let is_python_lib = |pathname: &str| pathname.contains("lib/libpython");
+
+            #[cfg(target_os="macos")]
+            let is_python_lib = |pathname: &str|
+                pathname.contains("lib/libpython") || is_python_framework(pathname);
 
             #[cfg(windows)]
             let is_python_lib = |pathname: &str| {
@@ -435,8 +443,7 @@ impl PythonProcessInfo {
                     }
 
                     let python_dyld_data = dyld_infos.iter()
-                        .find(|m| m.filename.ends_with("/Python") &&
-                                  m.filename.starts_with("/System/Library/Frameworks/") &&
+                        .find(|m| is_python_framework(&m.filename) &&
                                   m.segment.segname[0..7] == [95, 95, 68, 65, 84, 65, 0]);
 
                     if let Some(libpython) = python_dyld_data {
@@ -499,6 +506,13 @@ pub fn get_windows_python_symbols(pid: Pid, filename: &str, offset: u64) -> std:
     }
 
     Ok(ret)
+}
+
+#[cfg(target_os="macos")]
+pub fn is_python_framework(pathname: &str) -> bool {
+    pathname.ends_with("/Python") &&
+    pathname.contains("/Frameworks/Python.framework") &&
+    !pathname.contains("Python.app")
 }
 
 #[derive(Debug, PartialEq, Eq)]
