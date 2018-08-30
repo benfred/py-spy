@@ -1,7 +1,7 @@
 """ Helper script to build wheels for releases for OSX and Linux.
 
 Assumes that we are running on a OSX machine, Linux wheels are
-created through docker.
+created through virtual machines running vagrant
 
 Wheels will be in the dist/ folder after running.
 """
@@ -25,6 +25,8 @@ def make_wheel_filename_generic(wheel):
     # hack, lets pretend to be manylinux1 so we can do a binary distribution
     if platform == "linux_x86_64.whl":
         platform = "manylinux1_x86_64.whl"
+    elif platform == "linux_i686.whl":
+        platform = "manylinux1_i686.whl"
 
     return "-".join((name, version, python, abi, platform))
 
@@ -40,25 +42,14 @@ def local_build_wheel():
         sys.exit(ret)
 
 
-def docker_build_wheel(docker_image):
-    import docker
-    path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    client = docker.from_env()
-    container = client.containers.run(docker_image,
-                                      volumes={path: {'bind': '/home/py-spy', 'mode': 'rw'}},
-                                      remove=True, detach=True, tty=True)
-    try:
-        result = container.exec_run("python3 /home/py-spy/ci/build_wheels.py --localonly")
-        if result.exit_code:
-            raise RuntimeError(result.output.decode("utf8"))
-
-        print(result.output)
-    finally:
-        container.stop()
-        client.close()
+def vagrant_build_wheel(vagrantfile):
+    import vagrant
+    v = vagrant.Vagrant(vagrantfile, quiet_stdout=False, quiet_stderr=False)
+    v.up()
+    v.halt()
 
 
-def build_wheels(docker_image="rust_python3", build_local=False, clean=False):
+def build_wheels(docker_image="rust_python3", build_local=True, vagrantfiles=None, clean=True):
     path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     dist = os.path.join(path, "dist")
     log.info("Generating wheels @'%s'", dist)
@@ -76,8 +67,8 @@ def build_wheels(docker_image="rust_python3", build_local=False, clean=False):
         local_build_wheel()
 
     # generate wheels for linux
-    if docker_image:
-        docker_build_wheel(docker_image)
+    for vagrantfile in vagrantfiles or []:
+        vagrant_build_wheel(vagrantfile)
 
     # rename wheels to remove python version/abi tags
     for wheel in os.listdir(dist):
@@ -100,4 +91,4 @@ if __name__ == "__main__":
     if args.localonly:
         local_build_wheel()
     else:
-        build_wheels()
+        build_wheels(vagrantfiles=["./ubuntu32", "./ubuntu64"])
