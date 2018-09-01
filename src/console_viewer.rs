@@ -25,11 +25,12 @@ pub struct ConsoleViewer {
 
 impl ConsoleViewer {
     pub fn new(show_idle: bool,
+               show_linenumbers: bool,
                python_command: &str,
                version: &str,
                sampling_rate: f64) -> io::Result<ConsoleViewer> {
         let running = Arc::new(atomic::AtomicBool::new(true));
-        let options = Arc::new(Mutex::new(Options::new()));
+        let options = Arc::new(Mutex::new(Options::new(show_linenumbers)));
 
         // listen for keyboard events in a separate thread to avoid blocking here
         let input_running = running.clone();
@@ -301,8 +302,8 @@ struct Stats {
 }
 
 impl Options {
-    fn new() -> Options {
-        Options{dirty: false, usage: false, reset: false, sort_column: 1, show_linenumbers: true}
+    fn new(show_linenumbers: bool) -> Options {
+        Options{dirty: false, usage: false, reset: false, sort_column: 1, show_linenumbers: show_linenumbers}
     }
 }
 

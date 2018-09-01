@@ -81,9 +81,10 @@ fn permission_denied(err: &Error) -> bool {
 
 fn sample_console(process: &PythonSpy,
                   display: &str,
-                  show_idle: bool) -> Result<(), Error> {
+                  show_idle: bool,
+                  show_linenumbers: bool) -> Result<(), Error> {
     let rate = 10;
-    let mut console = ConsoleViewer::new(show_idle, display,
+    let mut console = ConsoleViewer::new(show_idle, show_linenumbers, display,
                                          &format!("{}", process.version),
                                          rate as f64 / 1000.)?;
     let mut exitted_count = 0;
@@ -110,9 +111,9 @@ fn sample_console(process: &PythonSpy,
 }
 
 
-fn sample_flame(process: &PythonSpy, filename: &str) -> Result<(), Error> {
+fn sample_flame(process: &PythonSpy, filename: &str, show_linenumbers: bool) -> Result<(), Error> {
     let max_samples = 2000;
-    let mut flame = flamegraph::Flamegraph::new();
+    let mut flame = flamegraph::Flamegraph::new(show_linenumbers);
     use indicatif::ProgressBar;
     let progress = ProgressBar::new(max_samples);
 
@@ -157,7 +158,11 @@ fn sample_flame(process: &PythonSpy, filename: &str) -> Result<(), Error> {
 
 fn pyspy_main() -> Result<(), Error> {
     let matches = App::new("py-spy")
-        .about("Spies on python programs!")
+        .about("A sampling profiler for Python programs")
+        .arg(Arg::with_name("function")
+            .short("F")
+            .long("function")
+            .help("Aggregate samples by function name instead of by line number"))
         .arg(Arg::with_name("pid")
             .short("p")
             .long("pid")
@@ -191,16 +196,19 @@ fn pyspy_main() -> Result<(), Error> {
         }
     }
 
+    let show_linenumbers = matches.occurrences_of("function") == 0;
+
     if let Some(pid_str) = matches.value_of("pid") {
         let pid: read_process_memory::Pid = pid_str.parse().expect("invalid pid");
         let process = PythonSpy::retry_new(pid, 3)?;
 
-        if matches.occurrences_of("dump") > 0{
+
+        if matches.occurrences_of("dump") > 0 {
             print_traces(&process.get_stack_traces()?, true);
         } else if let Some(flame_file) = matches.value_of("flame") {
-            sample_flame(&process, flame_file)?;
+            sample_flame(&process, flame_file, show_linenumbers)?;
         } else {
-            sample_console(&process, &format!("pid: {}", pid), false)?;
+            sample_console(&process, &format!("pid: {}", pid), false, show_linenumbers)?;
         }
     }
 
@@ -223,9 +231,9 @@ fn pyspy_main() -> Result<(), Error> {
         let result = match PythonSpy::retry_new(command.id() as read_process_memory::Pid, 8) {
             Ok(process) => {
                 if let Some(flame_file) = matches.value_of("flame") {
-                    sample_flame(&process, flame_file)
+                    sample_flame(&process, flame_file, show_linenumbers)
                 } else {
-                    sample_console(&process, &subprocess.join(" "), false)
+                    sample_console(&process, &subprocess.join(" "), false, show_linenumbers)
                 }
             },
             Err(e) => Err(e)

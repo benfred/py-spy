@@ -42,13 +42,12 @@ const FLAMEGRAPH_SCRIPT: &[u8] = include_bytes!("../vendor/flamegraph/flamegraph
 
 pub struct Flamegraph {
     pub counts: HashMap<Vec<u8>, usize>,
+    pub show_linenumbers: bool,
 }
 
 impl Flamegraph {
-    pub fn new() -> Flamegraph {
-        Flamegraph {
-            counts: HashMap::new(),
-        }
+    pub fn new(show_linenumbers: bool) -> Flamegraph {
+        Flamegraph { counts: HashMap::new(), show_linenumbers }
     }
 
     pub fn increment(&mut self, traces: &[StackTrace]) -> std::io::Result<()> {
@@ -59,7 +58,11 @@ impl Flamegraph {
             let mut buf = vec![];
             for frame in trace.frames.iter().rev() {
                 let filename = match &frame.short_filename { Some(f) => &f, None => &frame.filename };
-                write!(&mut buf, "{} ({}:{});", frame.name, filename, frame.line)?;
+                if self.show_linenumbers {
+                    write!(&mut buf, "{} ({}:{});", frame.name, filename, frame.line)?;
+                } else {
+                    write!(&mut buf, "{} ({});", frame.name, filename)?;
+                }
             }
             *self.counts.entry(buf).or_insert(0) += 1;
         }
