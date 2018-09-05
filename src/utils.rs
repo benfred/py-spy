@@ -39,7 +39,8 @@ impl Timer {
         #[cfg(windows)]
         unsafe { timeapi::timeBeginPeriod(1); }
 
-        Timer{rate, samples: 0, start: Instant::now()}    }
+        Timer{rate, samples: 0, start: Instant::now()}
+    }
 }
 
 impl Iterator for Timer {

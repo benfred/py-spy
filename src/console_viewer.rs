@@ -24,8 +24,7 @@ pub struct ConsoleViewer {
 }
 
 impl ConsoleViewer {
-    pub fn new(show_idle: bool,
-               show_linenumbers: bool,
+    pub fn new(show_linenumbers: bool,
                python_command: &str,
                version: &str,
                sampling_rate: f64) -> io::Result<ConsoleViewer> {
@@ -60,7 +59,7 @@ impl ConsoleViewer {
         Ok(ConsoleViewer{console_config: os_impl::ConsoleConfig::new()?,
                          version:version.to_owned(),
                          command: python_command.to_owned(),
-                         show_idle, running, options, sampling_rate,
+                         show_idle: false, running, options, sampling_rate,
                          stats: Stats::new()})
     }
 

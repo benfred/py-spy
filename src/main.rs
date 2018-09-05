@@ -1,3 +1,4 @@
+#[macro_use]
 extern crate clap;
 extern crate console;
 extern crate env_logger;
@@ -33,6 +34,7 @@ mod utils;
 
 use std::vec::Vec;
 use std::io::Read;
+use std::time::Duration;
 
 use clap::{App, Arg};
 use failure::Error;
@@ -81,15 +83,15 @@ fn permission_denied(err: &Error) -> bool {
 
 fn sample_console(process: &PythonSpy,
                   display: &str,
-                  show_idle: bool,
-                  show_linenumbers: bool) -> Result<(), Error> {
-    let rate = 1;
-    let mut console = ConsoleViewer::new(show_idle, show_linenumbers, display,
+                  args: &clap::ArgMatches) -> Result<(), Error> {
+    let rate = value_t!(args, "rate", u64)?;
+    let show_linenumbers = args.occurrences_of("function") == 0;
+    let mut console = ConsoleViewer::new(show_linenumbers, display,
                                          &format!("{}", process.version),
-                                         rate as f64 / 1000.)?;
+                                         1.0 / rate as f64)?;
     let mut exitted_count = 0;
 
-    for _ in utils::Timer::new(std::time::Duration::from_millis(rate)) {
+    for _ in utils::Timer::new(Duration::from_nanos(1_000_000_000 / rate)) {
         match process.get_stack_traces() {
             Ok(traces) => {
                 console.increment(&traces)?;
@@ -112,19 +114,22 @@ fn sample_console(process: &PythonSpy,
 }
 
 
-fn sample_flame(process: &PythonSpy, filename: &str, show_linenumbers: bool) -> Result<(), Error> {
-    let max_samples = 2000;
+fn sample_flame(process: &PythonSpy, filename: &str, args: &clap::ArgMatches) -> Result<(), Error> {
+    let rate = value_t!(args, "rate", u64)?;
+    let duration = value_t!(args, "duration", u64)?;
+    let max_samples = duration * rate;
+    let show_linenumbers = args.occurrences_of("function") == 0;
+
     let mut flame = flamegraph::Flamegraph::new(show_linenumbers);
     use indicatif::ProgressBar;
     let progress = ProgressBar::new(max_samples);
 
-    println!("Taking {} samples of process", max_samples);
+    println!("Sampling process {} times a second for {} seconds", rate, duration);
     let mut errors = 0;
     let mut samples = 0;
     let mut exitted_count = 0;
 
-    let rate = 1;
-    for _ in utils::Timer::new(std::time::Duration::from_millis(rate)) {
+    for _ in utils::Timer::new(Duration::from_nanos(1_000_000_000 / rate)) {
         match process.get_stack_traces() {
             Ok(traces) => {
                 flame.increment(&traces)?;
@@ -174,7 +179,7 @@ fn pyspy_main() -> Result<(), Error> {
             .short("p")
             .long("pid")
             .value_name("pid")
-            .help("pid of python program to spy on")
+            .help("PID of a running python program to spy on")
             .takes_value(true)
             .required_unless("python_program"))
         .arg(Arg::with_name("dump")
@@ -184,9 +189,24 @@ fn pyspy_main() -> Result<(), Error> {
         .arg(Arg::with_name("flame")
             .short("f")
             .long("flame")
-            .value_name("flame")
-            .help("Generate a flame graph")
+            .value_name("flamefile")
+            .help("Generate a flame graph and write to a file")
             .takes_value(true))
+        .arg(Arg::with_name("rate")
+            .short("r")
+            .long("rate")
+            .value_name("rate")
+            .help("The number of samples to collect per second")
+            .default_value("1000")
+            .takes_value(true))
+        .arg(Arg::with_name("duration")
+            .short("d")
+            .long("duration")
+            .value_name("duration")
+            .help("The number of seconds to sample for when generating a flame graph")
+            .default_value("2")
+            .takes_value(true))
+
         .arg(Arg::with_name("python_program")
             .help("commandline of a python program to run")
             .multiple(true)
@@ -203,19 +223,18 @@ fn pyspy_main() -> Result<(), Error> {
         }
     }
 
-    let show_linenumbers = matches.occurrences_of("function") == 0;
+    info!("Command line args: {:?}", matches);
 
     if let Some(pid_str) = matches.value_of("pid") {
         let pid: read_process_memory::Pid = pid_str.parse().expect("invalid pid");
         let process = PythonSpy::retry_new(pid, 3)?;
 
-
         if matches.occurrences_of("dump") > 0 {
             print_traces(&process.get_stack_traces()?, true);
         } else if let Some(flame_file) = matches.value_of("flame") {
-            sample_flame(&process, flame_file, show_linenumbers)?;
+            sample_flame(&process, flame_file, &matches)?;
         } else {
-            sample_console(&process, &format!("pid: {}", pid), false, show_linenumbers)?;
+            sample_console(&process, &format!("pid: {}", pid), &matches)?;
         }
     }
 
@@ -233,21 +252,21 @@ fn pyspy_main() -> Result<(), Error> {
         #[cfg(target_os="macos")]
         {
             // sleep just in case: https://jvns.ca/blog/2018/01/28/mac-freeze/
-            std::thread::sleep(std::time::Duration::from_millis(50));
+            std::thread::sleep(Duration::from_millis(50));
         }
         let result = match PythonSpy::retry_new(command.id() as read_process_memory::Pid, 8) {
             Ok(process) => {
                 if let Some(flame_file) = matches.value_of("flame") {
-                    sample_flame(&process, flame_file, show_linenumbers)
+                    sample_flame(&process, flame_file, &matches)
                 } else {
-                    sample_console(&process, &subprocess.join(" "), false, show_linenumbers)
+                    sample_console(&process, &subprocess.join(" "), &matches)
                 }
             },
             Err(e) => Err(e)
         };
 
         // check exit code of subprocess
-        std::thread::sleep(std::time::Duration::from_millis(1));
+        std::thread::sleep(Duration::from_millis(1));
         let success =  match command.try_wait()? {
             Some(exit) => exit.success(),
             // if process hasn't finished, assume success
