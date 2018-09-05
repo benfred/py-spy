@@ -1,21 +1,14 @@
-language: python
+language: rust
+sudo: required
 
 matrix:
   include:
-    - os: osx
-      language: generic
-      env:
-        - PIP=pip2
-        - PYTHON=python2
+    - env: TARGET=i686-unknown-linux-gnu
+    - env: TARGET=x86_64-unknown-linux-gnu
+    - env: TARGET=i686-apple-darwin
+      os: osx
+    - env: TARGET=x86_64-apple-darwin
+      os: osx
 
 script:
-  - $PIP install cibuildwheel setuptools_rust
-  - export CIBW_BEFORE_BUILD='pip install setuptools-rust && source {project}/ci/install_rust.sh'
-  - export CIBW_SKIP='cp33-* cp34-* $CIBW_SKIP'
-  - export CIBW_ENVIRONMENT='PATH="$HOME/rust/bin:$PATH"'
-  - cibuildwheel --output-dir wheelhouse
-  - |
-    if [[ $TRAVIS_TAG ]]; then
-      $PIP install twine
-      $PYTHON -m twine upload wheelhouse/*.whl
-    fi
+  - cargo test --verbose
