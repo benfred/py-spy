@@ -1,4 +1,8 @@
 use std;
+use std::time::{Instant, Duration};
+#[cfg(windows)]
+use winapi::um::timeapi;
+
 use read_process_memory::CopyAddress;
 
 /// Copies a struct from another process
@@ -14,6 +18,49 @@ pub fn copy_struct<T, P>(addr: usize, process: &P) -> std::io::Result<T>
 pub fn copy_pointer<T, P>(ptr: *const T, process: &P) -> std::io::Result<T>
     where P: CopyAddress {
     copy_struct(ptr as usize, process)
+}
+
+/// Timer is an iterator that sleeps an appropiate amount of time so that
+/// each loop happens at a constant rate.
+pub struct Timer {
+    rate: Duration,
+    start: Instant,
+    samples: u32,
+}
+
+impl Timer {
+    pub fn new(rate: Duration) -> Timer {
+        // This changes a system-wide setting on Windows so that the OS wakes up every 1ms
+        // instead of the default 15.6ms. This is required to have a sleep call
+        // take less than 15ms, which we need since we usually profile at more than 64hz.
+        // The downside is that this will increase power usage: good discussions are:
+        // https://randomascii.wordpress.com/2013/07/08/windows-timer-resolution-megawatts-wasted/
+        // and http://www.belshe.com/2010/06/04/chrome-cranking-up-the-clock/
+        #[cfg(windows)]
+        unsafe { timeapi::timeBeginPeriod(1); }
+
+        Timer{rate, samples: 0, start: Instant::now()}    }
+}
+
+impl Iterator for Timer {
+    type Item = ();
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.samples += 1;
+        let elapsed = self.start.elapsed();
+        let desired = self.rate * self.samples;
+        if desired > elapsed {
+            std::thread::sleep(desired - elapsed);
+        }
+        Some(())
+    }
+}
+
+impl Drop for Timer {
+    fn drop(&mut self) {
+        #[cfg(windows)]
+        unsafe { timeapi::timeEndPeriod(1); }
+    }
 }
 
 #[cfg(test)]

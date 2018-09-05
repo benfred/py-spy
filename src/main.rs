@@ -83,12 +83,13 @@ fn sample_console(process: &PythonSpy,
                   display: &str,
                   show_idle: bool,
                   show_linenumbers: bool) -> Result<(), Error> {
-    let rate = 10;
+    let rate = 1;
     let mut console = ConsoleViewer::new(show_idle, show_linenumbers, display,
                                          &format!("{}", process.version),
                                          rate as f64 / 1000.)?;
     let mut exitted_count = 0;
-    loop {
+
+    for _ in utils::Timer::new(std::time::Duration::from_millis(rate)) {
         match process.get_stack_traces() {
             Ok(traces) => {
                 console.increment(&traces)?;
@@ -105,7 +106,7 @@ fn sample_console(process: &PythonSpy,
                 }
             }
         }
-        std::thread::sleep(std::time::Duration::from_millis(rate));
+
     }
     Ok(())
 }
@@ -121,11 +122,16 @@ fn sample_flame(process: &PythonSpy, filename: &str, show_linenumbers: bool) -> 
     let mut errors = 0;
     let mut samples = 0;
     let mut exitted_count = 0;
-    for _ in 0..max_samples {
+
+    let rate = 1;
+    for _ in utils::Timer::new(std::time::Duration::from_millis(rate)) {
         match process.get_stack_traces() {
             Ok(traces) => {
                 flame.increment(&traces)?;
                 samples += 1;
+                if samples >= max_samples {
+                    break;
+                }
             },
             Err(err) => {
                 if process_exitted(&err) {
