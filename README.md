@@ -172,3 +172,8 @@ Not yet =).
 py-spy is heavily inspired by [Julia Evans](https://github.com/jvns/) excellent work on [rbspy](http://github.com/rbspy/rbspy).
 In particular, the code to generate the flamegraphs is taken directly from rbspy, and this project uses the
 ([read-process-memory](https://github.com/luser/read-process-memory) and [proc-maps](https://github.com/benfred/proc-maps)) crates that were spun off from rbspy.
+
+
+## License
+
+Py-spy is released under the GNU General Public License v3.0, see  [LICENSE](https://github.com/benfred/py-spy/blob/master/LICENSE) file for the full text.
