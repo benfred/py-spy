@@ -90,7 +90,7 @@ fn write_flamegraph(source: &Path, target: File) -> Result<(), Error> {
         .stdin(Stdio::piped()) // pipe in the flamegraph.pl script to stdin
         .stdout(target)
         .spawn()
-        .context("Couldn't execute perl")?;
+        .context("Couldn't execute perl. Please install Perl before using flamegraph option.")?;
     // TODO(nll): Remove this silliness after non-lexical lifetimes land.
     {
         let stdin = child.stdin.as_mut().expect("failed to write to stdin");
