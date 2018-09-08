@@ -393,7 +393,8 @@ impl PythonProcessInfo {
         // likewise handle libpython for python versions compiled with --enabled-shared
         let libpython_binary = {
             #[cfg(target_os="linux")]
-            let is_python_lib = |pathname: &str| pathname.contains("lib/libpython");
+            let is_python_lib = |pathname: &str| pathname.contains("lib/libpython") ||
+                                                 pathname.contains("lib64/libpython");
 
             #[cfg(target_os="macos")]
             let is_python_lib = |pathname: &str|
