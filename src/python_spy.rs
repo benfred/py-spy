@@ -512,7 +512,7 @@ pub fn get_windows_python_symbols(pid: Pid, filename: &str, offset: u64) -> std:
 #[cfg(target_os="macos")]
 pub fn is_python_framework(pathname: &str) -> bool {
     pathname.ends_with("/Python") &&
-    pathname.contains("/Frameworks/Python.framework") &&
+    pathname.contains("/Python.framework/") &&
     !pathname.contains("Python.app")
 }
 
@@ -556,6 +556,23 @@ impl std::fmt::Display for Version {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(target_os="macos")]
+    fn test_python_frameworks() {
+        // homebrew v2
+        assert!(!is_python_framework("/usr/local/Cellar/python@2/2.7.15_1/Frameworks/Python.framework/Versions/2.7/Resources/Python.app/Contents/MacOS/Python"));
+        assert!(is_python_framework("/usr/local/Cellar/python@2/2.7.15_1/Frameworks/Python.framework/Versions/2.7/Python"));
+
+        // System python from osx 10.13.6 (high sierra)
+        assert!(!is_python_framework("/System/Library/Frameworks/Python.framework/Versions/2.7/Resources/Python.app/Contents/MacOS/Python"));
+        assert!(is_python_framework("/System/Library/Frameworks/Python.framework/Versions/2.7/Python"));
+
+        // pyenv 3.6.6 with OSX framework enabled (https://github.com/benfred/py-spy/issues/15)
+        // env PYTHON_CONFIGURE_OPTS="--enable-framework" pyenv install 3.6.6
+        assert!(is_python_framework("/Users/ben/.pyenv/versions/3.6.6/Python.framework/Versions/3.6/Python"));
+        assert!(!is_python_framework("/Users/ben/.pyenv/versions/3.6.6/Python.framework/Versions/3.6/Resources/Python.app/Contents/MacOS/Python"));
+    }
 
     #[test]
     fn test_find_version() {
