@@ -183,7 +183,6 @@ fn pyspy_main() -> Result<(), Error> {
             .takes_value(true)
             .required_unless("python_program"))
         .arg(Arg::with_name("dump")
-            .short("d")
             .long("dump")
             .help("Dump the current stack traces to stdout"))
         .arg(Arg::with_name("flame")
