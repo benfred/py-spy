@@ -69,7 +69,11 @@ pub fn get_stack_trace<T, P >(thread: &T, process: &P) -> Result<StackTrace, Err
         // most cases)
         let frame = &frames[0];
         (frame.name == "wait" && frame.filename.ends_with("threading.py")) ||
-        (frame.name == "select" && frame.filename.ends_with("selectors.py"))
+        (frame.name == "select" && frame.filename.ends_with("selectors.py")) ||
+        (frame.name == "poll" && (frame.filename.ends_with("asyncore.py") ||
+                                  frame.filename.contains("zmq") ||
+                                  frame.filename.contains("gevent") ||
+                                  frame.filename.contains("tornado")))
     };
 
     Ok(StackTrace{frames, thread_id: thread.thread_id(), owns_gil: false, active: !idle})
