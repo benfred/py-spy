@@ -124,6 +124,21 @@ This error is caused by docker restricting the process_vm_readv system call we a
 [```--cap-add SYS_PTRACE```](https://docs.docker.com/engine/security/seccomp/) when starting the docker container.
 -->
 
+### Running under Kubernetes
+py-spy needs `SYS_PTRACE` to be able to read process memory. Kubernetes drops that capability by default, resulting in the error
+```
+Permission Denied: Try running again with elevated permissions by going 'sudo env "PATH=$PATH" !!'
+```
+The recommended way to deal with this is to edit the spec and all that capability. For a deployment, this is done by adding this to `Deployment.spec.template.spec.containers`
+```
+securityContext:
+  capabilities:
+    add:
+    - SYS_PTRACE
+```
+More details on this here: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-capabilities-for-a-container
+Note that this will remove the existing pods and create those again.
+
 ### Why am I having issues profiling /usr/bin/python on OSX?
 
 OSX has a feature called [System Integrity Protection](https://en.wikipedia.org/wiki/System_Integrity_Protection) that prevents even the root user from reading memory from any binary located in /usr/bin. Unfortunately, this includes the python interpreter that ships with OSX.
