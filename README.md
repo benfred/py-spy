@@ -80,7 +80,7 @@ on Windows.
 
 Figuring out the call stack of the Python program is done by looking at the global PyInterpreterState variable
  to get all the Python threads running in the interpreter, and then iterating over each PyFrameObject in each thread
- to get the call stack. Since the Python ABI changes between versions, we use rusts' [bindgen](https://github.com/rust-lang-nursery/rust-bindgen) to generate different rust structures for each Python interperator
+ to get the call stack. Since the Python ABI changes between versions, we use rust's [bindgen](https://github.com/rust-lang-nursery/rust-bindgen) to generate different rust structures for each Python interpreter
  class we care about and use these generated structs to figure out the memory layout in the Python program.
 
 Getting the memory address of the Python Interpreter can be a little tricky due to [Address Space Layout Randomization](https://en.wikipedia.org/wiki/Address_space_layout_randomization). If the target python interpreter ships
@@ -98,7 +98,7 @@ program by looking at the
 [PyInterpreterState](https://docs.python.org/3/c-api/init.html#c.PyInterpreterState) we don't yet
 get information about non-python threads and can't profile native extensions like those written in languages
 like Cython or C++. Native code will instead show up as spending time in the line of Python that calls the native function,
-rather than as it's own entry right now.
+rather than as its own entry right now.
 
 It should be possible to use something like [libunwind](https://www.nongnu.org/libunwind/) to profile the
 native code in the Python Extensions. If this is something that interests you [please upvote this issue](https://github.com/benfred/py-spy/issues/2).
@@ -120,13 +120,13 @@ You can remove this restriction on linux by setting the [ptrace_scope sysctl var
 TODO: talk about profiling programs in docker containers, can do from host OS etc
 
 Running py-spy inside of a docker container will also usually bring up a permissions denied error even when running as root.
-This error is caused by docker restricting the process_vm_readv system call we are using. This can be overriden by setting
+This error is caused by docker restricting the process_vm_readv system call we are using. This can be overridden by setting
 [```--cap-add SYS_PTRACE```](https://docs.docker.com/engine/security/seccomp/) when starting the docker container.
 -->
 
 ### Why am I having issues profiling /usr/bin/python on OSX?
 
-OSX has a featured called [System Integrity Protection](https://en.wikipedia.org/wiki/System_Integrity_Protection) that prevents even the root user from reading memory from any binary located in /usr/bin. Unfortunately, this includes the python interpreter that ships with OSX.
+OSX has a feature called [System Integrity Protection](https://en.wikipedia.org/wiki/System_Integrity_Protection) that prevents even the root user from reading memory from any binary located in /usr/bin. Unfortunately, this includes the python interpreter that ships with OSX.
 
 There are a couple of different ways to deal with this:
  * You can install a different Python distribution (you probably want to migrate away from python2 anyways =)
@@ -136,7 +136,7 @@ There are a couple of different ways to deal with this:
 <!--
 ### How does this compare to other Python Profilers?
 TODO: this is probably not necessary for release?
-TODO: this could be spun out into it's own blog post in the future really
+TODO: this could be spun out into its own blog post in the future really
 line_profiler
 pyflame:
 
@@ -145,7 +145,7 @@ yappi: https://pypi.org/project/yappi/
     * doesn't support line profiling
 
 https://github.com/bdarnell/plop
-    * Doesn't support Support Windows
+    * Doesn't support Windows
     * Uses itimer
 -->
 
