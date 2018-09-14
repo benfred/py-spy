@@ -11,7 +11,7 @@ use python_bindings::{v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0};
 use python_interpreters;
 use stack_trace::{StackTrace, get_stack_traces};
 use binary_parser::{parse_binary, BinaryInfo};
-use utils::{copy_struct, copy_pointer};
+use utils::{copy_struct, copy_pointer, get_process_exe};
 use python_interpreters::{InterpreterState, ThreadState};
 
 #[derive(Debug)]
@@ -28,11 +28,10 @@ pub struct PythonSpy {
 
 impl PythonSpy {
     pub fn new(pid: Pid) -> Result<PythonSpy, Error> {
-        let process = pid.try_into_process_handle().context("Failed to open target process")?;
-
         // get basic process information (memory maps/symbols etc)
         let python_info = PythonProcessInfo::new(pid)?;
 
+        let process = pid.try_into_process_handle().context("Failed to open target process")?;
         let version = get_python_version(&python_info, process)?;
         info!("python version {} detected", version);
 
@@ -336,6 +335,11 @@ pub struct PythonProcessInfo {
 
 impl PythonProcessInfo {
     fn new(pid: Pid) -> Result<PythonProcessInfo, Error> {
+        // Get the executable filename for the process
+        let filename = get_process_exe(pid)
+            .context("Failed to get process executable name. Check that the process is running.")?;
+        info!("Found process binary @ '{}'", filename);
+
         // get virtual memory layout
         let maps = get_process_maps(pid)?;
         info!("Got virtual memory maps from pid {}:", pid);
@@ -347,25 +351,13 @@ impl PythonProcessInfo {
 
         // parse the main python binary
         let (python_binary, python_filename) = {
-            #[cfg(target_os="linux")]
-            let is_python_bin = |pathname: &str| pathname.contains("bin/python");
-
-            #[cfg(target_os="macos")]
-            let is_python_bin = |pathname: &str| pathname.contains("bin/python") ||
-                                                 pathname.contains("Python.app");
-
-            #[cfg(windows)]
-            let is_python_bin = |pathname: &str| pathname.contains("\\python") && pathname.ends_with(".exe");
-
+            // Get the memory address for the executable by matching against virtual memory maps
             let map = maps.iter()
                 .find(|m| if let Some(pathname) = &m.filename() {
-                    is_python_bin(pathname) && m.is_exec()
+                    filename == *pathname && m.is_exec()
                 } else {
                     false
-                }).ok_or_else(|| format_err!("Couldn't find python binary"))?;
-
-            let filename = map.filename().clone().unwrap();
-            info!("Found python binary @ {}", filename);
+                }).ok_or_else(|| format_err!("Couldn't find binary in virtual memory maps"))?;
 
             // TODO: consistent types? u64 -> usize? for map.start etc
             let mut python_binary = parse_binary(&filename, map.start() as u64)?;

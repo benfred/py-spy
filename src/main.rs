@@ -9,6 +9,8 @@ extern crate indicatif;
 #[macro_use]
 extern crate lazy_static;
 extern crate libc;
+#[cfg(target_os = "macos")]
+extern crate libproc;
 #[macro_use]
 extern crate log;
 extern crate proc_maps;
@@ -246,7 +248,7 @@ fn pyspy_main() -> Result<(), Error> {
             .stdin(std::process::Stdio::null())
             .stdout(process_output.reopen()?)
             .stderr(process_output.reopen()?)
-            .spawn()?;
+            .spawn().map_err(|e| format_err!("Failed to create process '{}': {}", subprocess[0], e))?;
 
         #[cfg(target_os="macos")]
         {

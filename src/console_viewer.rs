@@ -302,7 +302,7 @@ struct Stats {
 
 impl Options {
     fn new(show_linenumbers: bool) -> Options {
-        Options{dirty: false, usage: false, reset: false, sort_column: 1, show_linenumbers: show_linenumbers}
+        Options{dirty: false, usage: false, reset: false, sort_column: 1, show_linenumbers}
     }
 }
 

@@ -30,3 +30,6 @@ termios = "0.2.2"
 
 [target.'cfg(windows)'.dependencies]
 winapi = {version = "0.3", features = ["winbase", "consoleapi", "wincon", "handleapi", "timeapi", "processenv" ]}
+
+[target.'cfg(target_os="macos")'.dependencies]
+libproc = "0.3.1"
