@@ -5,14 +5,8 @@ environment:
     # Nightly 64-bit MSVC
     - channel: stable
       target: x86_64-pc-windows-msvc
-      CIBW_SKIP: "*win32* cp27-* cp33-* cp34-*"
+      CIBW_SKIP: "*win32* cp33-* cp34-*"
       CIBW_BEFORE_BUILD: pip install setuptools-rust
-    # Nightly 32-bit MSVC
-    - channel: stable
-      target: i686-pc-windows-msvc
-      CIBW_SKIP: "*win_amd64* cp33-* cp34-*"
-      CIBW_BEFORE_BUILD: pip install setuptools-rust
-
 
 # from: https://github.com/starkat99/appveyor-rust/blob/master/appveyor.yml
 install:
