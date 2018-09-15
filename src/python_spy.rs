@@ -539,7 +539,20 @@ impl Version {
             let major = std::str::from_utf8(&cap[2])?.parse::<u64>()?;
             let minor = std::str::from_utf8(&cap[3])?.parse::<u64>()?;
             let patch = std::str::from_utf8(&cap[4])?.parse::<u64>()?;
-            info!("Found matching version string '{}'", std::str::from_utf8(&cap[0])?);
+
+            let version = std::str::from_utf8(&cap[0])?;
+            info!("Found matching version string '{}'", version);
+            #[cfg(windows)]
+            {
+                if version.contains("32 bit") {
+                    error!("32-bit python is not yet supported on windows! See https://github.com/benfred/py-spy/issues/31 for updates");
+                    // we're panic'ing rather than returning an error, since we can't recover from this
+                    // and returning an error would just get the calling code to fall back to other
+                    // methods of trying to find the version
+                    panic!("32-bit python is unsupported on windows");
+                }
+            }
+
             return Ok(Version{major, minor, patch, release_flags:release.to_owned()});
         }
         Err(format_err!("failed to find version string"))
