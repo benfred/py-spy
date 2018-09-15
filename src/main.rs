@@ -93,7 +93,11 @@ fn sample_console(process: &PythonSpy,
                                          1.0 / rate as f64)?;
     let mut exitted_count = 0;
 
-    for _ in utils::Timer::new(Duration::from_nanos(1_000_000_000 / rate)) {
+    for sleep in utils::Timer::new(Duration::from_nanos(1_000_000_000 / rate)) {
+        if let Err(elapsed) = sleep {
+            console.increment_late_sample(elapsed);
+        }
+
         match process.get_stack_traces() {
             Ok(traces) => {
                 console.increment(&traces)?;
@@ -130,8 +134,20 @@ fn sample_flame(process: &PythonSpy, filename: &str, args: &clap::ArgMatches) ->
     let mut errors = 0;
     let mut samples = 0;
     let mut exitted_count = 0;
+    println!();
 
-    for _ in utils::Timer::new(Duration::from_nanos(1_000_000_000 / rate)) {
+    for sleep in utils::Timer::new(Duration::from_nanos(1_000_000_000 / rate)) {
+        if let Err(delay) = sleep {
+            if delay > Duration::from_secs(1) {
+                    // TODO: once this available on crates.io https://github.com/mitsuhiko/indicatif/pull/41
+                    // go progress.println instead
+                    let term = console::Term::stdout();
+                    term.move_cursor_up(2)?;
+                    println!("{:.2?} behind in sampling, results may be inaccurate. Try reducing the sampling rate.", delay);
+                    term.move_cursor_down(1)?;
+            }
+        }
+
         match process.get_stack_traces() {
             Ok(traces) => {
                 flame.increment(&traces)?;
@@ -198,7 +214,7 @@ fn pyspy_main() -> Result<(), Error> {
             .long("rate")
             .value_name("rate")
             .help("The number of samples to collect per second")
-            .default_value("1000")
+            .default_value("200")
             .takes_value(true))
         .arg(Arg::with_name("duration")
             .short("d")

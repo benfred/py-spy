@@ -86,7 +86,7 @@ impl Timer {
 }
 
 impl Iterator for Timer {
-    type Item = ();
+    type Item = Result<Duration, Duration>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.samples += 1;
@@ -94,8 +94,10 @@ impl Iterator for Timer {
         let desired = self.rate * self.samples;
         if desired > elapsed {
             std::thread::sleep(desired - elapsed);
+            Some(Ok(desired - elapsed))
+        } else {
+            Some(Err(elapsed - desired))
         }
-        Some(())
     }
 }
 

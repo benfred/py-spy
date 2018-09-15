@@ -129,6 +129,16 @@ impl ConsoleViewer {
             ($($arg:tt)*) => { print!($($arg)*); out!(); }
         }
         self.console_config.reset_cursor()?;
+        let mut header_lines = if options.usage { 18 } else { 8 };
+
+        if let Some(delay) = self.stats.last_delay {
+            let late_rate = self.stats.late_samples as f64 / self.stats.overall_samples as f64;
+            if late_rate > 0.10 && delay > std::time::Duration::from_secs(1) {
+                let msg = format!("{:.2?} behind in sampling, results may be inaccurate. Try reducing the sampling rate.", delay);
+                out!("{}", style(msg).red());
+                header_lines += 1;
+            }
+        }
 
         // Display aggregate stats about the process
         out!("Collecting samples from '{}' (python v{})", style(&self.command).green(), &self.version);
@@ -169,8 +179,6 @@ impl ConsoleViewer {
         } else {
             style("  Function (filename)").reverse()
         };
-
-        let header_lines = if options.usage { 18 } else { 8 };
 
         // If we aren't at least 50 characters wide, lets use two lines per entry
         // Otherwise, truncate the filename so that it doesn't wrap around to the next line
@@ -223,6 +231,11 @@ impl ConsoleViewer {
         self.stats.errors += 1;
         self.stats.overall_samples += 1;
         self.stats.last_error = Some(format!("{}", err));
+    }
+
+    pub fn increment_late_sample(&mut self, delay: std::time::Duration) {
+        self.stats.late_samples += 1;
+        self.stats.last_delay = Some(delay);
     }
 
     pub fn should_refresh(&self) -> bool {
@@ -292,12 +305,14 @@ struct Stats {
     overall_samples: u64,
     elapsed: f64,
     errors: u64,
+    late_samples: u64,
     threads: u64,
     active: u64,
     gil: u64,
     function_counts: HashMap<String, FunctionStatistics>,
     line_counts: HashMap<String, FunctionStatistics>,
-    last_error: Option<String>
+    last_error: Option<String>,
+    last_delay: Option<std::time::Duration>,
 }
 
 impl Options {
@@ -309,9 +324,9 @@ impl Options {
 impl Stats {
     fn new() -> Stats {
         Stats{current_samples: 0, overall_samples: 0, elapsed: 0.,
-              errors: 0, threads: 0, gil: 0, active: 0,
+              errors: 0, late_samples: 0, threads: 0, gil: 0, active: 0,
               line_counts: HashMap::new(), function_counts: HashMap::new(),
-              last_error: None}
+              last_error: None, last_delay: None}
     }
 
     pub fn reset_current(&mut self) {
