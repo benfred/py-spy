@@ -15,9 +15,17 @@ try:
             # Mark us as not a pure python package (we have platform specific rust code)
             self.root_is_pure = False
 
-        # note: in theory we could also set up manylinx/py2.py3 tags here by overriding get_tags
-        # but that seems to break installing the py-spy binary on osx so instead we're
-        # renaming in ci/build_wheels.py
+        def get_tag(self):
+            # this set's us up to build generic wheels.
+            # note: we're only doing this for windows right now (causes packaging issues
+            # with osx)
+            if not sys.platform.startswith("win"):
+                return _bdist_wheel.get_tag(self)
+
+            python, abi, plat = _bdist_wheel.get_tag(self)
+            python, abi = 'py2.py3', 'none'
+            return python, abi, plat
+
 except ImportError:
     bdist_wheel = None
 
