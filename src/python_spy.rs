@@ -340,6 +340,14 @@ impl PythonProcessInfo {
             .context("Failed to get process executable name. Check that the process is running.")?;
         info!("Found process binary @ '{}'", filename);
 
+        #[cfg(windows)]
+        let filename = filename.to_lowercase();
+        #[cfg(windows)]
+        let is_python_bin = |pathname: &str| pathname.to_lowercase() == filename;
+
+        #[cfg(not(windows))]
+        let is_python_bin = |pathname: &str| pathname == filename;
+
         // get virtual memory layout
         let maps = get_process_maps(pid)?;
         info!("Got virtual memory maps from pid {}:", pid);
@@ -354,7 +362,7 @@ impl PythonProcessInfo {
             // Get the memory address for the executable by matching against virtual memory maps
             let map = maps.iter()
                 .find(|m| if let Some(pathname) = &m.filename() {
-                    filename == *pathname && m.is_exec()
+                    is_python_bin(pathname) && m.is_exec()
                 } else {
                     false
                 }).ok_or_else(|| format_err!("Couldn't find binary in virtual memory maps"))?;
@@ -379,7 +387,7 @@ impl PythonProcessInfo {
                     python_binary.bss_addr -= offset;
                 }
             }
-            (python_binary, filename)
+            (python_binary, filename.clone())
         };
 
         // likewise handle libpython for python versions compiled with --enabled-shared
