@@ -470,13 +470,17 @@ impl PythonProcessInfo {
 
     pub fn get_symbol(&self, symbol: &str) -> Option<&u64> {
         if let Some(addr) = self.python_binary.symbols.get(symbol) {
+            info!("got symbol {} (0x{:016x}) from python binary", symbol, addr);
             return Some(addr);
         }
 
-        match self.libpython_binary {
-            Some(ref binary) => binary.symbols.get(symbol),
-            None => None
+        if let Some(ref binary) = self.libpython_binary {
+            if let Some(addr) = binary.symbols.get(symbol) {
+                info!("got symbol {} (0x{:016x}) from libpython binary", symbol, addr);
+                return Some(addr);
+            }
         }
+        None
     }
 }
 
