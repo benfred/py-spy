@@ -224,15 +224,21 @@ fn get_interpreter_address(python_info: &PythonProcessInfo,
     match version {
         Version{major: 3, minor: 7, ..} => {
             if let Some(&addr) = python_info.get_symbol("_PyRuntime") {
-                // TODO: we actually want _PyRuntime.interpeters.head, and probably should
-                // generate bindings for the pyruntime object rather than hardcode the offset (24) here
-                return Ok(copy_struct((addr + 24) as usize, &process)?);
+                let addr = copy_struct((addr + 24) as usize, &process)?;
+                // Make sure the interpreter addr is valid before returning
+                match check_interpreter_addresses(&[addr], &python_info.maps, process, version) {
+                    Ok(addr) => return Ok(addr),
+                    Err(_) => { warn!("Interpreter address from _PyRuntime symbol is invalid {:016x}", addr); }
+                };
             }
         },
         _ => {
             if let Some(&addr) = python_info.get_symbol("interp_head") {
-                return Ok(copy_struct(addr as usize, &process)
-                    .context("Failed to copy PyInterpreterState location from process")?);
+                let addr = copy_struct(addr as usize, &process)?;
+                match check_interpreter_addresses(&[addr], &python_info.maps, process, version) {
+                    Ok(addr) => return Ok(addr),
+                    Err(_) => { warn!("Interpreter address from interp_head symbol is invalid {:016x}", addr); }
+                };
             }
         }
     };
@@ -258,25 +264,21 @@ fn get_interpreter_address_from_binary(binary: &BinaryInfo,
                                        maps: &[MapRange],
                                        process: ProcessHandle,
                                        version: &Version) -> Result<usize, Error> {
-    // different versions have different layouts, check as appropiate
-    match version {
-        Version{major: 3, minor: 8, ..} => check_addresses::<v3_7_0::_is>(binary, maps, process),
-        Version{major: 3, minor: 7, ..} => check_addresses::<v3_7_0::_is>(binary, maps, process),
-        Version{major: 3, minor: 6, ..} => check_addresses::<v3_6_6::_is>(binary, maps, process),
-        Version{major: 3, minor: 5, ..} => check_addresses::<v3_5_5::_is>(binary, maps, process),
-        Version{major: 3, minor: 4, ..} => check_addresses::<v3_5_5::_is>(binary, maps, process),
-        Version{major: 3, minor: 3, ..} => check_addresses::<v3_3_7::_is>(binary, maps, process),
-        Version{major: 2, minor: 3...7, ..} => check_addresses::<v2_7_15::_is>(binary, maps, process),
-        _ => Err(format_err!("Unsupported version of Python: {}", version))
-    }
+    // We're going to scan the BSS/data section for things, and try to narrowly scan things that
+    // look like pointers to PyinterpreterState
+    let bss = copy_address(binary.bss_addr as usize, binary.bss_size as usize, &process)?;
+
+    #[cfg_attr(feature = "cargo-clippy", allow(cast_ptr_alignment))]
+    let addrs = unsafe { slice::from_raw_parts(bss.as_ptr() as *const usize, bss.len() / size_of::<usize>()) };
+    check_interpreter_addresses(addrs, maps, process, version)
 }
 
 // Checks whether a block of memory (from BSS/.data etc) contains pointers that are pointing
 // to a valid PyInterpreterState
-fn check_addresses<I>(binary: &BinaryInfo,
-                      maps: &[MapRange],
-                      process: ProcessHandle) -> Result<usize, Error>
-        where I: python_interpreters::InterpreterState {
+fn check_interpreter_addresses(addrs: &[usize],
+                               maps: &[MapRange],
+                               process: ProcessHandle,
+                               version: &Version) -> Result<usize, Error> {
     // On windows, we can't just check if a pointer is valid by looking to see if it points
     // to something in the virtual memory map. Brute-force it instead
     #[cfg(windows)]
@@ -285,41 +287,52 @@ fn check_addresses<I>(binary: &BinaryInfo,
     #[cfg(not(windows))]
     use proc_maps::maps_contain_addr;
 
-    // We're going to scan the BSS/data section for things, and try to narrowly scan things that
-    // look like pointers to PyinterpreterState
-    let bss = copy_address(binary.bss_addr as usize, binary.bss_size as usize, &process)?;
-
-    #[cfg_attr(feature = "cargo-clippy", allow(cast_ptr_alignment))]
-    let addrs = unsafe { slice::from_raw_parts(bss.as_ptr() as *const usize, bss.len() / size_of::<usize>()) };
-
-    for &addr in addrs {
-        if maps_contain_addr(addr, maps) {
-            // this address points to valid memory. try loading it up as a PyInterpreterState
-            // to further check
-            let interp: I = match copy_struct(addr, &process) {
-                Ok(interp) => interp,
-                Err(_) => continue
-            };
-
-            // get the pythreadstate pointer from the interpreter object, and if it is also
-            // a valid pointer then load it up.
-            let threads = interp.head();
-            if maps_contain_addr(threads as usize, maps) {
-                // If the threadstate points back to the interpreter like we expect, then
-                // this is almost certainly the address of the intrepreter
-                let thread = match copy_pointer(threads, &process) {
-                    Ok(thread) => thread,
+    // This function does all the work, but needs a type of the interpreter
+    fn check<I>(addrs: &[usize],
+                maps: &[MapRange],
+                process: ProcessHandle) -> Result<usize, Error>
+            where I: python_interpreters::InterpreterState {
+        for &addr in addrs {
+            if maps_contain_addr(addr, maps) {
+                // this address points to valid memory. try loading it up as a PyInterpreterState
+                // to further check
+                let interp: I = match copy_struct(addr, &process) {
+                    Ok(interp) => interp,
                     Err(_) => continue
                 };
 
-                // as a final sanity check, try getting the stack_traces, and only return if this works
-                if thread.interp() as usize == addr && get_stack_traces(&interp, &process).is_ok() {
-                    return Ok(addr);
+                // get the pythreadstate pointer from the interpreter object, and if it is also
+                // a valid pointer then load it up.
+                let threads = interp.head();
+                if maps_contain_addr(threads as usize, maps) {
+                    // If the threadstate points back to the interpreter like we expect, then
+                    // this is almost certainly the address of the intrepreter
+                    let thread = match copy_pointer(threads, &process) {
+                        Ok(thread) => thread,
+                        Err(_) => continue
+                    };
+
+                    // as a final sanity check, try getting the stack_traces, and only return if this works
+                    if thread.interp() as usize == addr && get_stack_traces(&interp, &process).is_ok() {
+                        return Ok(addr);
+                    }
                 }
             }
         }
+        Err(format_err!("Failed to find a python interpreter in the .data section"))
     }
-    Err(format_err!("Failed to find a python interpreter in the .data section"))
+
+    // different versions have different layouts, check as appropiate
+    match version {
+        Version{major: 3, minor: 8, ..} => check::<v3_7_0::_is>(addrs, maps, process),
+        Version{major: 3, minor: 7, ..} => check::<v3_7_0::_is>(addrs, maps, process),
+        Version{major: 3, minor: 6, ..} => check::<v3_6_6::_is>(addrs, maps, process),
+        Version{major: 3, minor: 5, ..} => check::<v3_5_5::_is>(addrs, maps, process),
+        Version{major: 3, minor: 4, ..} => check::<v3_5_5::_is>(addrs, maps, process),
+        Version{major: 3, minor: 3, ..} => check::<v3_3_7::_is>(addrs, maps, process),
+        Version{major: 2, minor: 3...7, ..} => check::<v2_7_15::_is>(addrs, maps, process),
+        _ => Err(format_err!("Unsupported version of Python: {}", version))
+    }
 }
 
 /// Holds information about the python process: memory map layout, parsed binary info
