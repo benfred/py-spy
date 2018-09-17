@@ -125,8 +125,8 @@ impl ConsoleViewer {
         // writtern there. This is to avoid flickering on redraw, and lets us update just by moving the cursor
         // position to the top left.
         macro_rules! out {
-            () => (println!("\x1B[K"));  // ANSI code to clear the rest of the line
-            ($($arg:tt)*) => { print!($($arg)*); out!(); }
+            () => (term.clear_line()?; term.write_line("")?);
+            ($($arg:tt)*) => { term.clear_line()?; term.write_line(&format!($($arg)*))?; }
         }
         self.console_config.reset_cursor()?;
         let mut header_lines = if options.usage { 18 } else { 8 };
