@@ -146,21 +146,9 @@ securityContext:
 More details on this here: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-capabilities-for-a-container
 Note that this will remove the existing pods and create those again.
 
-<!--
-### How does this compare to other Python Profilers?
-TODO: this is probably not necessary for release?
-TODO: this could be spun out into its own blog post in the future really
-line_profiler
-pyflame:
+### How do you avoid pausing the Python program?
 
-yappi: https://pypi.org/project/yappi/
-    * doesn't support Python 3.5+
-    * doesn't support line profiling
-
-https://github.com/bdarnell/plop
-    * Doesn't support Windows
-    * Uses itimer
--->
+Py-spy doesn't pause the target python program we are sampling from, and reads the interpreter state from the python process as it is running. Since the calls we use to read memory from are not atomic, and we have to issue multiple calls to get a stack trace this means that occasionally we get errors when sampling. If you run the flame graph code it will report the number of errors at the end (and the top view will report the error rate if it goes beyond 1%). This happens infrequently enough that it shouldn't affect the output that much though. Julia Evans wrote a [great blog post talking about this trade off with rbspy](https://jvns.ca/blog/2018/01/15/should-i-pause-a-ruby-process-to-collect-its-stack/.)
 
 ### How are you distributing Rust executable binaries over PyPI?
 Ok, so no-one has ever actually asked me this - but I wanted to share since it's a pretty terrible hack
