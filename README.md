@@ -115,30 +115,6 @@ On Linux the default configuration is to require root permissions when attaching
 For py-spy this means you can profile without root access by getting py-spy to create the process (```py-spy -- python myprogram.py```) but attaching to an existing process by specifying a PID will usually require root (```sudo py-spy -pid 123456```).
 You can remove this restriction on linux by setting the [ptrace_scope sysctl variable](https://wiki.ubuntu.com/SecurityTeam/Roadmap/KernelHardening#ptrace_Protection).
 
-<!--
-### Running py-spy in Docker
-TODO: talk about profiling programs in docker containers, can do from host OS etc
-
-Running py-spy inside of a docker container will also usually bring up a permissions denied error even when running as root.
-This error is caused by docker restricting the process_vm_readv system call we are using. This can be overridden by setting
-[```--cap-add SYS_PTRACE```](https://docs.docker.com/engine/security/seccomp/) when starting the docker container.
--->
-
-### Running under Kubernetes
-py-spy needs `SYS_PTRACE` to be able to read process memory. Kubernetes drops that capability by default, resulting in the error
-```
-Permission Denied: Try running again with elevated permissions by going 'sudo env "PATH=$PATH" !!'
-```
-The recommended way to deal with this is to edit the spec and all that capability. For a deployment, this is done by adding this to `Deployment.spec.template.spec.containers`
-```
-securityContext:
-  capabilities:
-    add:
-    - SYS_PTRACE
-```
-More details on this here: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-capabilities-for-a-container
-Note that this will remove the existing pods and create those again.
-
 ### Why am I having issues profiling /usr/bin/python on OSX?
 
 OSX has a feature called [System Integrity Protection](https://en.wikipedia.org/wiki/System_Integrity_Protection) that prevents even the root user from reading memory from any binary located in /usr/bin. Unfortunately, this includes the python interpreter that ships with OSX.
@@ -147,6 +123,28 @@ There are a couple of different ways to deal with this:
  * You can install a different Python distribution (you probably want to migrate away from python2 anyways =)
  * You can use [virtualenv](https://virtualenv.pypa.io/en/stable/) to run the system python in an environment where SIP doesn't apply.
  * You can [disable System Integrity Protection](https://www.macworld.co.uk/how-to/mac/how-turn-off-mac-os-x-system-integrity-protection-rootless-3638975/).
+
+### Running py-spy in Docker
+
+Running py-spy inside of a docker container will also usually bring up a permissions denied error even when running as root.
+This error is caused by docker restricting the process_vm_readv system call we are using. This can be overridden by setting
+[```--cap-add SYS_PTRACE```](https://docs.docker.com/engine/security/seccomp/) when starting the docker container.
+
+### Running under Kubernetes
+
+py-spy needs `SYS_PTRACE` to be able to read process memory. Kubernetes drops that capability by default, resulting in the error
+```
+Permission Denied: Try running again with elevated permissions by going 'sudo env "PATH=$PATH" !!'
+```
+The recommended way to deal with this is to edit the spec and add that capability. For a deployment, this is done by adding this to `Deployment.spec.template.spec.containers`
+```
+securityContext:
+  capabilities:
+    add:
+    - SYS_PTRACE
+```
+More details on this here: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-capabilities-for-a-container
+Note that this will remove the existing pods and create those again.
 
 <!--
 ### How does this compare to other Python Profilers?
