@@ -137,6 +137,21 @@ Alpine python opts out of the `manylinux` wheels: [pypa/pip#3969 (comment)](http
 
     echo 'manylinux1_compatible = True' > /usr/local/lib/python3.7/site-packages/_manylinux.py
 
+### Running under Docker Compose
+
+py-spy needs `SYS_PTRACE` to be able to read process memory. Docker doesn't give that capability by default, resulting in the error 
+```
+Permisison Denied: Try running again with elevated permissions by going 'sudo env "PATH=$PATH" !!'
+```
+The recommended way to deal with this is to edit the docker-compose yaml file
+
+```
+your_service:
+   cap_add:
+     - SYS_PTRACE
+```
+Note that you'll need to restart the docker container in order for this setting to take effect.
+
 ### Running under Kubernetes
 
 py-spy needs `SYS_PTRACE` to be able to read process memory. Kubernetes drops that capability by default, resulting in the error
