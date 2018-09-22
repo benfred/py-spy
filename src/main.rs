@@ -187,7 +187,7 @@ fn sample_flame(process: &PythonSpy, filename: &str, args: &clap::ArgMatches) ->
 
 fn pyspy_main() -> Result<(), Error> {
     let matches = App::new("py-spy")
-        .version("0.1.7")
+        .version("0.1.8")
         .about("A sampling profiler for Python programs")
         .arg(Arg::with_name("function")
             .short("F")
