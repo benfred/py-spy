@@ -2,6 +2,7 @@ use std;
 use std::mem::size_of;
 use std::slice;
 use std::path::Path;
+use regex::Regex;
 
 use failure::{Error, ResultExt};
 use read_process_memory::{Pid, TryIntoProcessHandle, copy_address, ProcessHandle};
@@ -249,9 +250,9 @@ fn get_interpreter_address(python_info: &PythonProcessInfo,
         Ok(addr) => Ok(addr),
         // Before giving up, try again if there is a libpython.so
         Err(err) => {
-            info!("Failed to get interpreter from binary BSS, scanning libpython BSS");
             match python_info.libpython_binary {
                 Some(ref libpython) => {
+                    info!("Failed to get interpreter from binary BSS, scanning libpython BSS");
                     Ok(get_interpreter_address_from_binary(libpython, &python_info.maps, process, version)?)
                 },
                 None => Err(err)
@@ -405,23 +406,6 @@ impl PythonProcessInfo {
 
         // likewise handle libpython for python versions compiled with --enabled-shared
         let libpython_binary = {
-            #[cfg(target_os="linux")]
-            let is_python_lib = |pathname: &str| pathname.contains("lib/libpython") ||
-                                                 pathname.contains("lib64/libpython");
-
-            #[cfg(target_os="macos")]
-            let is_python_lib = |pathname: &str|
-                pathname.contains("lib/libpython") || is_python_framework(pathname);
-
-            #[cfg(windows)]
-            let is_python_lib = |pathname: &str| {
-                use regex::Regex;
-                lazy_static! {
-                    static ref RE: Regex = Regex::new(r"\\python\d\d.dll$").unwrap();
-                }
-                RE.is_match(pathname)
-            };
-
             let libmap = maps.iter()
                 .find(|m| if let Some(ref pathname) = &m.filename() {
                     is_python_lib(pathname) && m.is_exec()
@@ -526,6 +510,30 @@ pub fn get_windows_python_symbols(pid: Pid, filename: &str, offset: u64) -> std:
     Ok(ret)
 }
 
+#[cfg(target_os="linux")]
+pub fn is_python_lib(pathname: &str) -> bool {
+    lazy_static! {
+        static ref RE: Regex = Regex::new(r"/libpython\d.\d(m|d|u)?.so").unwrap();
+    }
+    RE.is_match(pathname)
+}
+
+#[cfg(target_os="macos")]
+pub fn is_python_lib(pathname: &str) -> bool {
+    lazy_static! {
+        static ref RE: Regex = Regex::new(r"/libpython\d.\d(m|d|u)?.(dylib|so)$").unwrap();
+    }
+    RE.is_match(pathname) || is_python_framework(pathname)
+}
+
+#[cfg(windows)]
+pub fn is_python_lib(pathname: &str) -> bool {
+    lazy_static! {
+        static ref RE: Regex = Regex::new(r"\\python\d\d(m|d|u)?.dll$").unwrap();
+    }
+    RE.is_match(pathname)
+}
+
 #[cfg(target_os="macos")]
 pub fn is_python_framework(pathname: &str) -> bool {
     pathname.ends_with("/Python") &&
@@ -586,9 +594,45 @@ impl std::fmt::Display for Version {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
     #[cfg(target_os="macos")]
+    #[test]
+    fn test_is_python_lib() {
+        assert!(is_python_lib("~/Anaconda2/lib/libpython2.7.dylib"));
+
+        // python lib configured with --with-pydebug (flag: d)
+        assert!(is_python_lib("/lib/libpython3.4d.dylib"));
+
+        // configured --with-pymalloc (flag: m)
+        assert!(is_python_lib("/usr/local/lib/libpython3.8m.dylib"));
+
+        // python2 configured with --with-wide-unicode (flag: u)
+        assert!(is_python_lib("./libpython2.7u.dylib"));
+
+        assert!(!is_python_lib("/libboost_python.dylib"));
+        assert!(!is_python_lib("/lib/heapq.cpython-36m-darwin.dylib"));
+    }
+
+    #[cfg(target_os="linux")]
+    #[test]
+    fn test_is_python_lib() {
+        // libpython bundled by pyinstaller https://github.com/benfred/py-spy/issues/42
+        assert!(is_python_lib("/tmp/_MEIOqzg01/libpython2.7.so.1.0"));
+
+        // test debug/malloc/unicode flags
+        assert!(is_python_lib("./libpython2.7.so"));
+        assert!(is_python_lib("/usr/lib/libpython3.4d.so"));
+        assert!(is_python_lib("/usr/local/lib/libpython3.8m.so"));
+        assert!(is_python_lib("/usr/lib/libpython2.7u.so"));
+
+        // don't blindly match libraries with pytohn in the name (boost_python etc)
+        assert!(!is_python_lib("/usr/lib/libboost_python.so"));
+        assert!(!is_python_lib("/usr/lib/x86_64-linux-gnu/libboost_python-py27.so.1.58.0"));
+        assert!(!is_python_lib("/usr/lib/libboost_python-py35.so"));
+
+    }
+
+    #[cfg(target_os="macos")]
+    #[test]
     fn test_python_frameworks() {
         // homebrew v2
         assert!(!is_python_framework("/usr/local/Cellar/python@2/2.7.15_1/Frameworks/Python.framework/Versions/2.7/Resources/Python.app/Contents/MacOS/Python"));
