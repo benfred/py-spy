@@ -379,7 +379,18 @@ impl PythonProcessInfo {
                     is_python_bin(pathname) && m.is_exec()
                 } else {
                     false
-                }).ok_or_else(|| format_err!("Couldn't find binary in virtual memory maps"))?;
+                });
+
+            let map = match map {
+                Some(map) => map,
+                None => {
+                    warn!("Failed to find '{}' in virtual memory maps, falling back to first map region", filename);
+                    // If we failed to find the executable in the virtual memory maps, just take the first file we find
+                    // sometimes on windows get_process_exe returns stale info =( https://github.com/benfred/py-spy/issues/40
+                    // and on all operating systems I've tried, the exe is the first region in the maps
+                    &maps[0]
+                }
+            };
 
             // TODO: consistent types? u64 -> usize? for map.start etc
             let mut python_binary = parse_binary(&filename, map.start() as u64)?;
