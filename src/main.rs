@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate clap;
 extern crate console;
+extern crate ctrlc;
 extern crate env_logger;
 #[macro_use]
 extern crate failure;
@@ -36,6 +37,8 @@ mod utils;
 
 use std::vec::Vec;
 use std::io::Read;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use clap::{App, Arg};
@@ -130,11 +133,21 @@ fn sample_flame(process: &PythonSpy, filename: &str, args: &clap::ArgMatches) ->
     use indicatif::ProgressBar;
     let progress = ProgressBar::new(max_samples);
 
-    println!("Sampling process {} times a second for {} seconds", rate, duration);
+    println!("Sampling process {} times a second for {} seconds. Press Control-C to exit.", rate, duration);
+
     let mut errors = 0;
     let mut samples = 0;
     let mut exitted_count = 0;
     println!();
+
+
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
+    ctrlc::set_handler(move || {
+        r.store(false, Ordering::SeqCst);
+    })?;
+
+    let mut exit_message = "";
 
     for sleep in utils::Timer::new(Duration::from_nanos(1_000_000_000 / rate)) {
         if let Err(delay) = sleep {
@@ -146,6 +159,11 @@ fn sample_flame(process: &PythonSpy, filename: &str, args: &clap::ArgMatches) ->
                     println!("{:.2?} behind in sampling, results may be inaccurate. Try reducing the sampling rate.", delay);
                     term.move_cursor_down(1)?;
             }
+        }
+
+        if !running.load(Ordering::SeqCst) {
+            exit_message = "Stopped sampling because Control-C pressed";
+            break;
         }
 
         match process.get_stack_traces() {
@@ -161,7 +179,7 @@ fn sample_flame(process: &PythonSpy, filename: &str, args: &clap::ArgMatches) ->
                     exitted_count += 1;
                     // there must be a better way to figure out if the process is still running
                     if exitted_count > 3 {
-                        println!("process {} ended", process.pid);
+                        exit_message = "Stopped sampling because the process ended";
                         break;
                     }
                 }
@@ -171,6 +189,10 @@ fn sample_flame(process: &PythonSpy, filename: &str, args: &clap::ArgMatches) ->
         progress.inc(1);
     }
     progress.finish();
+    // write out a message here (so as not to interfere with progress bar) if we ended earlier
+    if exit_message.len() > 0 {
+        println!("{}", exit_message);
+    }
 
     let out_file = std::fs::File::create(filename)?;
     flame.write(out_file)?;
