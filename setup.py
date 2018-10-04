@@ -55,13 +55,7 @@ class PostInstallCommand(install):
         # Note: we're only doing this on demand since this requires musl-tools installed
         # but the released wheels should have this option set
         cross_compile_target = os.getenv("PYSPY_CROSS_COMPILE_TARGET")
-        if os.getenv("PYSPY_MUSL_64"):
-            compile_args = " --target=x86_64-unknown-linux-musl"
-            build_dir = os.path.join(source_dir, "target", "x86_64-unknown-linux-musl", "release")
-        elif os.getenv("PYSPY_MUSL_32"):
-            compile_args = " --target=i686-unknown-linux-musl"
-            build_dir = os.path.join(source_dir, "target", "i686-unknown-linux-musl", "release")
-        elif cross_compile_target:
+        if cross_compile_target:
             compile_args = " --target=%s" % cross_compile_target
             build_dir = os.path.join(source_dir, "target", cross_compile_target, "release")
         else:
