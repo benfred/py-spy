@@ -124,35 +124,25 @@ There are a couple of different ways to deal with this:
  * You can use [virtualenv](https://virtualenv.pypa.io/en/stable/) to run the system python in an environment where SIP doesn't apply.
  * You can [disable System Integrity Protection](https://www.macworld.co.uk/how-to/mac/how-turn-off-mac-os-x-system-integrity-protection-rootless-3638975/).
 
-### Running py-spy in Docker
+### How do I run py-spy in Docker?
 
 Running py-spy inside of a docker container will also usually bring up a permissions denied error even when running as root.
-This error is caused by docker restricting the process_vm_readv system call we are using. This can be overridden by setting
+
+This error is caused by docker restricting the process_vm_readv system call we are using. This can
+be overridden by setting
 [```--cap-add SYS_PTRACE```](https://docs.docker.com/engine/security/seccomp/) when starting the docker container.
 
-
-### Running py-spy in Alpine Linux
-
-Alpine python opts out of the `manylinux` wheels: [pypa/pip#3969 (comment)](https://github.com/pypa/pip/issues/3969#issuecomment-247381915). Before installing py-spy on Alpine docker containers do:
-
-    echo 'manylinux1_compatible = True' > /usr/local/lib/python3.7/site-packages/_manylinux.py
-
-### Running under Docker Compose
-
-py-spy needs `SYS_PTRACE` to be able to read process memory. Docker doesn't give that capability by default, resulting in the error 
-```
-Permisison Denied: Try running again with elevated permissions by going 'sudo env "PATH=$PATH" !!'
-```
-The recommended way to deal with this is to edit the docker-compose yaml file
+Alternatively you can edit the docker-compose yaml file
 
 ```
 your_service:
    cap_add:
      - SYS_PTRACE
 ```
+
 Note that you'll need to restart the docker container in order for this setting to take effect.
 
-### Running under Kubernetes
+### How do I run py-spy in Kubernetes?
 
 py-spy needs `SYS_PTRACE` to be able to read process memory. Kubernetes drops that capability by default, resulting in the error
 ```
@@ -167,6 +157,13 @@ securityContext:
 ```
 More details on this here: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-capabilities-for-a-container
 Note that this will remove the existing pods and create those again.
+
+### Running py-spy in Alpine Linux
+
+Alpine python opts out of the `manylinux` wheels: [pypa/pip#3969 (comment)](https://github.com/pypa/pip/issues/3969#issuecomment-247381915). Before installing py-spy on Alpine docker containers do:
+
+    echo 'manylinux1_compatible = True' > /usr/local/lib/python3.7/site-packages/_manylinux.py
+
 
 ### How do you avoid pausing the Python program?
 
