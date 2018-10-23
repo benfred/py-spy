@@ -14,6 +14,7 @@ extern crate libc;
 extern crate libproc;
 #[macro_use]
 extern crate log;
+extern crate memmap;
 extern crate proc_maps;
 extern crate benfred_read_process_memory as read_process_memory;
 extern crate regex;
