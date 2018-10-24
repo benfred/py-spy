@@ -37,7 +37,7 @@ def build_python(cpython_path, version):
 
 def extract_bindings(cpython_path, version, configure=False):
     print("Generating bindings for python %s from repo at %s" % (version, cpython_path))
-    return os.system(f"""
+    ret = os.system(f"""
         cd {cpython_path}
         git checkout {version}
 
@@ -62,6 +62,8 @@ def extract_bindings(cpython_path, version, configure=False):
             --whitelist-type PyStringObject \
              -- -I . -I ./Include
     """)
+    if ret:
+        return ret
 
     # write the file out to the appropiate place, disabling some warnings
     with open(os.path.join("src", "python_bindings", version.replace(".", "_") + ".rs"), "w") as o:
