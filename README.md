@@ -112,7 +112,7 @@ OSX always requires running as root, but on Linux it depends on how you are laun
 security settings.
 
 On Linux the default configuration is to require root permissions when attaching to a process that isn't a child.
-For py-spy this means you can profile without root access by getting py-spy to create the process (```py-spy -- python myprogram.py```) but attaching to an existing process by specifying a PID will usually require root (```sudo py-spy -pid 123456```).
+For py-spy this means you can profile without root access by getting py-spy to create the process (```py-spy -- python myprogram.py```) but attaching to an existing process by specifying a PID will usually require root (```sudo py-spy --pid 123456```).
 You can remove this restriction on linux by setting the [ptrace_scope sysctl variable](https://wiki.ubuntu.com/SecurityTeam/Roadmap/KernelHardening#ptrace_Protection).
 
 ### Why am I having issues profiling /usr/bin/python on OSX?
@@ -191,9 +191,9 @@ Not yet =).
 
 py-spy is heavily inspired by [Julia Evans](https://github.com/jvns/) excellent work on [rbspy](http://github.com/rbspy/rbspy).
 In particular, the code to generate the flamegraphs is taken directly from rbspy, and this project uses the
-([read-process-memory](https://github.com/luser/read-process-memory) and [proc-maps](https://github.com/benfred/proc-maps)) crates that were spun off from rbspy.
+[read-process-memory](https://github.com/luser/read-process-memory) and [proc-maps](https://github.com/benfred/proc-maps) crates that were spun off from rbspy.
 
 
 ## License
 
-Py-spy is released under the GNU General Public License v3.0, see  [LICENSE](https://github.com/benfred/py-spy/blob/master/LICENSE) file for the full text.
+Py-spy is released under the GNU General Public License v3.0, see the LICENSE](https://github.com/benfred/py-spy/blob/master/LICENSE) file for the full text.
