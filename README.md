@@ -196,4 +196,4 @@ In particular, the code to generate the flamegraphs is taken directly from rbspy
 
 ## License
 
-Py-spy is released under the GNU General Public License v3.0, see the LICENSE](https://github.com/benfred/py-spy/blob/master/LICENSE) file for the full text.
+Py-spy is released under the GNU General Public License v3.0, see the [LICENSE](https://github.com/benfred/py-spy/blob/master/LICENSE) file for the full text.
