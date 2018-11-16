@@ -30,12 +30,6 @@ except ImportError:
     bdist_wheel = None
 
 
-try:
-    import pypandoc
-    long_description = pypandoc.convert_file("README.md", "rst")
-except ImportError:
-    long_description = ''
-
 executable_name = "py-spy.exe" if sys.platform.startswith("win") else "py-spy"
 
 
@@ -80,12 +74,17 @@ class PostInstallCommand(install):
         self.move_file(source, target)
 
 
+with open('README.md', 'r') as readme:
+    long_description = readme.read()
+
+
 setup(name='py-spy',
       author="Ben Frederickson",
       author_email="ben@benfrederickson.com",
       url='https://github.com/benfred/py-spy',
       description="A Sampling Profiler for Python",
       long_description=long_description,
+      long_description_content_type="text/markdown",
       version="0.1.8",
       license="GPL",
       cmdclass={'install': PostInstallCommand, 'bdist_wheel': bdist_wheel},
