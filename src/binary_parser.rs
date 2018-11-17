@@ -92,8 +92,9 @@ pub fn parse_binary(filename: &str, offset: u64) -> Result<BinaryInfo, GoblinErr
         },
         Object::PE(pe) => {
             for export in pe.exports {
-                let name = export.name;
-                symbols.insert(name.to_string(), export.offset as u64 + offset as u64);
+                if let Some(name) = export.name {
+                    symbols.insert(name.to_string(), export.offset as u64 + offset as u64);
+                }
             }
 
             let data_section = pe.sections
