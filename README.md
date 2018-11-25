@@ -26,6 +26,13 @@ If you're a Rust user, py-spy can also be installed with:
 cargo install py-spy
 ```
 
+On Arch Linux, [py-spy is in AUR](https://aur.archlinux.org/packages/py-spy/) and can be
+installed by using your favorite AUR helper, for example:
+
+```
+yay -S py-spy
+```
+
 ## Usage
 
 py-spy works from the command line and takes either the PID of the program you want to sample from or the command line of the python program you want to run:
@@ -196,4 +203,4 @@ In particular, the code to generate the flamegraphs is taken directly from rbspy
 
 ## License
 
-Py-spy is released under the GNU General Public License v3.0, see the LICENSE](https://github.com/benfred/py-spy/blob/master/LICENSE) file for the full text.
+Py-spy is released under the GNU General Public License v3.0, see the [LICENSE](https://github.com/benfred/py-spy/blob/master/LICENSE) file for the full text.
