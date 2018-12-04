@@ -25,7 +25,6 @@ extern crate termios;
 #[cfg(windows)]
 extern crate winapi;
 
-
 mod binary_parser;
 mod python_bindings;
 mod python_interpreters;
@@ -33,7 +32,7 @@ mod python_spy;
 mod stack_trace;
 mod console_viewer;
 mod flamegraph;
-
+mod process;
 mod utils;
 
 use std::vec::Vec;

@@ -2,9 +2,8 @@ use std;
 use std::time::{Instant, Duration};
 #[cfg(windows)]
 use winapi::um::timeapi;
-use failure::Error;
 
-use read_process_memory::{CopyAddress, Pid};
+use read_process_memory::{CopyAddress};
 
 /// Copies a struct from another process
 pub fn copy_struct<T, P>(addr: usize, process: &P) -> std::io::Result<T>
@@ -19,47 +18,6 @@ pub fn copy_struct<T, P>(addr: usize, process: &P) -> std::io::Result<T>
 pub fn copy_pointer<T, P>(ptr: *const T, process: &P) -> std::io::Result<T>
     where P: CopyAddress {
     copy_struct(ptr as usize, process)
-}
-
-#[cfg(target_os = "macos")]
-pub fn get_process_exe(pid: Pid) -> Result<String, Error> {
-    use libproc::libproc::proc_pid::pidpath;
-    pidpath(pid).map_err(|e| format_err!("proc_pidpath failed: {}", e))
-}
-
-#[cfg(target_os = "linux")]
-pub fn get_process_exe(pid: Pid) -> Result<String, Error> {
-    let path = std::fs::read_link(format!("/proc/{}/exe", pid))?;
-    Ok(path.to_string_lossy().to_string())
-}
-
-#[cfg(windows)]
-pub fn get_process_exe(pid: Pid) -> Result<String, Error> {
-    use winapi::um::processthreadsapi::OpenProcess;
-    use winapi::um::winnt::{PROCESS_QUERY_INFORMATION, WCHAR};
-    use winapi::shared::minwindef::{FALSE, DWORD, MAX_PATH};
-    use winapi::um::handleapi::{INVALID_HANDLE_VALUE, CloseHandle};
-    use winapi::um::winbase::QueryFullProcessImageNameW;
-    use std::ffi::OsString;
-    use std::os::windows::ffi::{OsStringExt};
-
-    unsafe {
-        let process = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, pid as DWORD);
-        if process == INVALID_HANDLE_VALUE {
-            return Err(std::io::Error::last_os_error().into());
-        }
-
-        let mut size = MAX_PATH as DWORD;
-        let mut filename: [WCHAR; MAX_PATH] = std::mem::zeroed();
-        let ret = QueryFullProcessImageNameW(process, 0, filename.as_mut_ptr(), &mut size);
-        CloseHandle(process);
-
-        if ret == 0 {
-            return Err(std::io::Error::last_os_error().into());
-        }
-
-        Ok(OsString::from_wide(&filename[0..size as usize]).to_string_lossy().into_owned())
-    }
 }
 
 /// Timer is an iterator that sleeps an appropiate amount of time so that

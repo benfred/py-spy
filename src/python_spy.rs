@@ -12,7 +12,9 @@ use python_bindings::{v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0};
 use python_interpreters;
 use stack_trace::{StackTrace, get_stack_traces};
 use binary_parser::{parse_binary, BinaryInfo};
-use utils::{copy_struct, copy_pointer, get_process_exe};
+use utils::{copy_struct, copy_pointer};
+use process::get_exe;
+
 use python_interpreters::{InterpreterState, ThreadState};
 
 #[derive(Debug)]
@@ -350,7 +352,7 @@ pub struct PythonProcessInfo {
 impl PythonProcessInfo {
     fn new(pid: Pid) -> Result<PythonProcessInfo, Error> {
         // Get the executable filename for the process
-        let filename = get_process_exe(pid)
+        let filename = get_exe(pid)
             .context("Failed to get process executable name. Check that the process is running.")?;
         info!("Found process binary @ '{}'", filename);
 
