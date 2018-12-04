@@ -2,14 +2,18 @@ use clap::{App, Arg};
 use failure::Error;
 use read_process_memory::Pid;
 
+#[derive(Debug, Clone)]
 pub struct Config {
     pub pid: Option<Pid>,
     pub python_program: Option<Vec<String>>,
+
+    pub dump: bool,
+    pub flame_file_name: Option<String>,
+
+    pub non_blocking: bool,
     pub show_line_numbers: bool,
     pub sampling_rate: u64,
     pub duration: u64,
-    pub dump: bool,
-    pub flame_file_name: Option<String>
 }
 
 impl Config {
@@ -31,6 +35,10 @@ impl Config {
             .arg(Arg::with_name("dump")
                 .long("dump")
                 .help("Dump the current stack traces to stdout"))
+            .arg(Arg::with_name("nonblocking")
+                .long("nonblocking")
+                .help("Don't pause the python process when collecting samples. Setting this option will reduce \
+                      the perfomance impact of sampling, but may lead to inaccurate results"))
             .arg(Arg::with_name("flame")
                 .short("f")
                 .long("flame")
@@ -73,9 +81,10 @@ impl Config {
         let sampling_rate = value_t!(matches, "rate", u64)?;
         let duration = value_t!(matches, "duration", u64)?;
         let show_line_numbers = matches.occurrences_of("function") == 0;
+        let non_blocking = matches.occurrences_of("nonblocking") > 0;
 
         Ok(Config{pid, python_program, dump, flame_file_name,
                   sampling_rate, duration,
-                  show_line_numbers})
+                  show_line_numbers, non_blocking})
     }
 }

@@ -12,6 +12,10 @@ extern crate lazy_static;
 extern crate libc;
 #[cfg(target_os = "macos")]
 extern crate libproc;
+#[cfg(target_os = "macos")]
+extern crate mach;
+#[cfg(target_os = "linux")]
+extern crate nix;
 #[macro_use]
 extern crate log;
 extern crate memmap;
@@ -75,6 +79,7 @@ fn process_exitted(err: &Error) -> bool {
     })
 }
 
+#[cfg(unix)]
 fn permission_denied(err: &Error) -> bool {
     err.iter_chain().any(|cause| {
         if let Some(ioerror) = cause.downcast_ref::<std::io::Error>() {
@@ -216,7 +221,7 @@ fn pyspy_main() -> Result<(), Error> {
 
 
     if let Some(pid) = config.pid {
-        let process = PythonSpy::retry_new(pid, 3)?;
+        let process = PythonSpy::retry_new(pid, &config, 3)?;
         if config.dump {
             print_traces(&process.get_stack_traces()?, true);
         } else if let Some(ref flame_file) = config.flame_file_name {
@@ -241,7 +246,7 @@ fn pyspy_main() -> Result<(), Error> {
             // sleep just in case: https://jvns.ca/blog/2018/01/28/mac-freeze/
             std::thread::sleep(Duration::from_millis(50));
         }
-        let result = match PythonSpy::retry_new(command.id() as read_process_memory::Pid, 8) {
+        let result = match PythonSpy::retry_new(command.id() as read_process_memory::Pid, &config, 8) {
             Ok(process) => {
                 if let Some(ref flame_file) = config.flame_file_name {
                     sample_flame(&process, &flame_file, &config)
@@ -284,9 +289,12 @@ fn main() {
     env_logger::init();
 
     if let Err(err) = pyspy_main() {
+        #[cfg(unix)]
+        {
         if permission_denied(&err) {
             eprintln!("Permission Denied: Try running again with elevated permissions by going 'sudo env \"PATH=$PATH\" !!'");
             std::process::exit(1);
+        }
         }
 
         eprintln!("Error: {}", err);

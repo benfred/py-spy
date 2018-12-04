@@ -6,8 +6,7 @@ Py-Spy: A sampling profiler for Python programs.
 Py-Spy is a sampling profiler for Python programs. It lets you visualize what your Python
 program is spending time on without restarting the program or modifying the code in any way.
 Py-Spy is extremely low overhead: it is written in Rust for speed and doesn't run
-in the same process as the profiled Python program, nor does it interrupt the running program
-in any way. This means Py-Spy is safe to use against production Python code.
+in the same process as the profiled Python program. This means Py-Spy is safe to use against production Python code.
 
 Py-Spy works on Linux, OSX and Windows, and supports profiling all recent versions of the CPython
 interpreter (versions 2.3-2.7 and 3.3-3.7).
@@ -172,9 +171,16 @@ Alpine python opts out of the `manylinux` wheels: [pypa/pip#3969 (comment)](http
     echo 'manylinux1_compatible = True' > /usr/local/lib/python3.7/site-packages/_manylinux.py
 
 
-### How do you avoid pausing the Python program?
+### How can you avoid pausing the Python program?
 
-Py-spy doesn't pause the target python program we are sampling from, and reads the interpreter state from the python process as it is running. Since the calls we use to read memory from are not atomic, and we have to issue multiple calls to get a stack trace this means that occasionally we get errors when sampling. If you run the flame graph code it will report the number of errors at the end (and the top view will report the error rate if it goes beyond 1%). This happens infrequently enough that it shouldn't affect the output that much though. Julia Evans wrote a [great blog post talking about this trade off with rbspy](https://jvns.ca/blog/2018/01/15/should-i-pause-a-ruby-process-to-collect-its-stack/.)
+By setting the ```--nonblocking``` option, py-spy won't pause the target python you are profiling from. While
+the performance impact of sampling from a process with py-spy is usually extremely low, setting this option 
+will totally avoid interrupting your running python program.
+
+With this option set, py-spy will instead read the interpreter state from the python process as it is running. 
+Since the calls we use to read memory from are not atomic, and we have to issue multiple calls to get a stack trace this 
+means that occasionally we get errors when sampling. This can show up as an increased error rate when sampling, or as 
+partial stack frames being included in the output.
 
 ### How are you distributing Rust executable binaries over PyPI?
 Ok, so no-one has ever actually asked me this - but I wanted to share since it's a pretty terrible hack

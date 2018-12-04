@@ -5,7 +5,7 @@ use std::path::Path;
 use regex::Regex;
 
 use failure::{Error, ResultExt};
-use read_process_memory::{Pid, TryIntoProcessHandle, copy_address, ProcessHandle};
+use read_process_memory::{Pid, copy_address, ProcessHandle};
 use proc_maps::{get_process_maps, MapRange};
 use python_bindings::{v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0};
 
@@ -13,9 +13,10 @@ use python_interpreters;
 use stack_trace::{StackTrace, get_stack_traces};
 use binary_parser::{parse_binary, BinaryInfo};
 use utils::{copy_struct, copy_pointer};
-use process::get_exe;
+use process::{get_exe, self};
 
 use python_interpreters::{InterpreterState, ThreadState};
+use config::Config;
 
 #[derive(Debug)]
 pub struct PythonSpy {
@@ -26,15 +27,16 @@ pub struct PythonSpy {
     pub threadstate_address: usize,
     pub python_filename: String,
     pub python_install_path: String,
-    pub version_string: String
+    pub version_string: String,
+    pub config: Config
 }
 
 impl PythonSpy {
-    pub fn new(pid: Pid) -> Result<PythonSpy, Error> {
+    pub fn new(pid: Pid, config: &Config) -> Result<PythonSpy, Error> {
         // get basic process information (memory maps/symbols etc)
         let python_info = PythonProcessInfo::new(pid)?;
+        let process = process::open(pid).context("Failed to open target process")?;
 
-        let process = pid.try_into_process_handle().context("Failed to open target process")?;
         let version = get_python_version(&python_info, process)?;
         info!("python version {} detected", version);
 
@@ -72,16 +74,16 @@ impl PythonSpy {
         Ok(PythonSpy{pid, process, version, interpreter_address, threadstate_address,
                      python_filename: python_info.python_filename,
                      python_install_path,
-                     version_string})
+                     version_string, config: config.clone()})
     }
 
     /// Creates a PythonSpy object, retrying up to max_retries times
     /// mainly useful for the case where the process is just started and
     /// symbols/python interpreter might not be loaded yet
-    pub fn retry_new(pid: Pid, max_retries:u64) -> Result<PythonSpy, Error> {
+    pub fn retry_new(pid: Pid, config: &Config, max_retries:u64) -> Result<PythonSpy, Error> {
         let mut retries = 0;
         loop {
-            let err = match PythonSpy::new(pid) {
+            let err = match PythonSpy::new(pid, config) {
                 Ok(process) => {
                     // verify that we can load a stack trace before returning success
                     match process.get_stack_traces() {
@@ -104,9 +106,16 @@ impl PythonSpy {
 
     /// Gets a StackTrace for each thread in the current process
     pub fn get_stack_traces(&self) -> Result<Vec<StackTrace>, Error> {
+        // lock the process if appropiate
+        let _lock = if self.config.non_blocking {
+            None
+        } else {
+            Some(process::Lock::new(&self.process).context("Failed to suspend process")?)
+        };
+
         match self.version {
             // Currently 3.7.x and 3.8.0a0 have the same ABI, but this might change
-            // as 3.8 evolvess
+            // as 3.8 evolves
             Version{major: 3, minor: 8, ..} => self._get_stack_traces::<v3_7_0::_is>(),
             Version{major: 3, minor: 7, ..} => self._get_stack_traces::<v3_7_0::_is>(),
             Version{major: 3, minor: 6, ..} => self._get_stack_traces::<v3_6_6::_is>(),
