@@ -12,6 +12,10 @@ extern crate lazy_static;
 extern crate libc;
 #[cfg(target_os = "macos")]
 extern crate libproc;
+#[cfg(target_os = "macos")]
+extern crate mach;
+#[cfg(target_os = "linux")]
+extern crate nix;
 #[macro_use]
 extern crate log;
 extern crate memmap;
@@ -25,7 +29,7 @@ extern crate termios;
 #[cfg(windows)]
 extern crate winapi;
 
-
+mod config;
 mod binary_parser;
 mod python_bindings;
 mod python_interpreters;
@@ -33,16 +37,14 @@ mod python_spy;
 mod stack_trace;
 mod console_viewer;
 mod flamegraph;
-
+mod process;
 mod utils;
 
-use std::vec::Vec;
 use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use clap::{App, Arg};
 use failure::Error;
 
 use python_spy::PythonSpy;
@@ -77,6 +79,7 @@ fn process_exitted(err: &Error) -> bool {
     })
 }
 
+#[cfg(unix)]
 fn permission_denied(err: &Error) -> bool {
     err.iter_chain().any(|cause| {
         if let Some(ioerror) = cause.downcast_ref::<std::io::Error>() {
@@ -89,10 +92,9 @@ fn permission_denied(err: &Error) -> bool {
 
 fn sample_console(process: &PythonSpy,
                   display: &str,
-                  args: &clap::ArgMatches) -> Result<(), Error> {
-    let rate = value_t!(args, "rate", u64)?;
-    let show_linenumbers = args.occurrences_of("function") == 0;
-    let mut console = ConsoleViewer::new(show_linenumbers, display,
+                  config: &config::Config) -> Result<(), Error> {
+    let rate = config.sampling_rate;
+    let mut console = ConsoleViewer::new(config.show_line_numbers, display,
                                          &format!("{}", process.version),
                                          1.0 / rate as f64)?;
     let mut exitted_count = 0;
@@ -124,23 +126,20 @@ fn sample_console(process: &PythonSpy,
 }
 
 
-fn sample_flame(process: &PythonSpy, filename: &str, args: &clap::ArgMatches) -> Result<(), Error> {
-    let rate = value_t!(args, "rate", u64)?;
-    let duration = value_t!(args, "duration", u64)?;
-    let max_samples = duration * rate;
-    let show_linenumbers = args.occurrences_of("function") == 0;
+fn sample_flame(process: &PythonSpy, filename: &str, config: &config::Config) -> Result<(), Error> {
+    let max_samples = config.duration * config.sampling_rate;
 
-    let mut flame = flamegraph::Flamegraph::new(show_linenumbers);
+    let mut flame = flamegraph::Flamegraph::new(config.show_line_numbers);
     use indicatif::ProgressBar;
     let progress = ProgressBar::new(max_samples);
 
-    println!("Sampling process {} times a second for {} seconds. Press Control-C to exit.", rate, duration);
+    println!("Sampling process {} times a second for {} seconds. Press Control-C to exit.",
+             config.sampling_rate, config.duration);
 
     let mut errors = 0;
     let mut samples = 0;
     let mut exitted_count = 0;
     println!();
-
 
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
@@ -150,7 +149,7 @@ fn sample_flame(process: &PythonSpy, filename: &str, args: &clap::ArgMatches) ->
 
     let mut exit_message = "";
 
-    for sleep in utils::Timer::new(Duration::from_nanos(1_000_000_000 / rate)) {
+    for sleep in utils::Timer::new(Duration::from_nanos(1_000_000_000 / config.sampling_rate)) {
         if let Err(delay) = sleep {
             if delay > Duration::from_secs(1) {
                     // TODO: once this available on crates.io https://github.com/mitsuhiko/indicatif/pull/41
@@ -209,50 +208,7 @@ fn sample_flame(process: &PythonSpy, filename: &str, args: &clap::ArgMatches) ->
 }
 
 fn pyspy_main() -> Result<(), Error> {
-    let matches = App::new("py-spy")
-        .version("0.1.8")
-        .about("A sampling profiler for Python programs")
-        .arg(Arg::with_name("function")
-            .short("F")
-            .long("function")
-            .help("Aggregate samples by function name instead of by line number"))
-        .arg(Arg::with_name("pid")
-            .short("p")
-            .long("pid")
-            .value_name("pid")
-            .help("PID of a running python program to spy on")
-            .takes_value(true)
-            .required_unless("python_program"))
-        .arg(Arg::with_name("dump")
-            .long("dump")
-            .help("Dump the current stack traces to stdout"))
-        .arg(Arg::with_name("flame")
-            .short("f")
-            .long("flame")
-            .value_name("flamefile")
-            .help("Generate a flame graph and write to a file")
-            .takes_value(true))
-        .arg(Arg::with_name("rate")
-            .short("r")
-            .long("rate")
-            .value_name("rate")
-            .help("The number of samples to collect per second")
-            .default_value("200")
-            .takes_value(true))
-        .arg(Arg::with_name("duration")
-            .short("d")
-            .long("duration")
-            .value_name("duration")
-            .help("The number of seconds to sample for when generating a flame graph")
-            .default_value("2")
-            .takes_value(true))
-
-        .arg(Arg::with_name("python_program")
-            .help("commandline of a python program to run")
-            .multiple(true)
-            )
-        .get_matches();
-
+    let config = config::Config::from_commandline()?;
 
     #[cfg(target_os="macos")]
     {
@@ -263,26 +219,22 @@ fn pyspy_main() -> Result<(), Error> {
         }
     }
 
-    info!("Command line args: {:?}", matches);
 
-    if let Some(pid_str) = matches.value_of("pid") {
-        let pid: read_process_memory::Pid = pid_str.parse().expect("invalid pid");
-        let process = PythonSpy::retry_new(pid, 3)?;
-
-        if matches.occurrences_of("dump") > 0 {
+    if let Some(pid) = config.pid {
+        let process = PythonSpy::retry_new(pid, &config, 3)?;
+        if config.dump {
             print_traces(&process.get_stack_traces()?, true);
-        } else if let Some(flame_file) = matches.value_of("flame") {
-            sample_flame(&process, flame_file, &matches)?;
+        } else if let Some(ref flame_file) = config.flame_file_name {
+            sample_flame(&process, &flame_file, &config)?;
         } else {
-            sample_console(&process, &format!("pid: {}", pid), &matches)?;
+            sample_console(&process, &format!("pid: {}", pid), &config)?;
         }
     }
 
-    else if let Some(subprocess) = matches.values_of("python_program") {
+    else if let Some(ref subprocess) = config.python_program {
         // Dump out stdout/stderr from the process to a temp file, so we can view it later if needed
         let mut process_output = tempfile::NamedTempFile::new()?;
-        let subprocess: Vec<&str> = subprocess.collect();
-        let mut command = std::process::Command::new(subprocess[0])
+        let mut command = std::process::Command::new(&subprocess[0])
             .args(&subprocess[1..])
             .stdin(std::process::Stdio::null())
             .stdout(process_output.reopen()?)
@@ -294,12 +246,12 @@ fn pyspy_main() -> Result<(), Error> {
             // sleep just in case: https://jvns.ca/blog/2018/01/28/mac-freeze/
             std::thread::sleep(Duration::from_millis(50));
         }
-        let result = match PythonSpy::retry_new(command.id() as read_process_memory::Pid, 8) {
+        let result = match PythonSpy::retry_new(command.id() as read_process_memory::Pid, &config, 8) {
             Ok(process) => {
-                if let Some(flame_file) = matches.value_of("flame") {
-                    sample_flame(&process, flame_file, &matches)
+                if let Some(ref flame_file) = config.flame_file_name {
+                    sample_flame(&process, &flame_file, &config)
                 } else {
-                    sample_console(&process, &subprocess.join(" "), &matches)
+                    sample_console(&process, &subprocess.join(" "), &config)
                 }
             },
             Err(e) => Err(e)
@@ -337,9 +289,12 @@ fn main() {
     env_logger::init();
 
     if let Err(err) = pyspy_main() {
+        #[cfg(unix)]
+        {
         if permission_denied(&err) {
             eprintln!("Permission Denied: Try running again with elevated permissions by going 'sudo env \"PATH=$PATH\" !!'");
             std::process::exit(1);
+        }
         }
 
         eprintln!("Error: {}", err);
