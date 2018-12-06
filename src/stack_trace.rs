@@ -157,7 +157,7 @@ mod tests {
     // and then test out that the above code handles appropiately
     use super::*;
     use utils::tests::LocalProcess;
-    use python_bindings::v3_7_0::{PyCodeObject, PyBytesObject, PyVarObject, PyASCIIObject};
+    use python_bindings::v3_7_0::{PyCodeObject, PyBytesObject, PyVarObject, PyUnicodeObject, PyASCIIObject};
     use std::ptr::copy_nonoverlapping;
 
     // python stores data after pybytesobject/pyasciiobject. hack by initializing a 4k buffer for testing.
@@ -211,7 +211,9 @@ mod tests {
     fn test_copy_string() {
         let original = "function_name";
         let obj = to_asciiobject(original);
-        let copied = copy_string(&obj.base, &LocalProcess).unwrap();
+
+        let unicode: &PyUnicodeObject = unsafe{ std::mem::transmute(&obj.base) };
+        let copied = copy_string(unicode, &LocalProcess).unwrap();
         assert_eq!(copied, original);
     }
 
