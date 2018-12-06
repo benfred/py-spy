@@ -40,7 +40,9 @@ mod os_impl {
 #[cfg(target_os = "linux")]
 mod os_impl {
     use super::*;
-    use nix::{self, {sys::{ptrace, wait}, {unistd::Pid as Tid}}};
+    use std::os::unix::io::AsRawFd;
+    use std::fs::File;
+    use nix::{self, {sys::{ptrace, wait}, {unistd::Pid as Tid}}, {sched::{setns, CloneFlags}}};
 
     /// This locks a target process using ptrace, and prevents it from running while this
     /// struct is alive
@@ -77,6 +79,35 @@ mod os_impl {
     pub fn get_exe(pid: Pid) -> Result<String, Error> {
         let path = std::fs::read_link(format!("/proc/{}/exe", pid))?;
         Ok(path.to_string_lossy().to_string())
+    }
+
+
+    pub struct Namespace {
+        ns_file: Option<File>
+    }
+
+    impl Namespace {
+        pub fn new(pid: Pid) -> Result<Namespace, Error> {
+            let self_ns = File::open("/proc/self/ns/mnt")?;
+            let target_ns = File::open(format!("/proc/{}/ns/mnt", pid))?;
+            let fd = target_ns.as_raw_fd();
+            if fd != self_ns.as_raw_fd() {
+                setns(fd, CloneFlags::from_bits_truncate(0))?;
+                info!("Process {} appears to be running in a different namespace - setting namespace to match", pid);
+                Ok(Namespace{ns_file: Some(self_ns)})
+            } else {
+                Ok(Namespace{ns_file: None})
+            }
+        }
+    }
+
+    impl Drop for Namespace {
+        fn drop(&mut self) {
+            if let Some(ns_file) = self.ns_file.as_ref() {
+                setns(ns_file.as_raw_fd(), CloneFlags::from_bits_truncate(0)).unwrap();
+                info!("Restored process namespace");
+            }
+        }
     }
 
     struct ThreadLock {

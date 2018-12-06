@@ -382,6 +382,11 @@ impl PythonProcessInfo {
                 map.filename().as_ref().unwrap_or(&"".to_owned()));
         }
 
+        // on linux, support profiling processes running in docker containers by setting
+        // the namespace to match that of the target process when reading in binaries
+        #[cfg(target_os="linux")]
+        let _namespace = process::Namespace::new(pid)?;
+
         // parse the main python binary
         let (python_binary, python_filename) = {
             // Get the memory address for the executable by matching against virtual memory maps
