@@ -19,7 +19,7 @@ pub struct Config {
 impl Config {
     pub fn from_commandline() -> Result<Config, Error> {
         let matches = App::new("py-spy")
-            .version("0.1.8")
+            .version("0.1.9")
             .about("A sampling profiler for Python programs")
             .arg(Arg::with_name("function")
                 .short("F")
