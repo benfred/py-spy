@@ -46,7 +46,6 @@ class PostInstallCommand(install):
         # but we can't install to the bin directory:
         #     https://github.com/pypa/setuptools/issues/210#issuecomment-216657975
         # take the advice from that comment, and move over after install
-        install.run(self)
         source_dir = os.path.dirname(os.path.abspath(__file__))
 
         # if we have these env variables defined, then compile against the musl toolchain
@@ -66,6 +65,10 @@ class PostInstallCommand(install):
         # so instead just build ourselves here =(.
         if os.system("cargo build --release %s" % compile_args):
             raise ValueError("Failed to compile!")
+
+        # run this after trying to build with cargo (as otherwise this leaves
+        # venv in a bad state: https://github.com/benfred/py-spy/issues/69)
+        install.run(self)
 
         # we're going to install the py-spy executable into the scripts directory
         # but first make sure the scripts directory exists
