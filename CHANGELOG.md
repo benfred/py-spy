@@ -1,3 +1,7 @@
+## v0.1.10
+
+* Fix running py-spy inside a docker container [#68](https://github.com/benfred/py-spy/issues/68)
+
 ## v0.1.9
 
 * Fix partial stack traces from showing up, by pausing process while collecting samples [#56](https://github.com/benfred/py-spy/issues/56). Also add a ```--nonblocking``` option to use previous behaviour of not stopping process.

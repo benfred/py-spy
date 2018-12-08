@@ -88,14 +88,18 @@ mod os_impl {
 
     impl Namespace {
         pub fn new(pid: Pid) -> Result<Namespace, Error> {
-            let self_ns = File::open("/proc/self/ns/mnt")?;
-            let target_ns = File::open(format!("/proc/{}/ns/mnt", pid))?;
-            let fd = target_ns.as_raw_fd();
-            if fd != self_ns.as_raw_fd() {
-                setns(fd, CloneFlags::from_bits_truncate(0))?;
+            let target_ns_filename = format!("/proc/{}/ns/mnt", pid);
+            let self_mnt = std::fs::read_link("/proc/self/ns/mnt")?;
+            let target_mnt = std::fs::read_link(&target_ns_filename)?;
+            if self_mnt != target_mnt {
                 info!("Process {} appears to be running in a different namespace - setting namespace to match", pid);
+                let target = File::open(target_ns_filename)?;
+                // need to open this here, gets trickier after changing the namespace
+                let self_ns = File::open("/proc/self/ns/mnt")?;
+                setns(target.as_raw_fd(), CloneFlags::from_bits_truncate(0))?;
                 Ok(Namespace{ns_file: Some(self_ns)})
             } else {
+                info!("Target process is running in same namespace - not changing");
                 Ok(Namespace{ns_file: None})
             }
         }
