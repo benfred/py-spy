@@ -385,7 +385,13 @@ impl PythonProcessInfo {
         // on linux, support profiling processes running in docker containers by setting
         // the namespace to match that of the target process when reading in binaries
         #[cfg(target_os="linux")]
-        let _namespace = process::Namespace::new(pid)?;
+        let _namespace = match process::Namespace::new(pid) {
+            Ok(ns) => Some(ns),
+            Err(e) => {
+                warn!("Failed to set namespace: {}", e);
+                None
+            }
+        };
 
         // parse the main python binary
         let (python_binary, python_filename) = {
