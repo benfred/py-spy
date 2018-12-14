@@ -280,7 +280,7 @@ fn get_interpreter_address_from_binary(binary: &BinaryInfo,
     // look like pointers to PyinterpreterState
     let bss = copy_address(binary.bss_addr as usize, binary.bss_size as usize, &process)?;
 
-    #[cfg_attr(feature = "cargo-clippy", allow(cast_ptr_alignment))]
+    #[allow(clippy::cast_ptr_alignment)]
     let addrs = unsafe { slice::from_raw_parts(bss.as_ptr() as *const usize, bss.len() / size_of::<usize>()) };
     check_interpreter_addresses(addrs, maps, process, version)
 }

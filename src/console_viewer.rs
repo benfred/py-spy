@@ -395,7 +395,7 @@ mod os_impl {
 
             // flush current screen so that when we clear, we don't overwrite history
             let height = Term::stdout().size().0;
-            for _ in 0..height + 1 {
+            for _ in 0..=height {
                 println!();
             }
 

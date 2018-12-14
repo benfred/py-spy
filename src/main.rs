@@ -1,3 +1,7 @@
+// This lint is a little broken right now.
+// once this is live, probably can remove: https://github.com/rust-lang/rust-clippy/pull/3338
+#![allow(clippy::new_ret_no_self)]
+
 #[macro_use]
 extern crate clap;
 extern crate console;
@@ -190,7 +194,7 @@ fn sample_flame(process: &PythonSpy, filename: &str, config: &config::Config) ->
     }
     progress.finish();
     // write out a message here (so as not to interfere with progress bar) if we ended earlier
-    if exit_message.len() > 0 {
+    if !exit_message.is_empty() {
         println!("{}", exit_message);
     }
 

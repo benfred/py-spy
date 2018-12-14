@@ -125,7 +125,7 @@ pub fn copy_string<T: StringObject, P: CopyAddress>(ptr: * const T, process: &P)
 
     match (kind, obj.ascii()) {
         (4, _) => {
-            #[cfg_attr(feature = "cargo-clippy", allow(cast_ptr_alignment))]
+            #[allow(clippy::cast_ptr_alignment)]
             let chars = unsafe { std::slice::from_raw_parts(bytes.as_ptr() as * const char, bytes.len() / 4) };
             Ok(chars.iter().collect())
         },
