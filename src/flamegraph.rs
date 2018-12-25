@@ -69,15 +69,23 @@ impl Flamegraph {
         Ok(())
     }
 
-    pub fn write(&self, w: File) -> Result<(), Error> {
-        let tempdir = tempdir::TempDir::new("flamegraph").unwrap();
-        let stacks_file = tempdir.path().join("stacks.txt");
-        let mut file = File::create(&stacks_file).expect("couldn't create file");
-        for (k, v) in &self.counts {
-            file.write_all(&k)?;
-            writeln!(file, " {}", v)?;
+    pub fn write(&self, mut w: File, stacks: bool) -> Result<(), Error> {
+        if stacks {
+            for (k, v) in &self.counts {
+                w.write_all(&k)?;
+                writeln!(w, " {}", v)?;
+            }
+            Ok(())
+        } else {
+            let tempdir = tempdir::TempDir::new("flamegraph").unwrap();
+            let stacks_file = tempdir.path().join("stacks.txt");
+            let mut file = File::create(&stacks_file).expect("couldn't create file");
+            for (k, v) in &self.counts {
+                file.write_all(&k)?;
+                writeln!(file, " {}", v)?;
+            }
+            write_flamegraph(&stacks_file, w)
         }
-        write_flamegraph(&stacks_file, w)
     }
 }
 
