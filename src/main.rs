@@ -19,6 +19,7 @@ extern crate nix;
 #[macro_use]
 extern crate log;
 extern crate memmap;
+extern crate indexmap;
 extern crate proc_maps;
 extern crate benfred_read_process_memory as read_process_memory;
 extern crate regex;

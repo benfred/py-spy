@@ -26,6 +26,7 @@ tempfile = "3.0.3"
 benfred-read-process-memory = "0.1.3"
 proc-maps = "0.1"
 memmap = "0.7.0"
+indexmap = "1.0.2"
 
 [target.'cfg(unix)'.dependencies]
 termios = "0.2.2"
