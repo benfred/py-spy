@@ -94,7 +94,7 @@ fn permission_denied(err: &Error) -> bool {
     })
 }
 
-fn sample_console(process: &PythonSpy,
+fn sample_console(process: &mut PythonSpy,
                   display: &str,
                   config: &config::Config) -> Result<(), Error> {
     let rate = config.sampling_rate;
@@ -130,7 +130,7 @@ fn sample_console(process: &PythonSpy,
 }
 
 
-fn sample_flame(process: &PythonSpy, filename: &str, config: &config::Config) -> Result<(), Error> {
+fn sample_flame(process: &mut PythonSpy, filename: &str, config: &config::Config) -> Result<(), Error> {
     let max_samples = config.duration * config.sampling_rate;
 
     let mut flame = flamegraph::Flamegraph::new(config.show_line_numbers);
@@ -225,13 +225,13 @@ fn pyspy_main() -> Result<(), Error> {
 
 
     if let Some(pid) = config.pid {
-        let process = PythonSpy::retry_new(pid, &config, 3)?;
+        let mut process = PythonSpy::retry_new(pid, &config, 3)?;
         if config.dump {
             print_traces(&process.get_stack_traces()?, true);
         } else if let Some(ref flame_file) = config.flame_file_name {
-            sample_flame(&process, &flame_file, &config)?;
+            sample_flame(&mut process, &flame_file, &config)?;
         } else {
-            sample_console(&process, &format!("pid: {}", pid), &config)?;
+            sample_console(&mut process, &format!("pid: {}", pid), &config)?;
         }
     }
 
@@ -251,11 +251,11 @@ fn pyspy_main() -> Result<(), Error> {
             std::thread::sleep(Duration::from_millis(50));
         }
         let result = match PythonSpy::retry_new(command.id() as read_process_memory::Pid, &config, 8) {
-            Ok(process) => {
+            Ok(mut process) => {
                 if let Some(ref flame_file) = config.flame_file_name {
-                    sample_flame(&process, &flame_file, &config)
+                    sample_flame(&mut process, &flame_file, &config)
                 } else {
-                    sample_console(&process, &subprocess.join(" "), &config)
+                    sample_console(&mut process, &subprocess.join(" "), &config)
                 }
             },
             Err(e) => Err(e)

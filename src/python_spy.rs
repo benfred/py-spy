@@ -1,4 +1,5 @@
 use std;
+use std::collections::HashMap;
 use std::mem::size_of;
 use std::slice;
 use std::path::Path;
@@ -26,9 +27,9 @@ pub struct PythonSpy {
     pub interpreter_address: usize,
     pub threadstate_address: usize,
     pub python_filename: String,
-    pub python_install_path: String,
     pub version_string: String,
-    pub config: Config
+    pub config: Config,
+    pub short_filenames: HashMap<String, Option<String>>,
 }
 
 impl PythonSpy {
@@ -55,26 +56,13 @@ impl PythonSpy {
             }
         };
 
-        // Figure out the base path of the python install
-        let python_install_path = {
-            let mut python_path = Path::new(&python_info.python_filename);
-            if let Some(parent) = python_path.parent() {
-                python_path = parent;
-                if python_path.to_str().unwrap().ends_with("/bin") {
-                    if let Some(parent) = python_path.parent() {
-                        python_path = parent;
-                    }
-                }
-            }
-            python_path.to_str().unwrap().to_string()
-        };
-
         let version_string = format!("python{}.{}", version.major, version.minor);
 
         Ok(PythonSpy{pid, process, version, interpreter_address, threadstate_address,
                      python_filename: python_info.python_filename,
-                     python_install_path,
-                     version_string, config: config.clone()})
+                     version_string,
+                     config: config.clone(),
+                     short_filenames: HashMap::new()})
     }
 
     /// Creates a PythonSpy object, retrying up to max_retries times
@@ -84,7 +72,7 @@ impl PythonSpy {
         let mut retries = 0;
         loop {
             let err = match PythonSpy::new(pid, config) {
-                Ok(process) => {
+                Ok(mut process) => {
                     // verify that we can load a stack trace before returning success
                     match process.get_stack_traces() {
                         Ok(_) => return Ok(process),
@@ -105,7 +93,7 @@ impl PythonSpy {
     }
 
     /// Gets a StackTrace for each thread in the current process
-    pub fn get_stack_traces(&self) -> Result<Vec<StackTrace>, Error> {
+    pub fn get_stack_traces(&mut self) -> Result<Vec<StackTrace>, Error> {
         // lock the process if appropiate
         let _lock = if self.config.non_blocking {
             None
@@ -130,7 +118,7 @@ impl PythonSpy {
     }
 
     // implementation of get_stack_traces, where we have a type for the InterpreterState
-    fn _get_stack_traces<I: InterpreterState>(&self) -> Result<Vec<StackTrace>, Error> {
+    fn _get_stack_traces<I: InterpreterState>(&mut self) -> Result<Vec<StackTrace>, Error> {
         // figure out what thread has the GIL by inspecting _PyThreadState_Current
         let mut gil_thread_id = 0;
         if self.threadstate_address > 0 {
@@ -153,30 +141,38 @@ impl PythonSpy {
                 trace.owns_gil = true;
             }
             for frame in &mut trace.frames {
-                frame.short_filename = Some(self.shorten_filename(&frame.filename).to_owned());
+                frame.short_filename = self.shorten_filename(&frame.filename);
             }
         }
         Ok(traces)
     }
 
     /// We want to display filenames without the boilerplate of the python installation
-    /// directory etc. This strips off common prefixes from python library code.
-    pub fn shorten_filename<'a>(&self, filename: &'a str) -> &'a str {
-        if filename.starts_with(&self.python_install_path) {
-            let mut filename = &filename[self.python_install_path.len() + 1..];
-            if filename.starts_with("lib") {
-                filename = &filename[4..];
-                if filename.starts_with(&self.version_string) {
-                    filename = &filename[self.version_string.len() + 1..];
-                }
-                if filename.starts_with("site-packages") {
-                    filename = &filename[14..];
-                }
-            }
-            filename
-        } else {
-            filename
+    /// directory etc. This function looks only includes paths inside a python
+    /// package or subpackage, and not the path the package is installed at
+    pub fn shorten_filename(&mut self, filename: &str) -> Option<String> {
+        // if we have figured out the short filename already, use it
+        if let Some(short) = self.short_filenames.get(filename) {
+            return short.clone();
         }
+
+        // only include paths that include an __init__.py
+        let mut path = Path::new(filename);
+        while let Some(parent) = path.parent() {
+            path = parent;
+            if !parent.join("__init__.py").exists() {
+                break;
+            }
+        }
+
+        // remote the parent prefix and convert to an optional string
+        let shortened = Path::new(filename)
+            .strip_prefix(path)
+            .ok()
+            .map(|p| p.to_string_lossy().to_string());
+
+        self.short_filenames.insert(filename.to_owned(), shortened.clone());
+        shortened
     }
 }
 /// Returns the version of python running in the process.
@@ -212,7 +208,7 @@ fn get_python_version(python_info: &PythonProcessInfo, process: ProcessHandle)
     // the python_filename might have the version encoded in it (/usr/bin/python3.5 etc).
     // try reading that in (will miss patch level on python, but that shouldn't matter)
     info!("Trying to get version from path: {}", python_info.python_filename);
-    let path = std::path::Path::new(&python_info.python_filename);
+    let path = Path::new(&python_info.python_filename);
     if let Some(python) = path.file_name() {
         if let Some(python) = python.to_str() {
             if python.starts_with("python") {
