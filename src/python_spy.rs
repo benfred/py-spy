@@ -514,8 +514,6 @@ impl PythonProcessInfo {
 // So use the win32 api to load up the couple of symbols we need on windows. Note:
 // we still can get export's from the PE file
 #[cfg(windows)]
-use std::collections::HashMap;
-#[cfg(windows)]
 pub fn get_windows_python_symbols(pid: Pid, filename: &str, offset: u64) -> std::io::Result<HashMap<String, u64>> {
     use proc_maps::win_maps::SymbolLoader;
 
