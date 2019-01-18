@@ -27,7 +27,7 @@ SOFTWARE.
 */
 
 use std;
-use std::collections::HashMap;
+use indexmap::IndexMap;
 use std::io::Write;
 use std::fs::File;
 use std::path::Path;
@@ -41,13 +41,13 @@ use stack_trace::StackTrace;
 const FLAMEGRAPH_SCRIPT: &[u8] = include_bytes!("../vendor/flamegraph/flamegraph.pl");
 
 pub struct Flamegraph {
-    pub counts: HashMap<Vec<u8>, usize>,
+    pub counts: IndexMap<Vec<u8>, usize>,
     pub show_linenumbers: bool,
 }
 
 impl Flamegraph {
     pub fn new(show_linenumbers: bool) -> Flamegraph {
-        Flamegraph { counts: HashMap::new(), show_linenumbers }
+        Flamegraph { counts: IndexMap::new(), show_linenumbers }
     }
 
     pub fn increment(&mut self, traces: &[StackTrace]) -> std::io::Result<()> {
