@@ -131,7 +131,6 @@ fn sample_console(process: &mut PythonSpy,
 
 
 fn sample_flame(process: &mut PythonSpy, filename: &str, stacks: bool,
-fn sample_flame(process: &mut PythonSpy, filename: &str, stacks: bool,
                 config: &config::Config) -> Result<(), Error> {
     let max_samples = config.duration * config.sampling_rate;
 
