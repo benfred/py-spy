@@ -83,7 +83,11 @@ impl ConsoleViewer {
 
             update_function_statistics(&mut self.stats.line_counts, trace, |frame| {
                 let filename = match &frame.short_filename { Some(f) => &f, None => &frame.filename };
-                format!("{} ({}:{})", frame.name, filename, frame.line)
+                if frame.line != 0 {
+                    format!("{} ({}:{})", frame.name, filename, frame.line)
+                } else {
+                    format!("{} ({})", frame.name, filename)
+                }
             });
 
             update_function_statistics(&mut self.stats.function_counts, trace, |frame| {
@@ -122,7 +126,7 @@ impl ConsoleViewer {
         let width = width as usize;
 
         // this macro acts like println but also clears the rest of the line if there is already text
-        // writtern there. This is to avoid flickering on redraw, and lets us update just by moving the cursor
+        // written there. This is to avoid flickering on redraw, and lets us update just by moving the cursor
         // position to the top left.
         macro_rules! out {
             () => (term.clear_line()?; term.write_line("")?);

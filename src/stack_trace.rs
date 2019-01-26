@@ -9,6 +9,7 @@ use utils::{copy_pointer};
 #[derive(Debug)]
 pub struct StackTrace {
     pub thread_id: u64,
+    pub os_thread_id: Option<::remoteprocess::Tid>,
     pub active: bool,
     pub owns_gil: bool,
     pub frames: Vec<Frame>
@@ -18,8 +19,9 @@ pub struct StackTrace {
 pub struct Frame {
     pub name: String,
     pub filename: String,
+    pub module: Option<String>,
     pub short_filename: Option<String>,
-    pub line: i32
+    pub line: i32,
 }
 
 /// Given an InterpreterState, this function returns a vector of stack traces for each thread
@@ -52,7 +54,7 @@ pub fn get_stack_trace<T, P >(thread: &T, process: &P) -> Result<StackTrace, Err
         let name = copy_string(code.name(), process).context("Failed to copy function name")?;
         let line = get_line_number(&code, frame.lasti(), process).context("Failed to get line number")?;
 
-        frames.push(Frame{name, filename, line, short_filename: None});
+        frames.push(Frame{name, filename, line, short_filename: None, module: None});
         if frames.len() > 4096 {
             return Err(format_err!("Max frame recursion depth reached"));
         }
@@ -76,7 +78,7 @@ pub fn get_stack_trace<T, P >(thread: &T, process: &P) -> Result<StackTrace, Err
                                   frame.filename.contains("tornado")))
     };
 
-    Ok(StackTrace{frames, thread_id: thread.thread_id(), owns_gil: false, active: !idle})
+    Ok(StackTrace{frames, thread_id: thread.thread_id(), owns_gil: false, active: !idle, os_thread_id: None})
 }
 
 impl StackTrace {

@@ -14,12 +14,6 @@ extern crate indicatif;
 #[macro_use]
 extern crate lazy_static;
 extern crate libc;
-#[cfg(target_os = "macos")]
-extern crate libproc;
-#[cfg(target_os = "macos")]
-extern crate mach;
-#[cfg(target_os = "linux")]
-extern crate nix;
 #[macro_use]
 extern crate log;
 extern crate memmap;
@@ -33,15 +27,23 @@ extern crate termios;
 #[cfg(windows)]
 extern crate winapi;
 
+#[cfg(unix)]
+extern crate cpp_demangle;
+
+extern crate remoteprocess;
+
 mod config;
 mod binary_parser;
+#[cfg(unix)]
+mod cython;
+#[cfg(unix)]
+mod native_stack_trace;
 mod python_bindings;
 mod python_interpreters;
 mod python_spy;
 mod stack_trace;
 mod console_viewer;
 mod flamegraph;
-mod process;
 mod utils;
 
 use std::io::Read;
@@ -61,21 +63,35 @@ fn print_traces(traces: &[StackTrace], show_idle: bool) {
             continue;
         }
 
-        println!("Thread {:#X} ({})", trace.thread_id, trace.status_str());
+        if let Some(os_thread_id) = trace.os_thread_id {
+            println!("Thread {:#X}/{} ({})", trace.thread_id,  os_thread_id, trace.status_str());
+
+        } else {
+            println!("Thread {:#X} ({})", trace.thread_id, trace.status_str());
+        }
         for frame in &trace.frames {
             let filename = match &frame.short_filename { Some(f) => &f, None => &frame.filename };
-            println!("\t {} ({}:{})", frame.name, filename, frame.line);
+            if frame.line != 0 {
+                println!("\t {} ({}:{})", frame.name, filename, frame.line);
+            } else {
+                println!("\t {} ({})", frame.name, filename);
+            }
         }
     }
 }
 
 // Given a failure::Error, tries to see if it is because the process exitted
-fn process_exitted(err: &Error) -> bool {
+fn process_exitted(pid: read_process_memory::Pid, err: &Error) -> bool {
     err.iter_chain().any(|cause| {
         if let Some(ioerror) = cause.downcast_ref::<std::io::Error>() {
             if let Some(err_code) = ioerror.raw_os_error() {
                 if err_code == 3 || err_code == 60 || err_code == 299 {
-                    return true;
+                    // final check, if we can't get the process (or executable)
+                    // then we're done
+                    return match remoteprocess::Process::new(pid) {
+                        Ok(process) => process.exe().is_err(),
+                        Err(_) => true,
+                    };
                 }
             }
         }
@@ -113,7 +129,7 @@ fn sample_console(process: &mut PythonSpy,
                 console.increment(&traces)?;
             },
             Err(err) => {
-                if process_exitted(&err) {
+                if process_exitted(process.pid, &err) {
                     exitted_count += 1;
                     if exitted_count > 5 {
                         println!("\nprocess {} ended", process.pid);
@@ -179,15 +195,16 @@ fn sample_flame(process: &mut PythonSpy, filename: &str, config: &config::Config
                 }
             },
             Err(err) => {
-                if process_exitted(&err) {
+                if process_exitted(process.pid, &err) {
                     exitted_count += 1;
                     // there must be a better way to figure out if the process is still running
                     if exitted_count > 3 {
                         exit_message = "Stopped sampling because the process ended";
                         break;
                     }
+                } else {
+                    errors += 1;
                 }
-                errors += 1;
             }
         }
         progress.inc(1);
@@ -222,7 +239,6 @@ fn pyspy_main() -> Result<(), Error> {
             std::process::exit(1)
         }
     }
-
 
     if let Some(pid) = config.pid {
         let mut process = PythonSpy::retry_new(pid, &config, 3)?;

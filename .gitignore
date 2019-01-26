@@ -1,6 +1,5 @@
 /target
-proc-maps/target
-python-bindings/target
+remoteprocess/target
 **/*.rs.bk
 
 # Python Distribution / packaging

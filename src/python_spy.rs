@@ -12,36 +12,39 @@ use python_bindings::{v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0};
 
 use python_interpreters;
 use stack_trace::{StackTrace, get_stack_traces};
+#[cfg(unix)]
+use native_stack_trace::NativeStack;
 use binary_parser::{parse_binary, BinaryInfo};
 use utils::{copy_struct, copy_pointer};
-use process::{get_exe, self};
-
 use python_interpreters::{InterpreterState, ThreadState};
 use config::Config;
 
-#[derive(Debug)]
 pub struct PythonSpy {
     pub pid: Pid,
-    pub process: ProcessHandle,
+    pub process: remoteprocess::Process,
     pub version: Version,
     pub interpreter_address: usize,
     pub threadstate_address: usize,
     pub python_filename: String,
     pub version_string: String,
     pub config: Config,
+    #[cfg(unix)]
+    pub native: Option<NativeStack>,
     pub short_filenames: HashMap<String, Option<String>>,
 }
 
 impl PythonSpy {
     pub fn new(pid: Pid, config: &Config) -> Result<PythonSpy, Error> {
-        // get basic process information (memory maps/symbols etc)
-        let python_info = PythonProcessInfo::new(pid)?;
-        let process = process::open(pid).context("Failed to open target process")?;
+        let process = remoteprocess::Process::new(pid)
+            .context("Failed to open process - check if it is running.")?;
 
-        let version = get_python_version(&python_info, process)?;
+        // get basic process information (memory maps/symbols etc)
+        let python_info = PythonProcessInfo::new(&process)?;
+
+        let version = get_python_version(&python_info, process.handle())?;
         info!("python version {} detected", version);
 
-        let interpreter_address = get_interpreter_address(&python_info, process, &version)?;
+        let interpreter_address = get_interpreter_address(&python_info, process.handle(), &version)?;
         info!("Found interpreter at 0x{:016x}", interpreter_address);
 
         // lets us figure out which thread has the GIL
@@ -58,9 +61,18 @@ impl PythonSpy {
 
         let version_string = format!("python{}.{}", version.major, version.minor);
 
+        #[cfg(unix)]
+        let native = if config.native {
+            Some(NativeStack::new(pid, &python_info.python_filename, &python_info.libpython_filename)?)
+        } else {
+            None
+        };
+
         Ok(PythonSpy{pid, process, version, interpreter_address, threadstate_address,
                      python_filename: python_info.python_filename,
                      version_string,
+                     #[cfg(unix)]
+                     native,
                      config: config.clone(),
                      short_filenames: HashMap::new()})
     }
@@ -94,11 +106,13 @@ impl PythonSpy {
 
     /// Gets a StackTrace for each thread in the current process
     pub fn get_stack_traces(&mut self) -> Result<Vec<StackTrace>, Error> {
-        // lock the process if appropiate
-        let _lock = if self.config.non_blocking {
+        // lock the process if appropiate. note that native stack traces
+        // mean that we lock separately. todo: fix this up
+        // (gil check should be inside lock for native etc)
+        let _lock = if self.config.non_blocking || self.config.native {
             None
         } else {
-            Some(process::Lock::new(&self.process).context("Failed to suspend process")?)
+            Some(self.process.lock().context("Failed to suspend process")?)
         };
 
         match self.version {
@@ -122,17 +136,25 @@ impl PythonSpy {
         // figure out what thread has the GIL by inspecting _PyThreadState_Current
         let mut gil_thread_id = 0;
         if self.threadstate_address > 0 {
-            let addr: usize = copy_struct(self.threadstate_address, &self.process)?;
+            let addr: usize = copy_struct(self.threadstate_address, &self.process.handle())?;
             if addr != 0 {
-                let threadstate: I::ThreadState = copy_struct(addr, &self.process)?;
+                let threadstate: I::ThreadState = copy_struct(addr, &self.process.handle())?;
                 gil_thread_id = threadstate.thread_id();
             }
         }
 
         // Get the stack traces for each thread
-        let interp: I = copy_struct(self.interpreter_address, &self.process)
+        let interp: I = copy_struct(self.interpreter_address, &self.process.handle())
             .context("Failed to copy PyInterpreterState from process")?;
-        let mut traces = get_stack_traces(&interp, &self.process)?;
+
+        #[cfg(unix)]
+        let mut traces = match self.native.as_mut() {
+            Some(native) => native.get_native_stack_traces(&interp, &self.process.handle())?,
+            None => get_stack_traces(&interp, &self.process.handle())?
+        };
+
+        #[cfg(windows)]
+        let mut traces = get_stack_traces(&interp, &self.process.handle())?;
 
         // annotate traces to indicate which thread is holding the gil (if any),
         // and to provide a shortened filename
@@ -352,14 +374,14 @@ pub struct PythonProcessInfo {
     libpython_binary: Option<BinaryInfo>,
     maps: Vec<MapRange>,
     python_filename: String,
+    #[allow(dead_code)]
+    libpython_filename: Option<String>,
 }
 
 impl PythonProcessInfo {
-    fn new(pid: Pid) -> Result<PythonProcessInfo, Error> {
-        // Get the executable filename for the process
-        let filename = get_exe(pid)
+    fn new(process: &remoteprocess::Process) -> Result<PythonProcessInfo, Error> {
+        let filename = process.exe()
             .context("Failed to get process executable name. Check that the process is running.")?;
-        info!("Found process binary @ '{}'", filename);
 
         #[cfg(windows)]
         let filename = filename.to_lowercase();
@@ -370,8 +392,8 @@ impl PythonProcessInfo {
         let is_python_bin = |pathname: &str| pathname == filename;
 
         // get virtual memory layout
-        let maps = get_process_maps(pid)?;
-        info!("Got virtual memory maps from pid {}:", pid);
+        let maps = get_process_maps(process.pid)?;
+        info!("Got virtual memory maps from pid {}:", process.pid);
         for map in &maps {
             info!("map: {:016x}-{:016x} {}{}{} {}", map.start(), map.start() + map.size(),
                 if map.is_read() {'r'} else {'-'}, if map.is_write() {'w'} else {'-'}, if map.is_exec() {'x'} else {'-'},
@@ -381,7 +403,7 @@ impl PythonProcessInfo {
         // on linux, support profiling processes running in docker containers by setting
         // the namespace to match that of the target process when reading in binaries
         #[cfg(target_os="linux")]
-        let _namespace = match process::Namespace::new(pid) {
+        let _namespace = match remoteprocess::Namespace::new(process.pid) {
             Ok(ns) => Some(ns),
             Err(e) => {
                 warn!("Failed to set namespace: {}", e);
@@ -415,7 +437,7 @@ impl PythonProcessInfo {
 
             // windows symbols are stored in separate files (.pdb), load
             #[cfg(windows)]
-            python_binary.symbols.extend(get_windows_python_symbols(pid, &filename, map.start() as u64)?);
+            python_binary.symbols.extend(get_windows_python_symbols(process.pid, &filename, map.start() as u64)?);
 
             // For OSX, need to adjust main binary symbols by substracting _mh_execute_header
             // (which we've added to by map.start already, so undo that here)
@@ -434,6 +456,7 @@ impl PythonProcessInfo {
         };
 
         // likewise handle libpython for python versions compiled with --enabled-shared
+        let mut libpython_filename = None;
         let libpython_binary = {
             let libmap = maps.iter()
                 .find(|m| if let Some(ref pathname) = &m.filename() {
@@ -448,8 +471,9 @@ impl PythonProcessInfo {
                     info!("Found libpython binary @ {}", filename);
                     let mut parsed = parse_binary(filename, libpython.start() as u64)?;
                     #[cfg(windows)]
-                    parsed.symbols.extend(get_windows_python_symbols(pid, filename, libpython.start() as u64)?);
+                    parsed.symbols.extend(get_windows_python_symbols(process.pid, filename, libpython.start() as u64)?);
                     libpython_binary = Some(parsed);
+                    libpython_filename = libpython.filename().clone();
                 }
             }
 
@@ -460,7 +484,7 @@ impl PythonProcessInfo {
             {
                 if libpython_binary.is_none() {
                     use proc_maps::mac_maps::get_dyld_info;
-                    let dyld_infos = get_dyld_info(pid)?;
+                    let dyld_infos = get_dyld_info(process.pid)?;
 
                     for dyld in &dyld_infos {
                         let segname = unsafe { std::ffi::CStr::from_ptr(dyld.segment.segname.as_ptr()) };
@@ -475,6 +499,7 @@ impl PythonProcessInfo {
 
                     if let Some(libpython) = python_dyld_data {
                         info!("Found libpython binary from dyld @ {}", libpython.filename);
+
                         let mut binary = parse_binary(&libpython.filename, libpython.segment.vmaddr)?;
 
                         // TODO: bss addr offsets returned from parsing binary are wrong
@@ -484,6 +509,7 @@ impl PythonProcessInfo {
                         binary.bss_addr = libpython.segment.vmaddr;
                         binary.bss_size = libpython.segment.vmsize;
                         libpython_binary = Some(binary);
+                        libpython_filename = Some(libpython.filename.clone());
                     }
                 }
             }
@@ -491,7 +517,7 @@ impl PythonProcessInfo {
             libpython_binary
         };
 
-        Ok(PythonProcessInfo{python_binary, libpython_binary, maps, python_filename})
+        Ok(PythonProcessInfo{python_binary, libpython_binary, maps, python_filename, libpython_filename})
     }
 
     pub fn get_symbol(&self, symbol: &str) -> Option<&u64> {

@@ -14,10 +14,15 @@ pub struct Config {
     pub show_line_numbers: bool,
     pub sampling_rate: u64,
     pub duration: u64,
+    pub native: bool
 }
 
 impl Config {
     pub fn from_commandline() -> Result<Config, Error> {
+        // only allow native sampling on 64 bit linux and OSX for now
+        let allow_native = cfg!(all(target_os="linux", target_pointer_width="64")) ||
+                           cfg!(target_os="macos");
+
         let matches = App::new("py-spy")
             .version("0.1.10")
             .about("A sampling profiler for Python programs")
@@ -25,6 +30,11 @@ impl Config {
                 .short("F")
                 .long("function")
                 .help("Aggregate samples by function name instead of by line number"))
+            .arg(Arg::with_name("native")
+                .short("n")
+                .long("native")
+                .hidden(!allow_native)
+                .help("Collect stack traces from native extensions written in Cython, C or C++"))
             .arg(Arg::with_name("pid")
                 .short("p")
                 .long("pid")
@@ -59,7 +69,6 @@ impl Config {
                 .help("The number of seconds to sample for when generating a flame graph")
                 .default_value("2")
                 .takes_value(true))
-
             .arg(Arg::with_name("python_program")
                 .help("commandline of a python program to run")
                 .multiple(true)
@@ -82,9 +91,15 @@ impl Config {
         let duration = value_t!(matches, "duration", u64)?;
         let show_line_numbers = matches.occurrences_of("function") == 0;
         let non_blocking = matches.occurrences_of("nonblocking") > 0;
+        let mut native = matches.occurrences_of("native") > 0;
+
+        if !allow_native && native {
+            error!("Native stack traces are not yet supported on this OS. Disabling");
+            native = false;
+        }
 
         Ok(Config{pid, python_program, dump, flame_file_name,
                   sampling_rate, duration,
-                  show_line_numbers, non_blocking})
+                  show_line_numbers, non_blocking, native})
     }
 }
