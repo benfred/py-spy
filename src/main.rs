@@ -26,17 +26,12 @@ extern crate tempfile;
 extern crate termios;
 #[cfg(windows)]
 extern crate winapi;
-
-#[cfg(unix)]
 extern crate cpp_demangle;
-
 extern crate remoteprocess;
 
 mod config;
 mod binary_parser;
-#[cfg(unix)]
 mod cython;
-#[cfg(unix)]
 mod native_stack_trace;
 mod python_bindings;
 mod python_interpreters;
@@ -64,7 +59,11 @@ fn print_traces(traces: &[StackTrace], show_idle: bool) {
         }
 
         if let Some(os_thread_id) = trace.os_thread_id {
+            #[cfg(not(windows))]
             println!("Thread {:#X}/{} ({})", trace.thread_id,  os_thread_id, trace.status_str());
+            #[cfg(windows)]
+            println!("Thread {:#X}/{} ({})", trace.thread_id,
+                     remoteprocess::get_thread_id(os_thread_id), trace.status_str());
 
         } else {
             println!("Thread {:#X} ({})", trace.thread_id, trace.status_str());
@@ -243,6 +242,7 @@ fn pyspy_main() -> Result<(), Error> {
     if let Some(pid) = config.pid {
         let mut process = PythonSpy::retry_new(pid, &config, 3)?;
         if config.dump {
+            println!("{}\nPython version {}", process.process.exe()?, process.version);
             print_traces(&process.get_stack_traces()?, true);
         } else if let Some(ref flame_file) = config.flame_file_name {
             sample_flame(&mut process, &flame_file, &config)?;

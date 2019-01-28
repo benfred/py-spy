@@ -85,12 +85,12 @@ impl NativeStack {
             }
 
             for thread in self.process.threads()? {
-                #[cfg(target_os="macos")]
-                let (stack, pthread_id) = self.get_thread(&threadids, thread)?;
+                #[cfg(not(target_os="linux"))]
+                let (stack, python_thread_id) = self.get_thread(&threadids, thread)?;
 
                 // on linux, try again with libunwind if we fail with the gimli based unwinder
                 #[cfg(target_os="linux")]
-                let (stack, pthread_id) = match self.get_thread(&threadids, thread) {
+                let (stack, python_thread_id) = match self.get_thread(&threadids, thread) {
                     Ok(x) => x,
                     Err(e) => {
                         if self.libunwinder.is_some() {
@@ -102,7 +102,7 @@ impl NativeStack {
                 };
 
                 native_stacks.insert(thread, stack);
-                threadid_map.entry(pthread_id).or_insert(thread);
+                threadid_map.entry(python_thread_id).or_insert(thread);
             }
         }
 
@@ -118,12 +118,24 @@ impl NativeStack {
 
             for addr in stack {
                 self.unwinder.symbolicate(*addr, &mut |frame| {
-                    if frame.module == self.python_filename || Some(&frame.module) == self.libpython_filename.as_ref() ||
+                    // TODO: for figuring out python frames/functions don't symbolicate
+                    // and instead just figure out if the addr is in the range
+                    #[cfg(unix)]
+                    let is_python_exe = frame.module == self.python_filename;
+
+                    #[cfg(windows)]
+                    let is_python_exe = frame.module.to_lowercase() == self.python_filename.to_lowercase();
+
+                    if is_python_exe ||
+                       Some(&frame.module) == self.libpython_filename.as_ref() ||
                        self.python_filename.starts_with(&frame.module) {
                         if let Some(ref function) = frame.function {
-                            if function == "_PyEval_EvalFrameDefault" ||
-                               function == "PyEval_EvalFrameEx" ||
-                               function == "__PyEval_EvalFrameDefault" {
+                            // ugh, probably could do a better job of figuring this out
+                            // (also the symbols are different for each OS)
+                            if function == "PyEval_EvalFrameDefault" ||
+                               function == "_PyEval_EvalFrameDefault" ||
+                               function == "__PyEval_EvalFrameDefault" ||
+                               function == "PyEval_EvalFrameEx" {
 
                                 // if we have a corresponding python frame for the evalframe
                                 // merge it into the stack. (if we're out of bounds a later
@@ -172,15 +184,15 @@ impl NativeStack {
                             },
                             None => {
                                 merged.push(Frame{filename: frame.module.clone(),
-                                                  name: format!("0x{:016x}", frame.addr),
+                                                  name: "?".to_owned(),
                                                   line: 0, short_filename: None, module: Some(frame.module.clone())})
                             }
                         }
                     }
-                }).unwrap_or_else(|_e| {
+                }).unwrap_or_else(|_| {
                     // if we can't symbolicate, just insert a stub here.
                     merged.push(Frame{filename: "?".to_owned(),
-                                      name: format!("0x{:016x}", addr),
+                                      name: "?".to_owned(),
                                       line: 0, short_filename: None, module: None});
                 });
             }
@@ -205,23 +217,35 @@ impl NativeStack {
     }
 
     fn get_thread(&mut self, threadids: &HashSet<u64>, thread: remoteprocess::Tid) -> Result<(Vec<u64>, u64), Error> {
-        debug!("get native stack for thread {}", thread);
         let mut stack = Vec::new();
         let mut cursor = self.unwinder.cursor(thread)?;
-        let mut bx = 0;
+        #[allow(unused_assignments)]
+        let mut python_thread_id = 0;
 
         while let Some(ip) = cursor.next() {
             if let Err(remoteprocess::Error::NoBinaryForAddress(_)) = ip {
                 self.should_reload = true;
             }
             stack.push(ip?);
-            let next_bx = cursor.bx();
-            if next_bx != 0 && threadids.contains(&next_bx)  {
-                bx = next_bx;
+
+            // On unix based systems w/ pthreads - the python thread id
+            // is contained in the RBX register of the last frame (aside from main frame)
+            // This is sort of a massive hack, but seems to work
+            #[cfg(unix)]
+            {
+                let next_bx = cursor.bx();
+                if next_bx != 0 && threadids.contains(&next_bx)  {
+                    python_thread_id = next_bx;
+                }
             }
         }
 
-        Ok((stack, bx))
+        #[cfg(windows)]
+        {
+        python_thread_id = remoteprocess::get_thread_id(thread) as u64;
+        }
+
+        Ok((stack, python_thread_id))
     }
 
     #[cfg(target_os="linux")]
@@ -273,6 +297,19 @@ fn ignore_frame(function: &str, module: &str) -> bool {
     }
 
     if function == "_thread_start" && module.contains("/libsystem_pthread") {
+        return true;
+    }
+
+    false
+}
+
+#[cfg(windows)]
+fn ignore_frame(function: &str, module: &str) -> bool {
+    if function == "RtlUserThreadStart" && module.to_lowercase().ends_with("ntdll.dll") {
+        return true;
+    }
+
+    if function == "BaseThreadInitThunk" && module.to_lowercase().ends_with("kernel32.dll") {
         return true;
     }
 

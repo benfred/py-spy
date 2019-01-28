@@ -157,7 +157,7 @@ impl From<osx::compact_unwind::Error> for Error {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StackFrame {
     pub line: Option<u64>,
     pub filename: Option<String>,

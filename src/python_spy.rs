@@ -12,7 +12,6 @@ use python_bindings::{v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0};
 
 use python_interpreters;
 use stack_trace::{StackTrace, get_stack_traces};
-#[cfg(unix)]
 use native_stack_trace::NativeStack;
 use binary_parser::{parse_binary, BinaryInfo};
 use utils::{copy_struct, copy_pointer};
@@ -28,7 +27,6 @@ pub struct PythonSpy {
     pub python_filename: String,
     pub version_string: String,
     pub config: Config,
-    #[cfg(unix)]
     pub native: Option<NativeStack>,
     pub short_filenames: HashMap<String, Option<String>>,
 }
@@ -61,7 +59,6 @@ impl PythonSpy {
 
         let version_string = format!("python{}.{}", version.major, version.minor);
 
-        #[cfg(unix)]
         let native = if config.native {
             Some(NativeStack::new(pid, &python_info.python_filename, &python_info.libpython_filename)?)
         } else {
@@ -71,7 +68,6 @@ impl PythonSpy {
         Ok(PythonSpy{pid, process, version, interpreter_address, threadstate_address,
                      python_filename: python_info.python_filename,
                      version_string,
-                     #[cfg(unix)]
                      native,
                      config: config.clone(),
                      short_filenames: HashMap::new()})
@@ -147,14 +143,10 @@ impl PythonSpy {
         let interp: I = copy_struct(self.interpreter_address, &self.process.handle())
             .context("Failed to copy PyInterpreterState from process")?;
 
-        #[cfg(unix)]
         let mut traces = match self.native.as_mut() {
             Some(native) => native.get_native_stack_traces(&interp, &self.process.handle())?,
             None => get_stack_traces(&interp, &self.process.handle())?
         };
-
-        #[cfg(windows)]
-        let mut traces = get_stack_traces(&interp, &self.process.handle())?;
 
         // annotate traces to indicate which thread is holding the gil (if any),
         // and to provide a shortened filename

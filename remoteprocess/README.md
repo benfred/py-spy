@@ -12,8 +12,7 @@ Features:
 - Getting a stack trace for a thread in the target process
 - Resolve symbols for an address in the other process
 
-This crate provides implementations for Linux, OSX and Windows. Note that currently the stack trace
-functionality is currently limited to 64-bit Linux and OSX.
+This crate provides implementations for Linux, OSX and Windows.
 
 ## Usage
 

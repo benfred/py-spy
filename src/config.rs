@@ -19,9 +19,8 @@ pub struct Config {
 
 impl Config {
     pub fn from_commandline() -> Result<Config, Error> {
-        // only allow native sampling on 64 bit linux and OSX for now
-        let allow_native = cfg!(all(target_os="linux", target_pointer_width="64")) ||
-                           cfg!(target_os="macos");
+        // we don't yet support native tracing on 32 bit linux
+        let allow_native = !cfg!(all(target_os="linux", target_pointer_width="32"));
 
         let matches = App::new("py-spy")
             .version("0.1.10")

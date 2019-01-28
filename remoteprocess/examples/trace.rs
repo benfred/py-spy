@@ -16,7 +16,12 @@ fn get_backtrace(pid: remoteprocess::Pid) -> Result<(), remoteprocess::Error> {
     let unwinder = process.unwinder()?;
     for (i, thread) in process.threads()?.iter().enumerate() {
         let thread = *thread;
+        #[cfg(unix)]
         println!("Thread {} ({})", i, thread);
+
+        // TODO: normalize this using GetThreadId or something
+        #[cfg(windows)]
+        println!("Thread {}", i);
 
         /* TODO: cross pross thread status
         let threadid = get_thread_identifier_info(thread)?;
@@ -49,7 +54,7 @@ fn main() {
         std::process::id()
     };
 
-    if let Err(e) = get_backtrace(pid as i32) {
+    if let Err(e) = get_backtrace(pid as remoteprocess::Pid) {
         println!("Failed to get backtrace {:?}", e);
     }
 }
