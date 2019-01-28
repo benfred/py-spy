@@ -23,7 +23,7 @@ impl Config {
         let allow_native = !cfg!(all(target_os="linux", target_pointer_width="32"));
 
         let matches = App::new("py-spy")
-            .version("0.1.10")
+            .version("0.2.0.dev0")
             .about("A sampling profiler for Python programs")
             .arg(Arg::with_name("function")
                 .short("F")
