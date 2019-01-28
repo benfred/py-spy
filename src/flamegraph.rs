@@ -58,7 +58,7 @@ impl Flamegraph {
             let mut buf = vec![];
             for frame in trace.frames.iter().rev() {
                 let filename = match &frame.short_filename { Some(f) => &f, None => &frame.filename };
-                if self.show_linenumbers {
+                if self.show_linenumbers && frame.line != 0 {
                     write!(&mut buf, "{} ({}:{});", frame.name, filename, frame.line)?;
                 } else {
                     write!(&mut buf, "{} ({});", frame.name, filename)?;
@@ -85,7 +85,7 @@ fn write_flamegraph(source: &Path, target: File) -> Result<(), Error> {
     let mut child = Command::new("perl")
         .arg("-")
         .arg("--inverted") // icicle graphs are easier to read
-        .arg("--minwidth").arg("2") // min width 2 pixels saves on disk space
+        .arg("--minwidth").arg("1") // min width 2 pixels saves on disk space
         .arg(source)
         .stdin(Stdio::piped()) // pipe in the flamegraph.pl script to stdin
         .stdout(target)
