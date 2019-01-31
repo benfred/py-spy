@@ -237,6 +237,10 @@ pub fn get_compact_unwind_info(unwind_info: &[u8], mach_address: u64, pc: u64) -
                                             (*second_level_header).entryCount as usize)
             };
 
+            if entry.functionOffset > target_offset {
+                return Err(Error::PageOutOfBounds);
+            }
+
             let second_level_offset = target_offset - entry.functionOffset;
             let element = match second_level_index.binary_search_by(|e| (e & 0x00FFFFFF).cmp(&second_level_offset)) {
                 Ok(v) => v,
