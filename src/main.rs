@@ -80,19 +80,22 @@ fn print_traces(traces: &[StackTrace], show_idle: bool) {
 }
 
 // Given a failure::Error, tries to see if it is because the process exitted
-fn process_exitted(pid: read_process_memory::Pid, err: &Error) -> bool {
+fn process_exitted(process: &remoteprocess::Process, err: &Error) -> bool {
+    fn check_io_error(process: &remoteprocess::Process, err: &std::io::Error) -> bool {
+        if let Some(err_code) = err.raw_os_error() {
+            if err_code == 3 || err_code == 60 || err_code == 299 {
+                return process.exe().is_err();
+            }
+        }
+        false
+    }
+
     err.iter_chain().any(|cause| {
         if let Some(ioerror) = cause.downcast_ref::<std::io::Error>() {
-            if let Some(err_code) = ioerror.raw_os_error() {
-                if err_code == 3 || err_code == 60 || err_code == 299 {
-                    // final check, if we can't get the process (or executable)
-                    // then we're done
-                    return match remoteprocess::Process::new(pid) {
-                        Ok(process) => process.exe().is_err(),
-                        Err(_) => true,
-                    };
-                }
-            }
+            return check_io_error(process, ioerror);
+        }
+        if let Some(remoteprocess::Error::IOError(ioerror)) = cause.downcast_ref::<remoteprocess::Error>() {
+            return check_io_error(process, ioerror);
         }
         false
     })
@@ -103,7 +106,9 @@ fn permission_denied(err: &Error) -> bool {
     err.iter_chain().any(|cause| {
         if let Some(ioerror) = cause.downcast_ref::<std::io::Error>() {
             ioerror.kind() == std::io::ErrorKind::PermissionDenied
-        } else {
+        } else if let Some(remoteprocess::Error::IOError(ioerror)) = cause.downcast_ref::<remoteprocess::Error>() {
+            ioerror.kind() == std::io::ErrorKind::PermissionDenied
+        }else {
             false
         }
     })
@@ -128,14 +133,14 @@ fn sample_console(process: &mut PythonSpy,
                 console.increment(&traces)?;
             },
             Err(err) => {
-                if process_exitted(process.pid, &err) {
+                if process_exitted(&process.process, &err) {
                     exitted_count += 1;
                     if exitted_count > 5 {
                         println!("\nprocess {} ended", process.pid);
                         break;
                     }
                 } else {
-                    console.increment_error(&err);
+                    console.increment_error(&err)?;
                 }
             }
         }
@@ -194,7 +199,7 @@ fn sample_flame(process: &mut PythonSpy, filename: &str, config: &config::Config
                 }
             },
             Err(err) => {
-                if process_exitted(process.pid, &err) {
+                if process_exitted(&process.process, &err) {
                     exitted_count += 1;
                     // there must be a better way to figure out if the process is still running
                     if exitted_count > 3 {

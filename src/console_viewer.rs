@@ -95,14 +95,7 @@ impl ConsoleViewer {
                 format!("{} ({})", frame.name, filename)
             });
         }
-        self.stats.current_samples += 1;
-        self.stats.overall_samples += 1;
-        self.stats.elapsed += self.sampling_rate;
-
-        if self.should_refresh() {
-            self.display()?;
-            self.stats.reset_current();
-        }
+        self.increment_common()?;
         Ok(())
     }
 
@@ -230,11 +223,11 @@ impl ConsoleViewer {
         Ok(())
     }
 
-    pub fn increment_error(&mut self, err: &Error) {
+    pub fn increment_error(&mut self, err: &Error) ->  Result<(), Error> {
         self.maybe_reset();
         self.stats.errors += 1;
-        self.stats.overall_samples += 1;
         self.stats.last_error = Some(format!("{}", err));
+        self.increment_common()
     }
 
     pub fn increment_late_sample(&mut self, delay: std::time::Duration) {
@@ -249,6 +242,19 @@ impl ConsoleViewer {
             _ => self.options.lock().unwrap().dirty ||
                  self.stats.elapsed >= 1.0
         }
+    }
+
+    // shared code between increment and increment_error
+    fn increment_common(&mut self) -> Result<(), Error> {
+        self.stats.current_samples += 1;
+        self.stats.overall_samples += 1;
+        self.stats.elapsed += self.sampling_rate;
+
+        if self.should_refresh() {
+            self.display()?;
+            self.stats.reset_current();
+        }
+        Ok(())
     }
 
     fn maybe_reset(&mut self) {
