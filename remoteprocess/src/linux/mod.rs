@@ -1,23 +1,30 @@
 pub mod libunwind;
 mod gimli_unwinder;
 mod symbolication;
+use libc::c_void;
 
 use goblin::error::Error as GoblinError;
 
-use nix::{self, sys::wait, {sched::{setns, CloneFlags}}};
+use nix::{self, sys::wait, sys::ptrace, {sched::{setns, CloneFlags}}};
+use std::io::Read;
 use std::os::unix::io::AsRawFd;
 use std::fs::File;
 
+use dwarf_unwind::Registers;
 use super::Error;
 pub use self::gimli_unwinder::*;
 pub use self::symbolication::*;
 pub use self::libunwind::{LibUnwind};
 
 pub use read_process_memory::{Pid, ProcessHandle};
-pub use nix::unistd::Pid as Tid;
 
 pub struct Process {
     pub pid: Pid,
+}
+
+#[derive(Eq, PartialEq, Hash, Copy, Clone)]
+pub struct Thread {
+    tid: nix::unistd::Pid
 }
 
 impl Process {
@@ -48,9 +55,10 @@ impl Process {
         // created
         while !done {
             done = true;
-            for threadid in self.threads()? {
+            for thread in self.threads()? {
+                let threadid = thread.id()?;
                 if !locked.contains(&threadid) {
-                    locks.push(ThreadLock::new(threadid).map_err(|e| Error::Other(format!("Failed to lock {:?}", e)))?);
+                    locks.push(thread.lock()?);
                     locked.insert(threadid);
                     done = false;
                 }
@@ -60,7 +68,7 @@ impl Process {
         Ok(Lock{locks})
     }
 
-    pub fn threads(&self) -> Result<Vec<Tid>, Error> {
+    pub fn threads(&self) -> Result<Vec<Thread>, Error> {
         let mut ret = Vec::new();
         let path = format!("/proc/{}/task", self.pid);
         let tasks = std::fs::read_dir(path)?;
@@ -73,7 +81,7 @@ impl Process {
             };
 
             if let Ok(threadid) = thread.parse::<i32>() {
-                ret.push(Tid::from_raw(threadid));
+                ret.push(Thread{tid: nix::unistd::Pid::from_raw(threadid)});
             }
         }
         Ok(ret)
@@ -84,6 +92,43 @@ impl Process {
     }
 }
 
+impl Thread {
+    pub fn new(threadid: i32) -> Thread{
+        Thread{tid: nix::unistd::Pid::from_raw(threadid)}
+    }
+
+    pub fn lock(&self) -> Result<ThreadLock, Error> {
+        Ok(ThreadLock::new(self.tid)?)
+    }
+
+    pub fn registers(&self) -> Result<Registers, Error> {
+        unsafe {
+            let mut data: Registers = std::mem::zeroed();
+            // nix has marked this as deprecated (in favour of specific functions like attach)
+            // but hasn't yet exposed PTRACE_GETREGS as it's own function
+            #[allow(deprecated)]
+            ptrace::ptrace(ptrace::Request::PTRACE_GETREGS, self.tid,
+                            std::ptr::null_mut(),
+                            &mut data as *mut _ as * mut c_void)?;
+            Ok(data)
+        }
+    }
+
+    pub fn id(&self) -> Result<u64, Error> {
+        Ok(self.tid.as_raw() as u64)
+    }
+
+    pub fn active(&self) -> Result<bool, Error> {
+        let mut file = File::open(format!("/proc/{}/stat", self.tid))?;
+
+        let mut buf=[0u8; 512];
+        file.read(&mut buf)?;
+        match get_active_status(&buf) {
+            Some(stat) => Ok(stat == b'R'),
+            None => Err(Error::Other(format!("Failed to parse /proc/{}/stat", self.tid)))
+        }
+    }
+}
 
 /// This locks a target process using ptrace, and prevents it from running while this
 /// struct is alive
@@ -92,12 +137,12 @@ pub struct Lock {
     locks: Vec<ThreadLock>
 }
 
-struct ThreadLock {
-    tid: Tid
+pub struct ThreadLock {
+    tid: nix::unistd::Pid
 }
 
 impl ThreadLock {
-    fn new(tid: Tid) -> Result<ThreadLock, nix::Error> {
+    fn new(tid: nix::unistd::Pid) -> Result<ThreadLock, nix::Error> {
         nix::sys::ptrace::attach(tid)?;
         wait::waitpid(tid, Some(wait::WaitPidFlag::WSTOPPED))?;
         debug!("attached to thread {}", tid);
@@ -144,4 +189,25 @@ impl Drop for Namespace {
             info!("Restored process namespace");
         }
     }
+}
+
+fn get_active_status(stat: &[u8]) -> Option<u8> {
+    // find the first ')' character, and return the active status
+    // field which comes after it
+    let mut iter = stat.iter().skip_while(|x| **x != b')');
+    match (iter.next(), iter.next(), iter.next()) {
+        (Some(b')'), Some(b' '), ret) => ret.map(|x| *x),
+        _ => None
+    }
+}
+
+#[test]
+fn test_parse_stat() {
+    assert_eq!(get_active_status(b"1234 (bash) S 1233"), Some(b'S'));
+    assert_eq!(get_active_status(b"1234 (with space) R 1233"), Some(b'R'));
+    assert_eq!(get_active_status(b"1234"), None);
+    assert_eq!(get_active_status(b")"), None);
+    assert_eq!(get_active_status(b")))"), None);
+    assert_eq!(get_active_status(b"1234 (bash)S"), None);
+    assert_eq!(get_active_status(b"1234)SSSS"), None);
 }

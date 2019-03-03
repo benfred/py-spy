@@ -9,6 +9,7 @@ use winapi::um::dbghelp::{SymInitializeW, SymCleanup,
                           SymFromAddrW, SymGetLineFromAddrW64, MAX_SYM_NAME, SYMBOL_INFOW, IMAGEHLP_LINEW64};
 use std::os::windows::ffi::{OsStringExt};
 
+use super::Thread;
 use super::super::Error;
 use super::super::StackFrame;
 use libc::wcslen;
@@ -42,8 +43,8 @@ impl Unwinder {
         Ok(())
     }
 
-    pub fn cursor(&self, tid: HANDLE) -> Result<Cursor, Error> {
-        Cursor::new(tid, self.handle)
+    pub fn cursor(&self, thread: &Thread) -> Result<Cursor, Error> {
+        Cursor::new(thread.thread, self.handle)
     }
 
     pub fn symbolicate(&self, addr: u64, callback: &mut FnMut(&StackFrame)) -> Result<(), Error> {
@@ -55,7 +56,7 @@ impl Unwinder {
             Err(Error::NoBinaryForAddress(_)) => {
                 unsafe {
                     SymRefreshModuleList(self.handle);
-                    self.symbol_module(addr).unwrap_or_else(|e| "?".to_owned())
+                    self.symbol_module(addr).unwrap_or_else(|_| "?".to_owned())
                 }
             },
             Err(_) => "?".to_owned()

@@ -8,29 +8,18 @@ extern crate nix;
 fn get_backtrace(pid: remoteprocess::Pid) -> Result<(), remoteprocess::Error> {
     // Create a new handle to the process
     let process = remoteprocess::Process::new(pid)?;
-
-    // lock the process to get a consistent snapshot. Unwinding will fail otherwise
-    let _lock = process.lock()?;
-
     // Create a stack unwind object, and use it to get the stack for each thread
     let unwinder = process.unwinder()?;
-    for (i, thread) in process.threads()?.iter().enumerate() {
-        let thread = *thread;
-        #[cfg(unix)]
-        println!("Thread {} ({})", i, thread);
+    for thread in process.threads()?.iter() {
+        println!("Thread 0x{:0x} - {}", thread.id()?, if thread.active()? { "running" } else { "idle" });
 
-        // TODO: normalize this using GetThreadId or something
-        #[cfg(windows)]
-        println!("Thread {}", i);
-
-        /* TODO: cross pross thread status
-        let threadid = get_thread_identifier_info(thread)?;
-        let threadstatus = get_thread_basic_info(thread)?;
-        println!("status: {:?} id {:?}", threadstatus, threadid);
-        */
+        // lock the thread to get a consistent snapshot (unwinding will fail otherwise)
+        // Note: the thread will appear idle when locked, so wee are calling
+        // thread.active() before this
+        let _lock = thread.lock()?;
 
         // Iterate over the callstack for the current thread
-        for ip in unwinder.cursor(thread)? {
+        for ip in unwinder.cursor(&thread)? {
             let ip = ip?;
 
             // Lookup the current stack frame containing a filename/function/linenumber etc

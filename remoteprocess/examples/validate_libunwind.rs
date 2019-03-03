@@ -24,7 +24,9 @@ fn libunwind_compare(pid: remoteprocess::Pid) -> Result<(), remoteprocess::Error
 
     let _lock = process.lock()?;
 
-    let mut gimli_cursor = unwinder.cursor(nix::unistd::Pid::from_raw(pid))?;
+    let thread = remoteprocess::Thread::new(pid);
+
+    let mut gimli_cursor = unwinder.cursor(&thread)?;
     let mut libunwind_cursor = libunwinder.cursor(pid)?;
 
     loop {

@@ -1,4 +1,4 @@
-remoteproces
+remoteprocess
 =====
 
 This crate provides a cross platform way of querying information about other processes running on

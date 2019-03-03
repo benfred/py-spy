@@ -86,15 +86,15 @@ impl NativeStack {
 
             for thread in self.process.threads()? {
                 #[cfg(not(target_os="linux"))]
-                let (stack, python_thread_id) = self.get_thread(&threadids, thread)?;
+                let (stack, python_thread_id) = self.get_thread(&threadids, &thread)?;
 
                 // on linux, try again with libunwind if we fail with the gimli based unwinder
                 #[cfg(target_os="linux")]
-                let (stack, python_thread_id) = match self.get_thread(&threadids, thread) {
+                let (stack, python_thread_id) = match self.get_thread(&threadids, &thread) {
                     Ok(x) => x,
                     Err(e) => {
                         if self.libunwinder.is_some() {
-                            self.get_libunwind_thread(&threadids, thread)?
+                            self.get_libunwind_thread(&threadids, &thread)?
                         } else {
                             return Err(e);
                         }
@@ -126,10 +126,15 @@ impl NativeStack {
                     #[cfg(windows)]
                     let is_python_exe = frame.module.to_lowercase() == self.python_filename.to_lowercase();
 
+                    let mut insert_native = true;
+
                     if is_python_exe ||
                        Some(&frame.module) == self.libpython_filename.as_ref() ||
                        self.python_filename.starts_with(&frame.module) {
+
+                        insert_native = false;
                         if let Some(ref function) = frame.function {
+
                             // ugh, probably could do a better job of figuring this out
                             // (also the symbols are different for each OS)
                             if function == "PyEval_EvalFrameDefault" ||
@@ -144,9 +149,13 @@ impl NativeStack {
                                     merged.push(trace.frames[python_frame_index].clone());
                                 }
                                 python_frame_index += 1;
+                            } else if function == "_time_sleep" || function == "time_sleep" {
+                                insert_native = true;
                             }
                         }
-                    } else {
+                    }
+
+                    if insert_native {
                         match &frame.function {
                             Some(func) =>  {
                                 if ignore_frame(func, &frame.module) {
@@ -210,13 +219,13 @@ impl NativeStack {
             for frame in merged.iter_mut() {
                 self.cython_maps.translate(frame);
             }
-            trace.os_thread_id = Some(os_thread_id);
+            trace.os_thread_id = Some(os_thread_id.id()?);
             trace.frames = merged;
         }
         Ok(traces)
     }
 
-    fn get_thread(&mut self, threadids: &HashSet<u64>, thread: remoteprocess::Tid) -> Result<(Vec<u64>, u64), Error> {
+    fn get_thread(&mut self, threadids: &HashSet<u64>, thread: &remoteprocess::Thread) -> Result<(Vec<u64>, u64), Error> {
         let mut stack = Vec::new();
         let mut cursor = self.unwinder.cursor(thread)?;
         #[allow(unused_assignments)]
@@ -242,17 +251,17 @@ impl NativeStack {
 
         #[cfg(windows)]
         {
-        python_thread_id = remoteprocess::get_thread_id(thread) as u64;
+        python_thread_id = thread.id()?;
         }
 
         Ok((stack, python_thread_id))
     }
 
     #[cfg(target_os="linux")]
-    fn get_libunwind_thread(&self, threadids: &HashSet<u64>, thread: remoteprocess::Tid) -> Result<(Vec<u64>, u64), Error> {
+    fn get_libunwind_thread(&self, threadids: &HashSet<u64>, thread: &remoteprocess::Thread) -> Result<(Vec<u64>, u64), Error> {
         let mut stack = Vec::new();
         let unwinder = self.libunwinder.as_ref().unwrap();
-        let mut cursor = unwinder.cursor(i32::from(thread))?;
+        let mut cursor = unwinder.cursor(thread.id()? as i32)?;
         let mut bx = 0;
         while let Some(ip) = cursor.next() {
             if let Ok(next_bx) = cursor.bx() {
