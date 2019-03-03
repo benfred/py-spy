@@ -1,16 +1,15 @@
-use winapi::um::processthreadsapi::{OpenProcess, GetThreadId};
+use winapi::um::processthreadsapi::{OpenProcess, GetThreadId, SuspendThread, ResumeThread};
 use winapi::um::winnt::{ACCESS_MASK, MAXIMUM_ALLOWED, PROCESS_QUERY_INFORMATION,
                         PROCESS_VM_READ, PROCESS_SUSPEND_RESUME, THREAD_QUERY_INFORMATION, THREAD_GET_CONTEXT,
                         WCHAR, HANDLE};
-use winapi::shared::minwindef::{FALSE, DWORD, MAX_PATH, ULONG, TRUE};
+use winapi::shared::minwindef::{FALSE, DWORD, MAX_PATH, ULONG};
 use winapi::um::handleapi::{CloseHandle};
 use winapi::um::winbase::QueryFullProcessImageNameW;
 use std::ffi::OsString;
 use std::os::windows::ffi::{OsStringExt};
-use winapi::shared::ntdef::NTSTATUS;
+use winapi::shared::ntdef::{PVOID, NTSTATUS, USHORT, VOID, NULL};
 
 pub use read_process_memory::{Pid, ProcessHandle};
-pub use ProcessHandle as Tid;
 
 use super::Error;
 
@@ -30,6 +29,8 @@ extern "system" {
     fn RtlNtStatusToDosError(status: NTSTATUS) -> ULONG;
     fn NtSuspendProcess(process: HANDLE) -> NTSTATUS;
     fn NtResumeProcess(process: HANDLE) -> NTSTATUS;
+
+    fn NtQueryInformationThread(thread: HANDLE, info_class: u32, info: PVOID, info_len: ULONG, ret_len: * mut ULONG) -> NTSTATUS;
 
     // Use NtGetNextThread to get process threads. This limits us to Windows Vista and above,
     fn NtGetNextThread(process: HANDLE, thread: HANDLE, access: ACCESS_MASK, attritubes: ULONG, flags: ULONG, new_thread: *mut HANDLE) -> NTSTATUS;
@@ -82,13 +83,14 @@ impl Process {
         Ok("/".to_owned())
     }
 
-    pub fn threads(&self) -> Result<Vec<Tid>, Error> {
+    pub fn threads(&self) -> Result<Vec<Thread>, Error> {
         let mut ret = Vec::new();
         unsafe {
-            let mut current_thread: HANDLE = std::mem::zeroed();
-            while NtGetNextThread(self.handle, current_thread, MAXIMUM_ALLOWED, 0, 0,
-                                  &mut current_thread as *mut HANDLE) == 0 {
-                ret.push(current_thread);
+            // TODO: do we need to CloseHandle the thing returned here?
+            let mut thread: HANDLE = std::mem::zeroed();
+            while NtGetNextThread(self.handle, thread, MAXIMUM_ALLOWED, 0, 0,
+                                  &mut thread as *mut HANDLE) == 0 {
+                ret.push(Thread{thread});
             }
         }
         Ok(ret)
@@ -104,6 +106,40 @@ impl Drop for Process {
         unsafe { CloseHandle(self.handle); }
     }
 }
+
+#[derive(Eq, PartialEq, Hash, Copy, Clone)]
+pub struct Thread {
+    thread: ProcessHandle
+}
+
+impl Thread {
+    pub fn lock(&self) -> Result<ThreadLock, Error> {
+        ThreadLock::new(self.thread)
+    }
+
+    pub fn id(&self) -> Result<u64, Error> {
+        unsafe { Ok(GetThreadId(self.thread) as u64) }
+    }
+
+    pub fn active(&self) -> Result<bool, Error> {
+        // Getting whether a thread is active or not is suprisingly difficult on windows
+        // Let's attempt this by checking if the thread is doing a syscall (like WaitForSingleObject,
+        // etc) and if so assume it's idle
+        unsafe {
+            let mut data = std::mem::zeroed::<THREAD_LAST_SYSCALL_INFORMATION>();
+            let ret = NtQueryInformationThread(self.thread, 21,
+                &mut data as *mut _ as *mut VOID,
+                std::mem::size_of::<THREAD_LAST_SYSCALL_INFORMATION>() as u32,
+                NULL as *mut u32);
+
+            // If this call fails (ret == 0), then the thread isn't waiting
+            // TODO: maybe inspect the syscall on sucess, and don't return idle for some
+            // of them?
+            return Ok(ret != 0);
+        }
+    }
+}
+
 
 pub struct Lock {
     process: ProcessHandle
@@ -133,6 +169,36 @@ impl Drop for Lock {
     }
 }
 
-pub fn get_thread_id(tid: Tid) -> u32 {
-    unsafe { GetThreadId(tid) }
+pub struct ThreadLock {
+    thread: ProcessHandle
+}
+
+impl ThreadLock {
+    pub fn new(thread: ProcessHandle) -> Result<ThreadLock, Error> {
+        unsafe {
+            let ret = SuspendThread(thread);
+            if ret.wrapping_add(1) == 0 {
+                return Err(std::io::Error::last_os_error().into());
+            }
+
+            Ok(ThreadLock{thread})
+        }
+    }
+}
+
+impl Drop for ThreadLock {
+    fn drop(&mut self) {
+        unsafe {
+            if ResumeThread(self.thread).wrapping_add(1) == 0 {
+                panic!("Failed to resume thread {}", std::io::Error::last_os_error());
+            }
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+struct THREAD_LAST_SYSCALL_INFORMATION {
+    arg1: PVOID,
+    syscall_number: USHORT
 }

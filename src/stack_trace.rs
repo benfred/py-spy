@@ -9,7 +9,7 @@ use utils::{copy_pointer};
 #[derive(Debug)]
 pub struct StackTrace {
     pub thread_id: u64,
-    pub os_thread_id: Option<::remoteprocess::Tid>,
+    pub os_thread_id: Option<u64>,
     pub active: bool,
     pub owns_gil: bool,
     pub frames: Vec<Frame>

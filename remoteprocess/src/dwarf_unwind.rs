@@ -119,7 +119,7 @@ impl UnwindInfo {
     #[cfg(target_os="macos")]
     fn get_fde(&self, pc: u64) -> gimli::Result<&FrameDescriptionEntry> {
         // Binary search frame description table to get the FDE on osx
-        if self.frame_descriptions.len() == 0 {
+        if self.frame_descriptions.is_empty() {
             return Err(gimli::Error::NoUnwindInfoForAddress);
         }
         let fde = match self.frame_descriptions.binary_search_by(|e| e.0.cmp(&pc)) {

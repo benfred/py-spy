@@ -12,12 +12,15 @@ use mach::kern_return::{KERN_SUCCESS};
 use mach::port::{mach_port_name_t, MACH_PORT_NULL};
 use mach::traps::{task_for_pid, mach_task_self};
 pub use read_process_memory::{Pid, ProcessHandle};
-pub type Tid = u32;
 
 use libc::{c_int};
 
 use mach::kern_return::{kern_return_t};
 use mach::mach_types::{thread_act_t};
+use mach::structs::x86_thread_state64_t;
+use mach::thread_status::x86_THREAD_STATE64;
+use mach::thread_act::{thread_get_state};
+
 pub use self::utils::{TaskLock, ThreadLock};
 pub use self::unwinder::Unwinder;
 
@@ -26,6 +29,11 @@ use libproc::libproc::proc_pid::{pidpath, pidinfo, PIDInfo, PidInfoFlavor};
 pub struct Process {
     pub pid: Pid,
     pub task: mach_port_name_t
+}
+
+#[derive(Eq, PartialEq, Hash, Copy, Clone)]
+pub struct Thread {
+    pub tid: u32
 }
 
 impl Process {
@@ -54,7 +62,7 @@ impl Process {
         Ok(TaskLock::new(self.task)?)
     }
 
-    pub fn threads(&self) -> Result<Vec<Tid>, Error> {
+    pub fn threads(&self) -> Result<Vec<Thread>, Error> {
         let mut threads: mach::mach_types::thread_act_array_t = unsafe { std::mem::zeroed() };
         let mut thread_count: u32 = 0;
         let result = unsafe { mach::task::task_threads(self.task, &mut threads, &mut thread_count) };
@@ -64,7 +72,8 @@ impl Process {
 
         let mut ret = Vec::new();
         for i in 0..thread_count {
-            ret.push(unsafe{ *threads.offset(i as isize) });
+            let tid = unsafe { *threads.offset(i as isize) };
+            ret.push(Thread{tid});
         }
         Ok(ret)
     }
@@ -75,37 +84,68 @@ impl Process {
 }
 
 use self::mach_thread_bindings::{thread_info, thread_basic_info, thread_identifier_info,
-                                 THREAD_IDENTIFIER_INFO, THREAD_BASIC_INFO};
+                                 THREAD_IDENTIFIER_INFO, THREAD_BASIC_INFO,
+                                 TH_FLAGS_IDLE, TH_STATE_RUNNING};
 
 
-pub fn get_thread_basic_info(thread: Tid) -> Result<thread_basic_info, std::io::Error> {
-    let mut info: thread_basic_info = unsafe { std::mem::zeroed() };
-    let mut info_size: u32 = (std::mem::size_of::<thread_basic_info>() / std::mem::size_of::<i32>()) as u32;
-
-    let result = unsafe {
-        thread_info(thread, THREAD_BASIC_INFO,
-                    &mut info as *mut thread_basic_info as *mut i32,
-                    &mut info_size)
-    };
-    if result != KERN_SUCCESS {
-        return Err(std::io::Error::last_os_error());
+impl Thread {
+    pub fn id(&self) -> Result<u64, Error> {
+        let thread_id = self.get_thread_identifier_info()?;
+        Ok(thread_id.thread_handle)
     }
-    Ok(info)
-}
 
-pub fn get_thread_identifier_info(thread: Tid) -> Result<thread_identifier_info, std::io::Error> {
-    let mut thread_id: thread_identifier_info = unsafe { std::mem::zeroed() };
-    let mut thread_id_size: u32 = (std::mem::size_of::<thread_identifier_info>() / std::mem::size_of::<i32>()) as u32;
-    let result = unsafe {
-        thread_info(thread,
-                    THREAD_IDENTIFIER_INFO,
-                    &mut thread_id as *mut thread_identifier_info as *mut i32,
-                    &mut thread_id_size)
-    };
-    if result != KERN_SUCCESS {
-        return Err(std::io::Error::last_os_error());
+    pub fn active(&self) -> Result<bool, Error> {
+        let info = self.get_thread_basic_info()?;
+        Ok(info.run_state == TH_STATE_RUNNING as i32 &&
+           info.flags & TH_FLAGS_IDLE as i32 == 0)
     }
-    Ok(thread_id)
+
+    pub fn lock(&self) -> Result<ThreadLock, Error> {
+        Ok(ThreadLock::new(self.tid)?)
+    }
+
+    pub fn registers(&self) -> Result<x86_thread_state64_t, std::io::Error> {
+        unsafe {
+            let thread_state = x86_thread_state64_t::new();
+            let thread_state_size = x86_thread_state64_t::count();
+            let result = thread_get_state(self.tid, x86_THREAD_STATE64, std::mem::transmute(&thread_state),
+                                        std::mem::transmute(&thread_state_size));
+            if result != KERN_SUCCESS {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(thread_state)
+        }
+    }
+
+    pub fn get_thread_basic_info(&self) -> Result<thread_basic_info, std::io::Error> {
+        let mut info: thread_basic_info = unsafe { std::mem::zeroed() };
+        let mut info_size: u32 = (std::mem::size_of::<thread_basic_info>() / std::mem::size_of::<i32>()) as u32;
+
+        let result = unsafe {
+            thread_info(self.tid, THREAD_BASIC_INFO,
+                        &mut info as *mut thread_basic_info as *mut i32,
+                        &mut info_size)
+        };
+        if result != KERN_SUCCESS {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(info)
+    }
+
+    pub fn get_thread_identifier_info(&self) -> Result<thread_identifier_info, std::io::Error> {
+        let mut thread_id: thread_identifier_info = unsafe { std::mem::zeroed() };
+        let mut thread_id_size: u32 = (std::mem::size_of::<thread_identifier_info>() / std::mem::size_of::<i32>()) as u32;
+        let result = unsafe {
+            thread_info(self.tid,
+                        THREAD_IDENTIFIER_INFO,
+                        &mut thread_id as *mut thread_identifier_info as *mut i32,
+                        &mut thread_id_size)
+        };
+        if result != KERN_SUCCESS {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(thread_id)
+    }
 }
 
 // extra struct definitions needed to get CWD from proc_pidinfo

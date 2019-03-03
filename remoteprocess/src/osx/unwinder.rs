@@ -8,16 +8,12 @@ use std::fs::File;
 use std::path::Path;
 use std::cell::RefCell;
 
-use super::Error;
+use super::{Error, Thread};
 use goblin::error::Error as GoblinError;
-use mach::kern_return::{KERN_SUCCESS};
 use mach::port::mach_port_name_t;
 use mach::structs::x86_thread_state64_t;
-use mach::thread_status::x86_THREAD_STATE64;
-use mach::thread_act::{thread_get_state};
 pub use read_process_memory::Pid;
 use read_process_memory::{TryIntoProcessHandle, ProcessHandle};
-pub type Tid = u32;
 
 use super::super::StackFrame;
 
@@ -92,8 +88,8 @@ impl Unwinder {
         }
     }
 
-    pub fn cursor(&self, tid: Tid) -> Result<Cursor, std::io::Error> {
-        Ok(Cursor{registers: get_registers(tid)?, parent: self, initial_frame: true})
+    pub fn cursor(&self, thread: &Thread) -> Result<Cursor, std::io::Error> {
+        Ok(Cursor{registers: thread.registers()?, parent: self, initial_frame: true})
     }
 
     pub fn symbolicate(&self, addr: u64, callback: &mut FnMut(&StackFrame)) -> Result<(), Error> {
@@ -305,19 +301,6 @@ impl<'a> Iterator for Cursor<'a> {
             Err(e) => Some(Err(e)),
             Ok(None) => None,
         }
-    }
-}
-
-fn get_registers(thread: Tid) -> Result<x86_thread_state64_t, std::io::Error> {
-    unsafe {
-        let thread_state = x86_thread_state64_t::new();
-        let thread_state_size = x86_thread_state64_t::count();
-        let result = thread_get_state(thread, x86_THREAD_STATE64, std::mem::transmute(&thread_state),
-                                      std::mem::transmute(&thread_state_size));
-        if result != KERN_SUCCESS {
-            return Err(std::io::Error::last_os_error());
-        }
-        Ok(thread_state)
     }
 }
 

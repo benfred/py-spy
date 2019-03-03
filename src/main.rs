@@ -59,12 +59,7 @@ fn print_traces(traces: &[StackTrace], show_idle: bool) {
         }
 
         if let Some(os_thread_id) = trace.os_thread_id {
-            #[cfg(not(windows))]
-            println!("Thread {:#X}/{} ({})", trace.thread_id,  os_thread_id, trace.status_str());
-            #[cfg(windows)]
-            println!("Thread {:#X}/{} ({})", trace.thread_id,
-                     remoteprocess::get_thread_id(os_thread_id), trace.status_str());
-
+            println!("Thread {:#X}/{:#X} ({})", trace.thread_id,  os_thread_id, trace.status_str());
         } else {
             println!("Thread {:#X} ({})", trace.thread_id, trace.status_str());
         }
@@ -79,26 +74,8 @@ fn print_traces(traces: &[StackTrace], show_idle: bool) {
     }
 }
 
-// Given a failure::Error, tries to see if it is because the process exitted
-fn process_exitted(process: &remoteprocess::Process, err: &Error) -> bool {
-    fn check_io_error(process: &remoteprocess::Process, err: &std::io::Error) -> bool {
-        if let Some(err_code) = err.raw_os_error() {
-            if err_code == 3 || err_code == 60 || err_code == 299 {
-                return process.exe().is_err();
-            }
-        }
-        false
-    }
-
-    err.iter_chain().any(|cause| {
-        if let Some(ioerror) = cause.downcast_ref::<std::io::Error>() {
-            return check_io_error(process, ioerror);
-        }
-        if let Some(remoteprocess::Error::IOError(ioerror)) = cause.downcast_ref::<remoteprocess::Error>() {
-            return check_io_error(process, ioerror);
-        }
-        false
-    })
+fn process_exitted(process: &remoteprocess::Process) -> bool {
+    process.exe().is_err()
 }
 
 #[cfg(unix)]
@@ -121,7 +98,6 @@ fn sample_console(process: &mut PythonSpy,
     let mut console = ConsoleViewer::new(config.show_line_numbers, display,
                                          &format!("{}", process.version),
                                          1.0 / rate as f64)?;
-    let mut exitted_count = 0;
 
     for sleep in utils::Timer::new(Duration::from_nanos(1_000_000_000 / rate)) {
         if let Err(elapsed) = sleep {
@@ -133,12 +109,9 @@ fn sample_console(process: &mut PythonSpy,
                 console.increment(&traces)?;
             },
             Err(err) => {
-                if process_exitted(&process.process, &err) {
-                    exitted_count += 1;
-                    if exitted_count > 5 {
-                        println!("\nprocess {} ended", process.pid);
-                        break;
-                    }
+                if process_exitted(&process.process) {
+                    println!("\nprocess {} ended", process.pid);
+                    break;
                 } else {
                     console.increment_error(&err)?;
                 }
@@ -162,7 +135,6 @@ fn sample_flame(process: &mut PythonSpy, filename: &str, config: &config::Config
 
     let mut errors = 0;
     let mut samples = 0;
-    let mut exitted_count = 0;
     println!();
 
     let running = Arc::new(AtomicBool::new(true));
@@ -176,12 +148,12 @@ fn sample_flame(process: &mut PythonSpy, filename: &str, config: &config::Config
     for sleep in utils::Timer::new(Duration::from_nanos(1_000_000_000 / config.sampling_rate)) {
         if let Err(delay) = sleep {
             if delay > Duration::from_secs(1) {
-                    // TODO: once this available on crates.io https://github.com/mitsuhiko/indicatif/pull/41
-                    // go progress.println instead
-                    let term = console::Term::stdout();
-                    term.move_cursor_up(2)?;
-                    println!("{:.2?} behind in sampling, results may be inaccurate. Try reducing the sampling rate.", delay);
-                    term.move_cursor_down(1)?;
+                // TODO: once this available on crates.io https://github.com/mitsuhiko/indicatif/pull/41
+                // go progress.println instead
+                let term = console::Term::stdout();
+                term.move_cursor_up(2)?;
+                println!("{:.2?} behind in sampling, results may be inaccurate. Try reducing the sampling rate.", delay);
+                term.move_cursor_down(1)?;
             }
         }
 
@@ -198,14 +170,10 @@ fn sample_flame(process: &mut PythonSpy, filename: &str, config: &config::Config
                     break;
                 }
             },
-            Err(err) => {
-                if process_exitted(&process.process, &err) {
-                    exitted_count += 1;
-                    // there must be a better way to figure out if the process is still running
-                    if exitted_count > 3 {
-                        exit_message = "Stopped sampling because the process ended";
-                        break;
-                    }
+            Err(_) => {
+                if process_exitted(&process.process) {
+                    exit_message = "Stopped sampling because the process ended";
+                    break;
                 } else {
                     errors += 1;
                 }

@@ -4,13 +4,10 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
-use libc::c_void;
 use read_process_memory::{TryIntoProcessHandle, ProcessHandle, copy_address};
 use goblin::Object;
 use goblin::error::Error as GoblinError;
 use memmap::Mmap;
-use nix;
-use nix::sys::ptrace;
 use proc_maps;
 
 use gimli::{EhFrame, BaseAddresses, Pointer, NativeEndian, EhFrameHdr};
@@ -25,7 +22,7 @@ use dwarf_unwind::{UnwindInfo, Registers};
 
 use linux::symbolication::{SymbolData};
 use super::super::StackFrame;
-use super::{Tid, Pid};
+use super::{Pid, Thread};
 
 pub struct Unwinder {
     binaries: BTreeMap<u64, BinaryInfo>,
@@ -165,9 +162,8 @@ impl Unwinder {
         Ok(())
     }
 
-    pub fn cursor(&self, tid: Tid) -> Result<Cursor, nix::Error> {
-        let registers = get_regs(tid)?;
-        Ok(Cursor{registers, parent: self, initial_frame: true})
+    pub fn cursor(&self, thread: &Thread) -> Result<Cursor, Error> {
+        Ok(Cursor{registers: thread.registers()?, parent: self, initial_frame: true})
     }
 
     pub fn symbolicate(&self, addr: u64, callback: &mut FnMut(&StackFrame)) -> gimli::Result<()> {
@@ -270,18 +266,5 @@ struct BinaryInfo {
 impl BinaryInfo {
     pub fn contains(&self, addr: u64) -> bool {
         addr >= self.address && addr < (self.address + self.size)
-    }
-}
-
-fn get_regs(pid: nix::unistd::Pid) -> Result<Registers, nix::Error> {
-    unsafe {
-        let mut data: Registers = std::mem::zeroed();
-        // nix has marked this as deprecated (in favour of specific functions like attach)
-        // but hasn't yet exposed PTRACE_GETREGS as it's own function
-        #[allow(deprecated)]
-        ptrace::ptrace(ptrace::Request::PTRACE_GETREGS, pid,
-                        std::ptr::null_mut(),
-                        &mut data as *mut _ as * mut c_void)?;
-        Ok(data)
     }
 }
