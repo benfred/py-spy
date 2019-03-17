@@ -44,12 +44,14 @@ def extract_bindings(cpython_path, version, configure=False):
         # need to run configure on the current branch to generate pyconfig.h sometimes
         {("./configure prefix=" + os.path.join(cpython_path, version)) if configure else ""}
 
-        cat include/Python.h > bindgen_input.h
-        cat include/frameobject.h >> bindgen_input.h
+        cat Include/Python.h > bindgen_input.h
+        cat Include/frameobject.h >> bindgen_input.h
+        cat Include/internal/pystate.h >> bindgen_input.h
 
         bindgen  bindgen_input.h -o bindgen_output.rs \
             --with-derive-default \
             --no-layout-tests --no-doc-comments \
+            --whitelist-type _PyRuntimeState \
             --whitelist-type PyInterpreterState \
             --whitelist-type PyFrameObject \
             --whitelist-type PyThreadState \
@@ -60,7 +62,7 @@ def extract_bindings(cpython_path, version, configure=False):
             --whitelist-type PyUnicodeObject \
             --whitelist-type PyCompactUnicodeObject \
             --whitelist-type PyStringObject \
-             -- -I . -I ./Include
+             -- -I . -I ./Include -DPy_BUILD_CORE
     """)
     if ret:
         return ret
@@ -72,10 +74,10 @@ def extract_bindings(cpython_path, version, configure=False):
         o.write("#![allow(non_upper_case_globals)]\n")
         o.write("#![allow(non_camel_case_types)]\n")
         o.write("#![allow(non_snake_case)]\n")
-        o.write("#![cfg_attr(feature = \"cargo-clippy\", allow(useless_transmute))]\n")
-        o.write("#![cfg_attr(feature = \"cargo-clippy\", allow(default_trait_access))]\n")
-        o.write("#![cfg_attr(feature = \"cargo-clippy\", allow(cast_lossless))]\n")
-        o.write("#![cfg_attr(feature = \"cargo-clippy\", allow(trivially_copy_pass_by_ref))]\n\n")
+        o.write("#![allow(clippy::useless_transmute)]\n")
+        o.write("#![allow(clippy::default_trait_access)]\n")
+        o.write("#![allow(clippy::cast_lossless)]\n")
+        o.write("#![allow(clippy::trivially_copy_pass_by_ref)]\n")
         o.write(open(os.path.join(cpython_path, "bindgen_output.rs")).read())
 
 
