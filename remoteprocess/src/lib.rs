@@ -48,8 +48,6 @@ pub use windows::*;
 #[cfg(unix)]
 mod dwarf_unwind;
 
-extern crate fallible_iterator;
-
 #[derive(Debug)]
 pub enum Error {
     NoBinaryForAddress(u64),

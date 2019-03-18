@@ -1,17 +1,15 @@
 use std::fs::File;
 use memmap;
 
-use fallible_iterator::FallibleIterator;
 use object::{self, Object};
 use addr2line::Context;
 use gimli;
-use super::super::StackFrame;
+use crate::{StackFrame, Error};
 
-type SymbolContext = Context<gimli::EndianRcSlice<gimli::RunTimeEndian>>;
 
 pub struct SymbolData {
     // Contains symbol info for a single binary
-    ctx: SymbolContext,
+    ctx: Context,
     offset: u64,
     symbols: Vec<(u64, u64, String)>,
     dynamic_symbols: Vec<(u64, u64, String)>,
@@ -19,21 +17,21 @@ pub struct SymbolData {
 }
 
 impl SymbolData {
-    pub fn new(filename: &str, offset: u64) -> gimli::Result<SymbolData> {
+    pub fn new(filename: &str, offset: u64) -> Result<SymbolData, Error> {
         info!("opening {} for symbols", filename);
 
-        // TODO: this object API still relies on goblin v0.15 - which
-        // has some problems parsing some things. TODO: deprecate this
         let file = File::open(filename)?;
         let map = unsafe { memmap::Mmap::map(&file)? };
         let file = match object::File::parse(&*map) {
             Ok(f) => f,
             Err(e) => {
                 error!("failed to parse file for symbolication {}: {:?}", filename, e);
-                return Err(gimli::Error::OffsetOutOfBounds{});
+                return Err(gimli::Error::OffsetOutOfBounds.into());
             }
         };
-        let ctx = Context::new(&file)?;
+
+        let ctx = Context::new(&file)
+            .map_err(|e| Error::Other(format!("Failed to get symbol context for {}: {:?}", filename, e)))?;
 
         let mut symbols = Vec::new();
         for sym in file.symbols() {
@@ -53,19 +51,24 @@ impl SymbolData {
         Ok(SymbolData{ctx, offset, dynamic_symbols, symbols, filename: filename.to_owned()})
     }
 
-    pub fn symbolicate(&self, addr: u64, callback: &mut FnMut(&StackFrame)) -> gimli::Result<()> {
+    pub fn symbolicate(&self, addr: u64, callback: &mut FnMut(&StackFrame)) -> Result<(), Error> {
         let mut ret = StackFrame{line:None, filename: None, function: None, addr, module: self.filename.clone()};
 
         // get the address before relocations
         let offset = addr - self.offset;
         let mut has_debug_info = false;
 
+        // addr2line0.8 uses an older version of gimli (0.0.19) than we are using here (0.0.21),
+        // this means we can't use the type of the error returned ourselves here since the
+        // type alias is private. hack by re-mapping the error
+        let error_handler = |e| Error::Other(format!("addr2line error: {:?}", e));
+
         // if we have debugging info, get the appropiate stack frames for the adresss
-        let mut frames = self.ctx.find_frames(offset)?.enumerate();
-        while let Some((_, frame)) = frames.next()? {
+        let mut frames = self.ctx.find_frames(offset).map_err(error_handler)?;
+        while let Some(frame) = frames.next().map_err(error_handler)? {
             has_debug_info = true;
             if let Some(func) = frame.function {
-                ret.function = Some(func.raw_name()?.to_string());
+                ret.function = Some(func.raw_name().map_err(error_handler)?.to_string());
             }
             if let Some(loc) = frame.location {
                 ret.line = loc.line;

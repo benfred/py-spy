@@ -105,7 +105,7 @@ impl Unwinder {
                         Some(hdr) => {
                             eh_frame_hdr_addr = obj_base + hdr.p_vaddr;
                             let data = Rc::from(&buffer[hdr.p_offset as usize..][..hdr.p_filesz as usize]);
-                            let bases = BaseAddresses::default().set_cfi(eh_frame_hdr_addr);
+                            let bases = BaseAddresses::default().set_eh_frame_hdr(eh_frame_hdr_addr);
                             match EhFrameHdr::from(RcReader::new(data, NativeEndian)).parse(&bases, 8) {
                                 Ok(hdr) => hdr,
                                 Err(e) => {
@@ -139,7 +139,9 @@ impl Unwinder {
                         }
                     };
 
-                    let bases = BaseAddresses::default().set_cfi(eh_frame_addr).set_data(eh_frame_hdr_addr);
+                    let bases = BaseAddresses::default()
+                        .set_eh_frame(eh_frame_addr)
+                        .set_eh_frame_hdr(eh_frame_hdr_addr);
 
                     let unwind_info = UnwindInfo{eh_frame_hdr, eh_frame, bases};
 
@@ -166,11 +168,11 @@ impl Unwinder {
         Ok(Cursor{registers: thread.registers()?, parent: self, initial_frame: true})
     }
 
-    pub fn symbolicate(&self, addr: u64, callback: &mut FnMut(&StackFrame)) -> gimli::Result<()> {
+    pub fn symbolicate(&self, addr: u64, callback: &mut FnMut(&StackFrame)) -> Result<(), Error> {
         let binary = match self.get_binary(addr) {
             Some(binary) => binary,
             None => {
-                return Err(gimli::Error::NoUnwindInfoForAddress);
+                return Err(gimli::Error::NoUnwindInfoForAddress.into());
             }
         };
         if binary.filename != "[vdso]" {
@@ -260,7 +262,7 @@ struct BinaryInfo {
     offset: u64,
     filename: String,
     unwind_info: UnwindInfo,
-    symbols: RefCell<Option<gimli::Result<SymbolData>>>
+    symbols: RefCell<Option<Result<SymbolData, Error>>>
 }
 
 impl BinaryInfo {

@@ -80,7 +80,7 @@ impl UnwindInfo {
         let row = get_unwind_row(pc, &mut ctx, &fde)?;
         let cfa = match *row.cfa() {
             gimli::CfaRule::RegisterAndOffset { register, offset } => {
-                debug!("cfa rule register and offset: {}, {}", register, offset);
+                debug!("cfa rule register and offset: {:?}, {}", register, offset);
                 get_register(reg, register).wrapping_add(offset as u64)
             },
             gimli::CfaRule::Expression(ref e) => {
@@ -146,7 +146,7 @@ impl UnwindInfo {
     pub fn new(eh_frame: &[u8], eh_frame_address: u64) -> gimli::Result<UnwindInfo> {
         let buf = std::rc::Rc::from(eh_frame);
         let eh_frame = gimli::EhFrame::from(RcReader::new(buf, gimli::NativeEndian));
-        let bases = gimli::BaseAddresses::default().set_cfi(eh_frame_address);
+        let bases = gimli::BaseAddresses::default().set_eh_frame(eh_frame_address);
 
         // Get a vector of all the frame description entries
         let frame_descriptions = {
@@ -170,8 +170,8 @@ impl UnwindInfo {
 }
 
 fn evaluate_dwarf_expression(e: &gimli::Expression<RcReader>, initial: Option<u64>, registers: &Registers, process: &ProcessHandle) -> gimli::Result<u64> {
-    // TODO: this will require different code for 32bit
-    let mut eval = e.clone().evaluation(8, gimli::Format::Dwarf64);
+    // TODO: this will require different code for 32bit.
+    let mut eval = e.clone().evaluation(gimli::Encoding{format: gimli::Format::Dwarf64, address_size: 8, version: 0});
 
     if let Some(initial) = initial {
         eval.set_initial_value(initial);
@@ -279,24 +279,24 @@ pub struct Registers {
 }
 
 #[cfg(target_os="macos")]
-fn get_register(regs: &x86_thread_state64_t, register: u8) -> u64 {
+fn get_register(regs: &x86_thread_state64_t, register: gimli::Register) -> u64 {
     unsafe {
         let regs = regs as *const _ as *const u64;
-        *regs.offset(register as isize)
+        *regs.offset(register.0 as isize)
     }
 }
 #[cfg(target_os="macos")]
-fn set_register(regs: &mut x86_thread_state64_t, register: u8, value: u64) {
+fn set_register(regs: &mut x86_thread_state64_t, register: gimli::Register, value: u64) {
     unsafe {
         let regs = regs as *mut _ as *mut u64;
-        *regs.offset(register as isize) = value
+        *regs.offset(register.0 as isize) = value
     }
 }
 
 #[cfg(target_os="linux")]
-fn get_register(regs: &Registers, register: u8) -> u64 {
+fn get_register(regs: &Registers, register: gimli::Register) -> u64 {
     // ffs
-    match register {
+    match register.0 {
         0 => regs.rax,
         1 => regs.rdx,
         2 => regs.rcx,
@@ -319,8 +319,8 @@ fn get_register(regs: &Registers, register: u8) -> u64 {
 }
 
 #[cfg(target_os="linux")]
-fn set_register(regs: &mut Registers, register: u8, value: u64) {
-    match register {
+fn set_register(regs: &mut Registers, register: gimli::Register, value: u64) {
+    match register.0 {
         0 => regs.rax = value,
         1 => regs.rdx = value,
         2 => regs.rcx = value,
