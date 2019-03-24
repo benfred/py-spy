@@ -8,15 +8,16 @@ use regex::Regex;
 use failure::{Error, ResultExt};
 use read_process_memory::{Pid, copy_address, ProcessHandle};
 use proc_maps::{get_process_maps, MapRange};
-use python_bindings::{v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0};
+use python_bindings::{pyruntime, v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0};
 
-use python_interpreters;
-use stack_trace::{StackTrace, get_stack_traces};
-use native_stack_trace::NativeStack;
 use binary_parser::{parse_binary, BinaryInfo};
-use utils::{copy_struct, copy_pointer};
-use python_interpreters::{InterpreterState, ThreadState};
 use config::Config;
+use native_stack_trace::NativeStack;
+use python_interpreters::{self, InterpreterState, ThreadState};
+use stack_trace::{StackTrace, get_stack_traces};
+use utils::{copy_struct, copy_pointer};
+use version::Version;
+
 
 pub struct PythonSpy {
     pub pid: Pid,
@@ -46,16 +47,38 @@ impl PythonSpy {
         info!("Found interpreter at 0x{:016x}", interpreter_address);
 
         // lets us figure out which thread has the GIL
-        let threadstate_address = match python_info.get_symbol("_PyThreadState_Current") {
-            Some(&addr) => {
-                info!("Found _PyThreadState_Current @ 0x{:016x}", addr);
-                addr as usize
-            },
-            None => {
-                warn!("Failed to find _PyThreadState_Current symbol - won't be able to detect GIL usage");
-                0
-            }
-        };
+         let threadstate_address = match version {
+             Version{major: 3, minor: 7...8, ..} => {
+                match python_info.get_symbol("_PyRuntime") {
+                    Some(&addr) => {
+                        if let Some(offset) = pyruntime::get_tstate_current_offset(&version) {
+                            info!("Found _PyRuntime @ 0x{:016x}, getting gilstate.tstate_current from offset 0x{:x}",
+                                addr, offset);
+                            addr as usize + offset
+                        } else {
+                            warn!("Unknown pyruntime.gilstate.tstate_current offset for version {:?}", version);
+                            0
+                        }
+                    },
+                    None => {
+                        warn!("Failed to find _PyRuntime symbol - won't be able to detect GIL usage");
+                        0
+                    }
+                }
+             },
+             _ => {
+                 match python_info.get_symbol("_PyThreadState_Current") {
+                    Some(&addr) => {
+                        info!("Found _PyThreadState_Current @ 0x{:016x}", addr);
+                        addr as usize
+                    },
+                    None => {
+                        warn!("Failed to find _PyThreadState_Current symbol - won't be able to detect GIL usage");
+                        0
+                    }
+                }
+             }
+         };
 
         let version_string = format!("python{}.{}", version.major, version.minor);
 
@@ -134,8 +157,10 @@ impl PythonSpy {
         if self.threadstate_address > 0 {
             let addr: usize = copy_struct(self.threadstate_address, &self.process.handle())?;
             if addr != 0 {
-                let threadstate: I::ThreadState = copy_struct(addr, &self.process.handle())?;
-                gil_thread_id = threadstate.thread_id();
+                match copy_struct::<I::ThreadState, ProcessHandle>(addr, &self.process.handle()) {
+                    Ok(threadstate) => { gil_thread_id = threadstate.thread_id(); },
+                    Err(e) => { warn!("failed to copy threadstate: addr {:016x}. Err {:?}", addr, e); }
+                }
             }
         }
 
@@ -246,9 +271,7 @@ fn get_interpreter_address(python_info: &PythonProcessInfo,
     match version {
         Version{major: 3, minor: 7, ..} => {
             if let Some(&addr) = python_info.get_symbol("_PyRuntime") {
-                let interp_head_offset = offset_of!(v3_7_0::_PyRuntimeState, interpreters) +
-                                         offset_of!(v3_7_0::pyruntimestate_pyinterpreters, head);
-                let addr = copy_struct(addr as usize + interp_head_offset, &process)?;
+                let addr = copy_struct(addr as usize + pyruntime::INTERP_HEAD_OFFSET, &process)?;
                 // Make sure the interpreter addr is valid before returning
                 match check_interpreter_addresses(&[addr], &python_info.maps, process, version) {
                     Ok(addr) => return Ok(addr),
@@ -588,56 +611,6 @@ pub fn is_python_framework(pathname: &str) -> bool {
     !pathname.contains("Python.app")
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct Version {
-    pub major: u64,
-    pub minor: u64,
-    pub patch: u64,
-    pub release_flags: String
-}
-
-impl Version {
-    pub fn scan_bytes(data: &[u8]) -> Result<Version, Error> {
-        use regex::bytes::Regex;
-        lazy_static! {
-            static ref RE: Regex = Regex::new(r"((2|3)\.(3|4|5|6|7|8)\.(\d{1,2}))((a|b|c|rc)\d{1,2})? (.{1,64})").unwrap();
-        }
-
-        if let Some(cap) = RE.captures_iter(data).next() {
-            let release = match cap.get(5) {
-                Some(x) => { std::str::from_utf8(x.as_bytes())? },
-                None => ""
-            };
-            let major = std::str::from_utf8(&cap[2])?.parse::<u64>()?;
-            let minor = std::str::from_utf8(&cap[3])?.parse::<u64>()?;
-            let patch = std::str::from_utf8(&cap[4])?.parse::<u64>()?;
-
-            let version = std::str::from_utf8(&cap[0])?;
-            info!("Found matching version string '{}'", version);
-            #[cfg(windows)]
-            {
-                if version.contains("32 bit") {
-                    error!("32-bit python is not yet supported on windows! See https://github.com/benfred/py-spy/issues/31 for updates");
-                    // we're panic'ing rather than returning an error, since we can't recover from this
-                    // and returning an error would just get the calling code to fall back to other
-                    // methods of trying to find the version
-                    panic!("32-bit python is unsupported on windows");
-                }
-            }
-
-            return Ok(Version{major, minor, patch, release_flags:release.to_owned()});
-        }
-        Err(format_err!("failed to find version string"))
-    }
-}
-
-impl std::fmt::Display for Version {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}.{}.{}{}", self.major, self.minor, self.patch, self.release_flags)
-    }
-}
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -693,26 +666,5 @@ mod tests {
         // env PYTHON_CONFIGURE_OPTS="--enable-framework" pyenv install 3.6.6
         assert!(is_python_framework("/Users/ben/.pyenv/versions/3.6.6/Python.framework/Versions/3.6/Python"));
         assert!(!is_python_framework("/Users/ben/.pyenv/versions/3.6.6/Python.framework/Versions/3.6/Resources/Python.app/Contents/MacOS/Python"));
-    }
-
-    #[test]
-    fn test_find_version() {
-        let version = Version::scan_bytes(b"2.7.10 (default, Oct  6 2017, 22:29:07)").unwrap();
-        assert_eq!(version, Version{major: 2, minor: 7, patch: 10, release_flags: "".to_owned()});
-
-        let version = Version::scan_bytes(b"3.6.3 |Anaconda custom (64-bit)| (default, Oct  6 2017, 12:04:38)").unwrap();
-        assert_eq!(version, Version{major: 3, minor: 6, patch: 3, release_flags: "".to_owned()});
-
-        let version = Version::scan_bytes(b"Python 3.7.0rc1 (v3.7.0rc1:dfad352267, Jul 20 2018, 13:27:54)").unwrap();
-        assert_eq!(version, Version{major: 3, minor: 7, patch: 0, release_flags: "rc1".to_owned()});
-
-        let version = Version::scan_bytes(b"1.7.0rc1 (v1.7.0rc1:dfad352267, Jul 20 2018, 13:27:54)");
-        assert!(version.is_err(), "don't match unsupported ");
-
-        let version = Version::scan_bytes(b"3.7 10 ");
-        assert!(version.is_err(), "needs dotted version");
-
-        let version = Version::scan_bytes(b"3.7.10fooboo ");
-        assert!(version.is_err(), "limit suffixes");
     }
 }
