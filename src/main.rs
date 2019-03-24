@@ -17,8 +17,6 @@ extern crate libc;
 #[macro_use]
 extern crate log;
 extern crate memmap;
-#[macro_use]
-extern crate memoffset;
 extern crate proc_maps;
 extern crate benfred_read_process_memory as read_process_memory;
 extern crate regex;
@@ -42,6 +40,7 @@ mod stack_trace;
 mod console_viewer;
 mod flamegraph;
 mod utils;
+mod version;
 
 use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};
