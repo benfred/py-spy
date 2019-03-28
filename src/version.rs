@@ -15,7 +15,7 @@ pub struct Version {
 impl Version {
     pub fn scan_bytes(data: &[u8]) -> Result<Version, Error> {
         lazy_static! {
-            static ref RE: Regex = Regex::new(r"((2|3)\.(3|4|5|6|7|8)\.(\d{1,2}))((a|b|c|rc)\d{1,2})? (.{1,64})").unwrap();
+            static ref RE: Regex = Regex::new(r"((2|3)\.(3|4|5|6|7|8)\.(\d{1,2}))((a|b|c|rc)\d{1,2})?\+? (.{1,64})").unwrap();
         }
 
         if let Some(cap) = RE.captures_iter(data).next() {
@@ -74,5 +74,9 @@ mod tests {
 
         let version = Version::scan_bytes(b"3.7.10fooboo ");
         assert!(version.is_err(), "limit suffixes");
+
+        // v2.7.15+ is a valid version string apparently: https://github.com/benfred/py-spy/issues/81
+        let version = Version::scan_bytes(b"2.7.15+ (default, Oct  2 2018, 22:12:08)").unwrap();
+        assert_eq!(version, Version{major: 2, minor: 7, patch: 15, release_flags: "".to_owned()});
     }
 }
