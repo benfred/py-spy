@@ -37,15 +37,12 @@ def build_python(cpython_path, version):
 
 
 def calculate_pyruntime_offsets(cpython_path, version, configure=False):
-    ret = os.system(f"""
-        cd {cpython_path}
-        git checkout {version}
-
-        # need to run configure on the current branch to generate pyconfig.h sometimes
-        {("./configure prefix=" + os.path.join(cpython_path, version)) if configure else ""}
-    """)
+    ret = os.system(f"""cd {cpython_path} && git checkout {version}""")
     if ret:
         return ret
+
+    if configure:
+        os.system(f"cd {cpython_path} && ./configure prefix=" + os.path.join(cpython_path, version))
 
     # simple little c program to get the offsets we need from the pyruntime struct
     # (using rust bindgen here is more complicated than necessary)
@@ -73,12 +70,21 @@ def calculate_pyruntime_offsets(cpython_path, version, configure=False):
             return
 
     with tempfile.TemporaryDirectory() as path:
-        source_filename = os.path.join(path, "pyruntime_offsets.c")
-        exe = os.path.join(path, "pyruntime_offsets")
+        if sys.platform.startswith("win"):
+            source_filename = os.path.join(path, "pyruntime_offsets.cpp")
+            exe = os.path.join("pyruntime_offsets.exe")
+        else:
+            source_filename = os.path.join(path, "pyruntime_offsets.c")
+            exe = os.path.join(path, "pyruntime_offsets")
 
         with open(source_filename, "w") as o:
             o.write(program)
-        ret = os.system(f"""gcc {source_filename} -I {cpython_path} -I {cpython_path}/include -o {exe}""")
+        if sys.platform.startswith("win"):
+            # this requires a 'x64 Native Tools Command Prompt' to work out properly for 64 bit installs
+            # also expects that you have run something like 'PCBuild\build.bat' first
+            ret = os.system(f"cl {source_filename} /I {cpython_path} /I {cpython_path}\PC /I {cpython_path}\Include")
+        else:
+            ret = os.system(f"""gcc {source_filename} -I {cpython_path} -I {cpython_path}/include -o {exe}""")
         if ret:
             print("Failed to compile""")
             return ret
@@ -134,7 +140,11 @@ def extract_bindings(cpython_path, version, configure=False):
 
 
 if __name__ == "__main__":
-    default_cpython_path = os.path.join(os.getenv("HOME"), "code", "cpython")
+
+    if sys.platform.startswith("win"):
+        default_cpython_path = os.path.join(os.getenv("userprofile"), "code", "cpython")
+    else:
+        default_cpython_path = os.path.join(os.getenv("HOME"), "code", "cpython")
 
     parser = argparse.ArgumentParser(description="runs bindgen on cpython version",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)

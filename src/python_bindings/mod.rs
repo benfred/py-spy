@@ -33,6 +33,7 @@ pub mod pyruntime {
                  match version.release_flags.as_ref() {
                     "a1" => Some(1432),
                     "a2" => Some(888),
+                    "a3" => Some(1448),
                     _ => None
                 }
              },
@@ -48,6 +49,7 @@ pub mod pyruntime {
                  match version.release_flags.as_ref() {
                     "a1" => Some(792),
                     "a2" => Some(512),
+                    "a3" => Some(800),
                     _ => None
                 }
              },
@@ -63,6 +65,7 @@ pub mod pyruntime {
                  match version.release_flags.as_ref() {
                     "a1" => Some(1384),
                     "a2" => Some(840),
+                    "a3" => Some(1400),
                     _ => None
                 }
              },
@@ -72,7 +75,17 @@ pub mod pyruntime {
 
     #[cfg(windows)]
     pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
-        // TODO: compute offsets for windows
-        None
+        match version {
+             Version{major: 3, minor: 7, ..} => Some(1320),
+             Version{major: 3, minor: 8, patch: 0, ..} => {
+                 match version.release_flags.as_ref() {
+                    "a1" => Some(1312),
+                    "a2" => Some(768),
+                    "a3" => Some(1328),
+                    _ => None
+                }
+             },
+             _ => None
+        }
     }
 }
