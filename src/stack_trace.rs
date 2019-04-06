@@ -1,10 +1,9 @@
 use std;
 
 use failure::{Error, ResultExt};
-use read_process_memory::{CopyAddress, copy_address};
+use remoteprocess::ProcessMemory;
 
 use python_interpreters::{InterpreterState, ThreadState, FrameObject, CodeObject, StringObject, BytesObject};
-use utils::{copy_pointer};
 
 #[derive(Debug)]
 pub struct StackTrace {
@@ -25,12 +24,12 @@ pub struct Frame {
 }
 
 /// Given an InterpreterState, this function returns a vector of stack traces for each thread
-pub fn get_stack_traces<I, P>(interpreter: &I, process: &P) -> Result<(Vec<StackTrace>), Error>
-        where I: InterpreterState, P: CopyAddress {
+pub fn get_stack_traces<I, P>(interpreter: &I, process: &P  ) -> Result<(Vec<StackTrace>), Error>
+        where I: InterpreterState, P: ProcessMemory {
     let mut ret = Vec::new();
     let mut threads = interpreter.head();
     while !threads.is_null() {
-        let thread = copy_pointer(threads, process).context("Failed to copy PyThreadState")?;
+        let thread = process.copy_pointer(threads).context("Failed to copy PyThreadState")?;
         ret.push(get_stack_trace(&thread, process)?);
         // This seems to happen occasionally when scanning BSS addresses for valid interpeters
         if ret.len() > 4096 {
@@ -43,12 +42,12 @@ pub fn get_stack_traces<I, P>(interpreter: &I, process: &P) -> Result<(Vec<Stack
 
 /// Gets a stack trace for an individual thread
 pub fn get_stack_trace<T, P >(thread: &T, process: &P) -> Result<StackTrace, Error>
-        where T: ThreadState, P: CopyAddress {
+        where T: ThreadState, P: ProcessMemory {
     let mut frames = Vec::new();
     let mut frame_ptr = thread.frame();
     while !frame_ptr.is_null() {
-        let frame = copy_pointer(frame_ptr, process).context("Failed to copy PyFrameObject")?;
-        let code = copy_pointer(frame.code(), process).context("Failed to copy PyCodeObject")?;
+        let frame = process.copy_pointer(frame_ptr).context("Failed to copy PyFrameObject")?;
+        let code = process.copy_pointer(frame.code()).context("Failed to copy PyCodeObject")?;
 
         let filename = copy_string(code.filename(), process).context("Failed to copy filename")?;
         let name = copy_string(code.name(), process).context("Failed to copy function name")?;
@@ -92,7 +91,7 @@ impl StackTrace {
 }
 
 /// Returns the line number from a PyCodeObject (given the lasti index from a PyFrameObject)
-fn get_line_number<C: CodeObject, P: CopyAddress>(code: &C, lasti: i32, process: &P) -> Result<i32, Error> {
+fn get_line_number<C: CodeObject, P: ProcessMemory>(code: &C, lasti: i32, process: &P) -> Result<i32, Error> {
     let table = copy_bytes(code.lnotab(), process).context("Failed to copy line number table")?;
 
     // unpack the line table. format is specified here:
@@ -115,15 +114,15 @@ fn get_line_number<C: CodeObject, P: CopyAddress>(code: &C, lasti: i32, process:
 }
 
 /// Copies a string from a target process. Attempts to handle unicode differences, which mostly seems to be working
-pub fn copy_string<T: StringObject, P: CopyAddress>(ptr: * const T, process: &P) -> Result<String, Error> {
-    let obj = copy_pointer(ptr, process)?;
+pub fn copy_string<T: StringObject, P: ProcessMemory>(ptr: * const T, process: &P) -> Result<String, Error> {
+    let obj = process.copy_pointer(ptr)?;
     if obj.size() >= 4096 {
         return Err(format_err!("Refusing to copy {} chars of a string", obj.size()));
     }
 
     let kind = obj.kind();
 
-    let bytes = copy_address(obj.address(ptr as usize), obj.size() * kind as usize, process)?;
+    let bytes = process.copy(obj.address(ptr as usize), obj.size() * kind as usize)?;
 
     match (kind, obj.ascii()) {
         (4, _) => {
@@ -144,13 +143,13 @@ pub fn copy_string<T: StringObject, P: CopyAddress>(ptr: * const T, process: &P)
 }
 
 /// Copies data from a PyBytesObject (currently only lnotab object)
-pub fn copy_bytes<T: BytesObject, P: CopyAddress>(ptr: * const T, process: &P) -> Result<Vec<u8>, Error> {
-    let obj = copy_pointer(ptr, process)?;
+pub fn copy_bytes<T: BytesObject, P: ProcessMemory>(ptr: * const T, process: &P) -> Result<Vec<u8>, Error> {
+    let obj = process.copy_pointer(ptr)?;
     let size = obj.size();
     if size >= 8192 {
         return Err(format_err!("Refusing to copy {} bytes", size));
     }
-    Ok(copy_address(obj.address(ptr as usize), size as usize, process)?)
+    Ok(process.copy(obj.address(ptr as usize), size as usize)?)
 }
 
 #[cfg(test)]
@@ -158,7 +157,7 @@ mod tests {
     // the idea here is to create various cpython interpretator structs locally
     // and then test out that the above code handles appropiately
     use super::*;
-    use utils::tests::LocalProcess;
+    use remoteprocess::LocalProcess;
     use python_bindings::v3_7_0::{PyCodeObject, PyBytesObject, PyVarObject, PyUnicodeObject, PyASCIIObject};
     use std::ptr::copy_nonoverlapping;
 

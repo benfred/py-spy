@@ -5,8 +5,8 @@ use mach_o_sys::compact_unwind_encoding::{unwind_info_section_header, unwind_inf
     unwind_info_compressed_second_level_page_header, unwind_info_regular_second_level_entry,
     UNWIND_SECOND_LEVEL_REGULAR, UNWIND_SECOND_LEVEL_COMPRESSED, UNWIND_SECTION_VERSION
 };
-use read_process_memory::{ProcessHandle};
-use super::super::copy_struct;
+
+use super::{Process, Error, ProcessMemory};
 
 // these are defined mach-o/compact_unwind_encoding.h (and in mach_o_sys crate), but
 // I'm finding it easier to define here (defined as an enum in that crate, and I prefer const u32)
@@ -38,7 +38,7 @@ pub struct CompactUnwindInfo {
 }
 
 #[derive(Debug)]
-pub enum Error {
+pub enum CompactUnwindError {
     UnknownMask(u32),
     DwarfUnwind,
     InvalidRegCount(u32),
@@ -50,23 +50,23 @@ pub enum Error {
     IOError(std::io::Error),
 }
 
-pub fn compact_unwind(info: &CompactUnwindInfo, reg: &mut x86_thread_state64_t, process: &ProcessHandle) -> Result<(), Error> {
+pub fn compact_unwind(info: &CompactUnwindInfo, reg: &mut x86_thread_state64_t, process: &Process) -> Result<(), Error> {
     match info.encoding & UNWIND_X86_64_MODE_MASK {
         UNWIND_X86_64_MODE_RBP_FRAME => { compact_unwind_rbf(info, reg, process)?; },
         UNWIND_X86_64_MODE_STACK_IMMD  => { compact_unwind_stack(false, info, reg, process)?; },
         UNWIND_X86_64_MODE_STACK_IND  => { compact_unwind_stack(true, info, reg, process)?; },
-        UNWIND_X86_64_MODE_DWARF => { return Err(Error::DwarfUnwind) },
-        mask => { return Err(Error::UnknownMask(mask)) }
+        UNWIND_X86_64_MODE_DWARF => { return Err(CompactUnwindError::DwarfUnwind.into()) },
+        mask => { return Err(CompactUnwindError::UnknownMask(mask).into()) }
     };
     Ok(())
 }
 
-pub fn compact_unwind_rbf(info: &CompactUnwindInfo, reg: &mut x86_thread_state64_t, process: &ProcessHandle) -> Result<(), Error> {
+pub fn compact_unwind_rbf(info: &CompactUnwindInfo, reg: &mut x86_thread_state64_t, process: &Process) -> Result<(), Error> {
     debug!("rbf unwind 0x{:016x}", reg.__rip);
     let registers_offset = 8 * extract_from_mask(info.encoding, UNWIND_X86_64_RBP_FRAME_OFFSET);
     let mut frame_registers = extract_from_mask(info.encoding, UNWIND_X86_64_RBP_FRAME_REGISTERS);
     // TODO: this next line can panic if registers_offset > reg.__rbp
-    let saved_registers: [u64; 5] = copy_struct(reg.__rbp as usize - registers_offset as usize, process)?;
+    let saved_registers: [u64; 5] = process.copy_struct(reg.__rbp as usize - registers_offset as usize)?;
     for i in 0..5 {
         match frame_registers & 0x7 {
             UNWIND_X86_64_REG_NONE => {  },
@@ -80,7 +80,7 @@ pub fn compact_unwind_rbf(info: &CompactUnwindInfo, reg: &mut x86_thread_state64
         frame_registers = frame_registers >> 3;
     }
     // TODO: if this fails show a better error message. (Usually rbp register is pointing to invalid memory)
-    let frame: [u64; 2] = copy_struct(reg.__rbp as usize, process)?;
+    let frame: [u64; 2] = process.copy_struct(reg.__rbp as usize)?;
     reg.__rsp = reg.__rbp + 16;
     reg.__rbp = frame[0];
     reg.__rip = frame[1];
@@ -90,7 +90,7 @@ pub fn compact_unwind_rbf(info: &CompactUnwindInfo, reg: &mut x86_thread_state64
 pub fn compact_unwind_stack(indirect_stack: bool,
                             info: &CompactUnwindInfo,
                             reg: &mut x86_thread_state64_t,
-                            process: &ProcessHandle) -> Result<(), Error> {
+                            process: &Process) -> Result<(), Error> {
     debug!("stacksize unwind 0x{:016x} (indirect={})", reg.__rip, indirect_stack);
 
     let reg_count = extract_from_mask(info.encoding, UNWIND_X86_64_FRAMELESS_STACK_REG_COUNT);
@@ -99,7 +99,7 @@ pub fn compact_unwind_stack(indirect_stack: bool,
     let mut stack_size = extract_from_mask(info.encoding, UNWIND_X86_64_FRAMELESS_STACK_SIZE);
 
     if indirect_stack {
-        let offset: u32 = copy_struct(info.func_start as usize + stack_size as usize, process)?;
+        let offset: u32 = process.copy_struct(info.func_start as usize + stack_size as usize)?;
         stack_size = offset + 8 * stack_adjust;
     } else {
         stack_size *= 8;
@@ -116,7 +116,7 @@ pub fn compact_unwind_stack(indirect_stack: bool,
         2 => &[5, 1][..],
         1 => &[1][..],
         0 => &[][..],
-        _ => { return Err(Error::InvalidRegCount(reg_count)); }
+        _ => { return Err(CompactUnwindError::InvalidRegCount(reg_count).into()); }
     };
 
     let mut reg_perm = [0_u32; 6];
@@ -145,7 +145,7 @@ pub fn compact_unwind_stack(indirect_stack: bool,
     let save_offset =  reg.__rsp as usize + stack_size as usize - 8;
 
     debug!("save_offset {} stack_size {}", save_offset, stack_size);
-    let saved_registers: [u64; 6] = copy_struct(save_offset - 8 * reg_count as usize, process)?;
+    let saved_registers: [u64; 6] = process.copy_struct(save_offset - 8 * reg_count as usize)?;
     for i in 0..(reg_count as usize) {
         match reg_index[i] {
             UNWIND_X86_64_REG_NONE => {  },
@@ -155,13 +155,13 @@ pub fn compact_unwind_stack(indirect_stack: bool,
             UNWIND_X86_64_REG_R14 => { reg.__r14 = saved_registers[i]; },
             UNWIND_X86_64_REG_R15 => { reg.__r15 = saved_registers[i]; },
             UNWIND_X86_64_REG_RBP => { reg.__rbp = saved_registers[i]; },
-            _ => { return Err(Error::InvalidRegIndex(reg_index[i])) }
+            _ => { return Err(CompactUnwindError::InvalidRegIndex(reg_index[i]).into()) }
         }
     }
 
     // TODO: my initial version had a bug (read rsp from memory instead of incrementing by stack size)
     // get a test that tests this (core dump of firefox?)
-    reg.__rip = copy_struct(save_offset, process)?;
+    reg.__rip = process.copy_struct(save_offset)?;
     reg.__rsp += stack_size as u64;
     Ok(())
 }
@@ -172,7 +172,7 @@ pub fn get_compact_unwind_info(unwind_info: &[u8], mach_address: u64, pc: u64) -
     // Get a slice of unwind_info_section_header_index_entry
     let index = unsafe {
         if (*unwind_header).version != UNWIND_SECTION_VERSION as u32 {
-            return Err(Error::InvalidHeaderVersion((*unwind_header).version));
+            return Err(CompactUnwindError::InvalidHeaderVersion((*unwind_header).version).into());
         }
 
         let index_buffer = &unwind_info[(*unwind_header).indexSectionOffset as usize..];
@@ -190,7 +190,7 @@ pub fn get_compact_unwind_info(unwind_info: &[u8], mach_address: u64, pc: u64) -
     // The last element in the index isn't valid (shows end range). If we've hit that then we can't find the
     // unwind info for this address
     if i + 1 >= index.len() {
-        return Err(Error::PageOutOfBounds);
+        return Err(CompactUnwindError::PageOutOfBounds.into());
     }
 
     let entry = &index[i];
@@ -223,7 +223,7 @@ pub fn get_compact_unwind_info(unwind_info: &[u8], mach_address: u64, pc: u64) -
             };
 
             if pc < func_start || pc >= func_end {
-                return Err(Error::PCOutOfBounds);
+                return Err(CompactUnwindError::PCOutOfBounds.into());
             }
 
             return Ok(CompactUnwindInfo{encoding: second_level_entry.encoding, func_start, func_end: func_end});
@@ -238,7 +238,7 @@ pub fn get_compact_unwind_info(unwind_info: &[u8], mach_address: u64, pc: u64) -
             };
 
             if entry.functionOffset > target_offset {
-                return Err(Error::PageOutOfBounds);
+                return Err(CompactUnwindError::PageOutOfBounds.into());
             }
 
             let second_level_offset = target_offset - entry.functionOffset;
@@ -259,7 +259,7 @@ pub fn get_compact_unwind_info(unwind_info: &[u8], mach_address: u64, pc: u64) -
             };
 
             if pc < func_start || pc >= func_end {
-                return Err(Error::PCOutOfBounds);
+                return Err(CompactUnwindError::PCOutOfBounds.into());
             }
 
             let encoding_index = (second_level_entry >> 24) & 0xFF;
@@ -281,7 +281,7 @@ pub fn get_compact_unwind_info(unwind_info: &[u8], mach_address: u64, pc: u64) -
             return Ok(CompactUnwindInfo{encoding, func_start, func_end});
         },
         _ => {
-            return Err(Error::UnknownPageKind(page_kind));
+            return Err(CompactUnwindError::UnknownPageKind(page_kind).into());
         }
     }
 }
@@ -300,34 +300,23 @@ fn extract_from_mask(value: u32, mask: u32) -> u32 {
     (value >> mask.trailing_zeros()) & (((1 << mask.count_ones()))-1)
 }
 
-impl std::fmt::Display for Error {
+impl std::fmt::Display for CompactUnwindError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match *self {
-            Error::UnknownMask(mask) => { write!(f, "Unknown compact encoding mask 0x{:x}", mask) },
-            Error::DwarfUnwind => { write!(f, "encoding UNWIND_X86_64_MODE_DWARF can't be handle by compact_unwind") },
-            Error::InvalidRegCount(count) => { write!(f, "invalid reg_count in frameless unwind {}", count) },
-            Error::InvalidRegIndex(index) => { write!(f, "invalid reg_index in frameless unwind {}", index) },
-            Error::InvalidHeaderVersion(ver) => { write!(f, "invalid unwind header version: {}", ver) },
-            Error::PageOutOfBounds => { write!(f, "Compact page out of bounds") },
-            Error::PCOutOfBounds => { write!(f, "PC isn't in bounds in compact unwind index") },
-            Error::UnknownPageKind(page_kind) => { write!(f, "malformed unwind_info section: {}", page_kind) },
-            Error::IOError(ref e) => e.fmt(f),
+            CompactUnwindError::UnknownMask(mask) => { write!(f, "Unknown compact encoding mask 0x{:x}", mask) },
+            CompactUnwindError::DwarfUnwind => { write!(f, "encoding UNWIND_X86_64_MODE_DWARF can't be handle by compact_unwind") },
+            CompactUnwindError::InvalidRegCount(count) => { write!(f, "invalid reg_count in frameless unwind {}", count) },
+            CompactUnwindError::InvalidRegIndex(index) => { write!(f, "invalid reg_index in frameless unwind {}", index) },
+            CompactUnwindError::InvalidHeaderVersion(ver) => { write!(f, "invalid unwind header version: {}", ver) },
+            CompactUnwindError::PageOutOfBounds => { write!(f, "Compact page out of bounds") },
+            CompactUnwindError::PCOutOfBounds => { write!(f, "PC isn't in bounds in compact unwind index") },
+            CompactUnwindError::UnknownPageKind(page_kind) => { write!(f, "malformed unwind_info section: {}", page_kind) },
+            CompactUnwindError::IOError(ref e) => e.fmt(f),
         }
     }
 }
 
-impl From<std::io::Error> for Error {
-    fn from(err: std::io::Error) -> Error {
-        Error::IOError(err)
-    }
-}
-
-impl std::error::Error for Error {
+impl std::error::Error for CompactUnwindError {
     fn description(&self) -> &str { "CompactUnwindError" }
-    fn cause(&self) -> Option<&std::error::Error> {
-        match *self {
-            Error::IOError(ref e) => Some(e),
-            _ => None,
-        }
-    }
+    fn cause(&self) -> Option<&std::error::Error> { None }
 }

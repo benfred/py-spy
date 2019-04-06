@@ -7,13 +7,13 @@ mod unwinder;
 use std;
 use mach;
 
-use super::Error;
+use super::{ProcessMemory, Error};
 use mach::kern_return::{KERN_SUCCESS};
 use mach::port::{mach_port_name_t, MACH_PORT_NULL};
 use mach::traps::{task_for_pid, mach_task_self};
-pub use read_process_memory::{Pid, ProcessHandle};
+use read_process_memory::{CopyAddress};
 
-use libc::{c_int};
+use libc::{c_int, pid_t};
 
 use mach::kern_return::{kern_return_t};
 use mach::mach_types::{thread_act_t};
@@ -25,6 +25,8 @@ pub use self::utils::{TaskLock, ThreadLock};
 pub use self::unwinder::Unwinder;
 
 use libproc::libproc::proc_pid::{pidpath, pidinfo, PIDInfo, PidInfoFlavor};
+
+pub type Pid = pid_t;
 
 pub struct Process {
     pub pid: Pid,
@@ -45,8 +47,6 @@ impl Process {
         }
         Ok(Process{pid, task})
     }
-
-    pub fn handle(&self) -> ProcessHandle { self.task }
 
     pub fn exe(&self) -> Result<String, Error> {
         pidpath(self.pid).map_err(|e| Error::Other(format!("proc_pidpath failed: {}", e)))
@@ -79,7 +79,13 @@ impl Process {
     }
 
     pub fn unwinder(&self) -> Result<Unwinder, Error> {
-        Ok(Unwinder::new(self.pid, self.task)?)
+        Ok(Unwinder::new(self.pid)?)
+    }
+}
+
+impl super::ProcessMemory for Process {
+    fn read(&self, addr: usize, buf: &mut [u8]) -> Result<(), Error> {
+        Ok(self.task.copy_address(addr, buf)?)
     }
 }
 
@@ -169,3 +175,5 @@ impl Default for proc_vnodepathinfo {
 impl PIDInfo for proc_vnodepathinfo {
     fn flavor() -> PidInfoFlavor { PidInfoFlavor::VNodePathInfo }
 }
+
+

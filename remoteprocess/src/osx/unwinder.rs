@@ -8,35 +8,30 @@ use std::fs::File;
 use std::path::Path;
 use std::cell::RefCell;
 
-use super::{Error, Thread};
+use super::{Error, Thread, Pid, Process, ProcessMemory};
 use goblin::error::Error as GoblinError;
-use mach::port::mach_port_name_t;
 use mach::structs::x86_thread_state64_t;
-pub use read_process_memory::Pid;
-use read_process_memory::{TryIntoProcessHandle, ProcessHandle};
 
 use super::super::StackFrame;
 
 use super::compact_unwind::{get_compact_unwind_info, get_dwarf_offset, compact_unwind};
 use super::symbolication;
 use dwarf_unwind::UnwindInfo;
-use super::super::copy_struct;
 
 pub struct Unwinder {
     pub binaries: BTreeMap<u64, SharedLibrary>,
     pub pid: Pid,
-    pub process: ProcessHandle,
-    pub task: mach_port_name_t,
+    pub process: Process,
     pub cs: symbolication::CoreSymbolication
 }
 
 impl Unwinder {
-    pub fn new(pid: Pid, task: mach_port_name_t) -> Result<Unwinder, GoblinError> {
-        let process = pid.try_into_process_handle()?;
+    pub fn new(pid: Pid) -> Result<Unwinder, Error> {
+        let process = Process::new(pid)?;
         let binaries = BTreeMap::new();
         // TODO: no unwrap
         let cs = unsafe { symbolication::CoreSymbolication::new(pid) }.unwrap();
-        let mut unwinder = Unwinder{binaries, pid, task, process, cs};
+        let mut unwinder = Unwinder{binaries, pid, process, cs};
         unwinder.reload()?;
         Ok(unwinder)
     }
@@ -205,7 +200,7 @@ pub struct Cursor<'a> {
 
 impl<'a> Cursor<'a> {
     fn unwind(&mut self) -> Result<Option<u64>, Error> {
-        let process = self.parent.process;
+        let process = &self.parent.process;
         if self.initial_frame {
             self.initial_frame = false;
             return Ok(Some(self.registers.__rip));
@@ -240,7 +235,7 @@ impl<'a> Cursor<'a> {
 
                 // If no encoding was given, assuming a frameless unwind with no stack size.
                 // I can't find any documentation on this, but this seems like it works
-                self.registers.__rip = copy_struct(self.registers.__rsp as usize, &process)?;
+                self.registers.__rip = process.copy_struct(self.registers.__rsp as usize)?;
                 self.registers.__rsp += 8;
 
                 // except it doesn't always work =( hack (TODO: figure out what to do in this case!)
