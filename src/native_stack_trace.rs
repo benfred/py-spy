@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use failure::Error;
 
-use read_process_memory::{CopyAddress, Pid};
+use remoteprocess::{ProcessMemory, Pid};
 use python_interpreters::{InterpreterState};
 
 use cython;
@@ -62,7 +62,7 @@ impl NativeStack {
 
     /// Gets merged Python/Native stack traces
     pub fn get_native_stack_traces<I, P>(&mut self, interpreter: &I, process: &P) -> Result<(Vec<StackTrace>), Error>
-            where I: InterpreterState, P: CopyAddress {
+            where I: InterpreterState, P: ProcessMemory {
         if self.should_reload {
             self.unwinder.reload()?;
             self.should_reload = false;

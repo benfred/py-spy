@@ -1,9 +1,7 @@
 pub mod libunwind;
 mod gimli_unwinder;
 mod symbolication;
-use libc::c_void;
-
-use goblin::error::Error as GoblinError;
+use libc::{c_void, pid_t};
 
 use nix::{self, sys::wait, sys::ptrace, {sched::{setns, CloneFlags}}};
 use std::io::Read;
@@ -16,7 +14,9 @@ pub use self::gimli_unwinder::*;
 pub use self::symbolication::*;
 pub use self::libunwind::{LibUnwind};
 
-pub use read_process_memory::{Pid, ProcessHandle};
+use read_process_memory::{CopyAddress};
+
+pub type Pid = pid_t;
 
 pub struct Process {
     pub pid: Pid,
@@ -31,8 +31,6 @@ impl Process {
     pub fn new(pid: Pid) -> Result<Process, Error> {
         Ok(Process{pid})
     }
-
-    pub fn handle(&self) -> ProcessHandle { self.pid }
 
     pub fn exe(&self) -> Result<String, Error> {
         let path = std::fs::read_link(format!("/proc/{}/exe", self.pid))?;
@@ -87,10 +85,17 @@ impl Process {
         Ok(ret)
     }
 
-    pub fn unwinder(&self) -> Result<Unwinder, GoblinError> {
+    pub fn unwinder(&self) -> Result<Unwinder, Error> {
         Unwinder::new(self.pid)
     }
 }
+
+impl super::ProcessMemory for Process {
+    fn read(&self, addr: usize, buf: &mut [u8]) -> Result<(), Error> {
+        Ok(self.pid.copy_address(addr, buf)?)
+    }
+}
+
 
 impl Thread {
     pub fn new(threadid: i32) -> Thread{

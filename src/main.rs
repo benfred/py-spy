@@ -18,7 +18,6 @@ extern crate libc;
 extern crate log;
 extern crate memmap;
 extern crate proc_maps;
-extern crate benfred_read_process_memory as read_process_memory;
 extern crate regex;
 extern crate tempdir;
 extern crate tempfile;
@@ -240,7 +239,7 @@ fn pyspy_main() -> Result<(), Error> {
             // sleep just in case: https://jvns.ca/blog/2018/01/28/mac-freeze/
             std::thread::sleep(Duration::from_millis(50));
         }
-        let result = match PythonSpy::retry_new(command.id() as read_process_memory::Pid, &config, 8) {
+        let result = match PythonSpy::retry_new(command.id() as remoteprocess::Pid, &config, 8) {
             Ok(mut process) => {
                 if let Some(ref flame_file) = config.flame_file_name {
                     sample_flame(&mut process, &flame_file, &config)

@@ -60,7 +60,7 @@ pub enum Error {
     #[cfg(target_os="linux")]
     NixError(nix::Error),
     #[cfg(target_os="macos")]
-    CompactUnwindError(osx::compact_unwind::Error),
+    CompactUnwindError(osx::compact_unwind::CompactUnwindError),
 }
 
 impl std::fmt::Display for Error {
@@ -149,8 +149,8 @@ impl From<linux::libunwind::Error> for Error {
 }
 
 #[cfg(target_os="macos")]
-impl From<osx::compact_unwind::Error> for Error {
-    fn from(err: osx::compact_unwind::Error) -> Error {
+impl From<osx::compact_unwind::CompactUnwindError> for Error {
+    fn from(err: osx::compact_unwind::CompactUnwindError) -> Error {
         Error::CompactUnwindError(err)
     }
 }
@@ -175,10 +175,60 @@ impl std::fmt::Display for StackFrame {
     }
 }
 
-// blah. TODO: move this into read_process_memory
-pub fn copy_struct<T, P>(addr: usize, process: &P) -> std::io::Result<T>
-    where P: read_process_memory::CopyAddress {
-    let mut data = vec![0; std::mem::size_of::<T>()];
-    process.copy_address(addr, &mut data)?;
-    Ok(unsafe { std::ptr::read(data.as_ptr() as *const _) })
+pub trait ProcessMemory {
+    fn read(&self, addr: usize, buf: &mut [u8]) -> Result<(), Error>;
+
+    /// Copies a series of bytes from another process. Main difference
+    /// with 'read' is that this will allocate memory for you
+    fn copy(&self, addr: usize, length: usize) -> Result<Vec<u8>, Error> {
+        let mut data = vec![0; length];
+        self.read(addr, &mut data)?;
+        Ok(data)
+    }
+
+    /// Copies a structure from another process
+    fn copy_struct<T>(&self, addr: usize) -> Result<T, Error> {
+        let mut data = vec![0; std::mem::size_of::<T>()];
+        self.read(addr, &mut data)?;
+        Ok(unsafe { std::ptr::read(data.as_ptr() as *const _) })
+    }
+
+    /// Given a pointer that points to a struct in another process, returns the struct
+    fn copy_pointer<T>(&self, ptr: *const T) -> Result<T, Error> {
+        self.copy_struct(ptr as usize)
+    }
+}
+
+/// Mock for using ProcessMemory on the local process.
+pub struct LocalProcess;
+impl ProcessMemory for LocalProcess {
+    fn read(&self, addr: usize, buf: &mut [u8]) -> Result<(), Error> {
+        unsafe {
+            std::ptr::copy_nonoverlapping(addr as *mut u8, buf.as_mut_ptr(), buf.len());
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+
+    struct Point { x: i32, y: i64 }
+
+    #[test]
+    fn test_copy_pointer() {
+        let original = Point{x:15, y:25};
+        let copy = LocalProcess.copy_pointer(&original).unwrap();
+        assert_eq!(original.x, copy.x);
+        assert_eq!(original.y, copy.y);
+    }
+
+    #[test]
+    fn test_copy_struct() {
+        let original = Point{x:10, y:20};
+        let copy: Point = LocalProcess.copy_struct(&original as *const Point as usize).unwrap();
+        assert_eq!(original.x, copy.x);
+        assert_eq!(original.y, copy.y);
+    }
 }

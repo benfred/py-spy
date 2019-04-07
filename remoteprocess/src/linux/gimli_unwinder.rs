@@ -4,9 +4,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
-use read_process_memory::{TryIntoProcessHandle, ProcessHandle, copy_address};
 use goblin::Object;
-use goblin::error::Error as GoblinError;
 use memmap::Mmap;
 use proc_maps;
 
@@ -17,16 +15,16 @@ use gimli;
 use gimli::EndianRcSlice;
 type RcReader = EndianRcSlice<NativeEndian>;
 
-use super::super::{copy_struct, Error};
+use super::super::{ProcessMemory, Error};
 use dwarf_unwind::{UnwindInfo, Registers};
 
 use linux::symbolication::{SymbolData};
 use super::super::StackFrame;
-use super::{Pid, Thread};
+use super::{Pid, Thread, Process};
 
 pub struct Unwinder {
     binaries: BTreeMap<u64, BinaryInfo>,
-    process: ProcessHandle,
+    process: Process,
     pid: Pid
 }
 
@@ -37,14 +35,14 @@ pub struct Cursor<'a> {
 }
 
 impl Unwinder {
-    pub fn new(pid: Pid) -> Result<Unwinder, GoblinError> {
-        let process = pid.try_into_process_handle()?;
+    pub fn new(pid: Pid) -> Result<Unwinder, Error> {
+        let process = Process::new(pid)?;
         let mut ret = Unwinder{binaries: BTreeMap::new(), process, pid};
         ret.reload()?;
         Ok(ret)
     }
 
-    pub fn reload(&mut self) -> Result<(), GoblinError> {
+    pub fn reload(&mut self) -> Result<(), Error> {
         // Get shared libraries from virtual memory mapped files
         let maps = &proc_maps::get_process_maps(self.pid)?;
         let shared_maps = maps.iter().filter(|m| m.is_exec() && !m.is_write() && m.is_read());
@@ -77,7 +75,7 @@ impl Unwinder {
             } else if filename != "[vsyscall]" {
                 // if the filename doesn't exist, its' almost certainly the vdso section
                 // read from the the target processses memory
-                vdso_data = copy_address(m.start(), m.size(), &self.process)?;
+                vdso_data = self.process.copy(m.start(), m.size())?;
                 &vdso_data
             } else {
                 // vsyscall region, can be ignored
@@ -122,7 +120,7 @@ impl Unwinder {
 
                     let eh_frame_addr = match eh_frame_hdr.eh_frame_ptr() {
                         Pointer::Direct(x) => x,
-                        Pointer::Indirect(x) => { copy_struct(x as usize, &self.process)? }
+                        Pointer::Indirect(x) => { self.process.copy_struct(x as usize)? }
                     };
 
                     // get the appropiate eh_frame section from the section_headers and load it up with gimli

@@ -1,12 +1,11 @@
 use gimli;
-use read_process_memory::{ProcessHandle};
+use super::{Error, Process, ProcessMemory};
 
 pub type RcReader = gimli::EndianRcSlice<gimli::NativeEndian>;
 pub type FrameDescriptionEntry = gimli::FrameDescriptionEntry<gimli::EhFrame<RcReader>, RcReader>;
 pub type UninitializedUnwindContext = gimli::UninitializedUnwindContext<gimli::EhFrame<RcReader>, RcReader>;
 pub type InitializedUnwindContext = gimli::InitializedUnwindContext<gimli::EhFrame<RcReader>, RcReader>;
 
-use super::copy_struct;
 
 #[cfg(target_os="linux")]
 use libc::c_ulonglong;
@@ -33,7 +32,7 @@ pub struct UnwindInfo {
 }
 
 impl UnwindInfo {
-    pub fn unwind(&self, reg: &mut Registers, process: &ProcessHandle) -> gimli::Result<bool> {
+    pub fn unwind(&self, reg: &mut Registers, process: &Process) -> Result<bool, Error> {
         // TODO: better registers abstraction
         #[cfg(target_os="macos")]
         let pc = reg.__rip - 1;
@@ -51,14 +50,14 @@ impl UnwindInfo {
 
                 #[cfg(target_os="linux")]
                 let bp = reg.rbp;
-                return match bp { 0 => Ok(false), _ => Err(e) };
+                return match bp { 0 => Ok(false), _ => Err(e.into()) };
             }
         };
 
         if !fde.contains(pc) {
             warn!("FDE doesn't contain pc 0x{:016x}", pc);
             #[cfg(target_os="linux")]
-            return Err(gimli::Error::NoUnwindInfoForAddress);
+            return Err(gimli::Error::NoUnwindInfoForAddress.into());
 
             // TODO: on OSX figure out why this happens so much
             #[cfg(target_os="macos")]
@@ -74,7 +73,7 @@ impl UnwindInfo {
         let ctx = UninitializedUnwindContext::new();
         let mut ctx = match ctx.initialize(fde.cie()) {
             Ok(ctx) => ctx,
-            Err((e, _)) => return Err(e)
+            Err((e, _)) => return Err(e.into())
         };
 
         let row = get_unwind_row(pc, &mut ctx, &fde)?;
@@ -91,12 +90,12 @@ impl UnwindInfo {
         debug!("cfa is 0x{:016x}", cfa);
         for &(register, ref rule) in row.registers() {
             let value = match *rule {
-                gimli::RegisterRule::Offset(offset) => copy_struct(cfa.wrapping_add(offset as u64) as usize, process)?,
+                gimli::RegisterRule::Offset(offset) => process.copy_struct(cfa.wrapping_add(offset as u64) as usize)?,
                 gimli::RegisterRule::Register(r) => get_register(reg, r),
                 gimli::RegisterRule::SameValue => get_register(reg, register),
                 gimli::RegisterRule::ValOffset(offset) => cfa.wrapping_add(offset as u64),
                 gimli::RegisterRule::Expression(ref e) => {
-                    copy_struct(evaluate_dwarf_expression(e, Some(cfa), reg, process)? as usize, process)?
+                    process.copy_struct(evaluate_dwarf_expression(e, Some(cfa), reg, process)? as usize)?
                 },
                 gimli::RegisterRule::ValExpression(ref e) => {
                     evaluate_dwarf_expression(e, Some(cfa), reg, process)?
@@ -169,8 +168,9 @@ impl UnwindInfo {
     }
 }
 
-fn evaluate_dwarf_expression(e: &gimli::Expression<RcReader>, initial: Option<u64>, registers: &Registers, process: &ProcessHandle) -> gimli::Result<u64> {
-    // TODO: this will require different code for 32bit.
+fn evaluate_dwarf_expression(e: &gimli::Expression<RcReader>,
+                             initial: Option<u64>, registers: &Registers, process: &Process) -> Result<u64, Error> {
+    // TODO: this will require different code for 32bit
     let mut eval = e.clone().evaluation(gimli::Encoding{format: gimli::Format::Dwarf64, address_size: 8, version: 0});
 
     if let Some(initial) = initial {
@@ -189,37 +189,36 @@ fn evaluate_dwarf_expression(e: &gimli::Expression<RcReader>, initial: Option<u6
                 debug!("reguires memory addr=0x{:016x} size={} space={:?} base_type={:?}", address, size, space, base_type);
                 match size {
                     8 => {
-                        let value: u64 = copy_struct(address as usize, process)?;
+                        let value: u64 = process.copy_struct(address as usize)?;
                         result = eval.resume_with_memory(gimli::Value::Generic(value))?;
                     },
                     4 => {
-                        let value: u32 = copy_struct(address as usize, process)?;
+                        let value: u32 = process.copy_struct(address as usize)?;
                         result = eval.resume_with_memory(gimli::Value::Generic(value as u64))?;
                     }
                     _ => {
                         // TODO: this probably will never happen
-                        error!("Unhandled dwarf expression. Size {} isn't handled for RequiresMemory", size);
-                        return Err(gimli::Error::Io);
+                        return Err(Error::Other(format!("Unhandled dwarf expression. Size {} isn't handled for RequiresMemory", size)));
                     }
                 }
 
             },
-            other => { warn!("unhandled dwarf expression requirement{:?}", other); return Err(gimli::Error::Io); }
+            other => {
+                return Err(Error::Other(format!("unhandled dwarf expression requirement{:?}", other)));
+            }
         };
     }
 
     let results = eval.result();
 
     if results.len() != 1 {
-        warn!("Failed to evaluate_dwarf_expression, expected a single result - found {}", results.len());
-        return Err(gimli::Error::Io);
+        return Err(Error::Other(format!("Failed to evaluate_dwarf_expression, expected a single result - found {}", results.len())));
     }
 
     match &results[0] {
         gimli::Piece{location: gimli::Location::Address{address}, ..} => Ok(address.clone()),
         other => {
-            warn!("Unhandled dwarf evaluation result {:#?}", other);
-            Err(gimli::Error::Io)
+            return Err(Error::Other(format!("Unhandled dwarf evaluation result {:#?}", other)));
         }
     }
 }

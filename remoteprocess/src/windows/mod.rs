@@ -9,7 +9,7 @@ use std::ffi::OsString;
 use std::os::windows::ffi::{OsStringExt};
 use winapi::shared::ntdef::{PVOID, NTSTATUS, USHORT, VOID, NULL};
 
-pub use read_process_memory::{Pid, ProcessHandle};
+pub use read_process_memory::{Pid, ProcessHandle, CopyAddress};
 
 use super::Error;
 
@@ -104,6 +104,12 @@ impl Process {
 impl Drop for Process {
     fn drop(&mut self) {
         unsafe { CloseHandle(self.handle); }
+    }
+}
+
+impl super::ProcessMemory for Process {
+    fn read(&self, addr: usize, buf: &mut [u8]) -> Result<(), Error> {
+        Ok(self.handle.copy_address(addr, buf)?)
     }
 }
 

@@ -1,6 +1,6 @@
 use clap::{App, Arg};
 use failure::Error;
-use read_process_memory::Pid;
+use remoteprocess::Pid;
 
 #[derive(Debug, Clone)]
 pub struct Config {
