@@ -3,16 +3,21 @@ use std::time::{Instant, Duration};
 #[cfg(windows)]
 use winapi::um::timeapi;
 
-/// Timer is an iterator that sleeps an appropiate amount of time so that
-/// each loop happens at a constant rate.
+use rand::{self, distributions::{Exp, Distribution}};
+
+/// Timer is an iterator that sleeps an appropiate amount of time between iterations
+/// so that we can sample the process a certain number of times a second.
+/// We're using an irregular sampling strategy to avoid aliasing effects that can happen
+/// if the target process runs code at a similar schedule as the profiler:
+/// https://github.com/benfred/py-spy/issues/94
 pub struct Timer {
-    rate: Duration,
     start: Instant,
-    samples: u32,
+    desired: Duration,
+    exp: Exp,
 }
 
 impl Timer {
-    pub fn new(rate: Duration) -> Timer {
+    pub fn new(rate: f64) -> Timer {
         // This changes a system-wide setting on Windows so that the OS wakes up every 1ms
         // instead of the default 15.6ms. This is required to have a sleep call
         // take less than 15ms, which we need since we usually profile at more than 64hz.
@@ -22,7 +27,8 @@ impl Timer {
         #[cfg(windows)]
         unsafe { timeapi::timeBeginPeriod(1); }
 
-        Timer{rate, samples: 0, start: Instant::now()}
+        let start = Instant::now();
+        Timer{start, desired: Duration::from_secs(0), exp: Exp::new(rate)}
     }
 }
 
@@ -30,14 +36,23 @@ impl Iterator for Timer {
     type Item = Result<Duration, Duration>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.samples += 1;
         let elapsed = self.start.elapsed();
-        let desired = self.rate * self.samples;
-        if desired > elapsed {
-            std::thread::sleep(desired - elapsed);
-            Some(Ok(desired - elapsed))
+
+        // figure out how many nanoseconds should come between the previous and
+        // the next sample using an exponential distribution to avoid aliasing
+        let nanos = 1_000_000_000.0 * self.exp.sample(&mut rand::thread_rng());
+
+        // since we want to account for the amount of time the sampling takes
+        // we keep track of when we should sleep to (rather than just sleeping
+        // the amount of time from the previous line).
+        self.desired += Duration::from_nanos(nanos as u64);
+
+        // sleep if appropiate, or warn if we are behind in sampling
+        if self.desired > elapsed {
+            std::thread::sleep(self.desired - elapsed);
+            Some(Ok(self.desired - elapsed))
         } else {
-            Some(Err(elapsed - desired))
+            Some(Err(elapsed - self.desired))
         }
     }
 }

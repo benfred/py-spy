@@ -26,6 +26,7 @@ tempfile = "3.0.3"
 proc-maps = "0.1"
 memmap = "0.7.0"
 cpp_demangle = "0.2.12"
+rand = "0.6"
 remoteprocess = {path="./remoteprocess"}
 
 [target.'cfg(unix)'.dependencies]
