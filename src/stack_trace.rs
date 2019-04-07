@@ -24,7 +24,7 @@ pub struct Frame {
 }
 
 /// Given an InterpreterState, this function returns a vector of stack traces for each thread
-pub fn get_stack_traces<I, P>(interpreter: &I, process: &P  ) -> Result<(Vec<StackTrace>), Error>
+pub fn get_stack_traces<I, P>(interpreter: &I, process: &P) -> Result<(Vec<StackTrace>), Error>
         where I: InterpreterState, P: ProcessMemory {
     let mut ret = Vec::new();
     let mut threads = interpreter.head();

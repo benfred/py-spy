@@ -26,6 +26,7 @@ extern crate termios;
 #[cfg(windows)]
 extern crate winapi;
 extern crate cpp_demangle;
+extern crate rand;
 extern crate remoteprocess;
 
 mod config;
@@ -99,7 +100,7 @@ fn sample_console(process: &mut PythonSpy,
                                          &format!("{}", process.version),
                                          1.0 / rate as f64)?;
 
-    for sleep in utils::Timer::new(Duration::from_nanos(1_000_000_000 / rate)) {
+    for sleep in utils::Timer::new(rate as f64) {
         if let Err(elapsed) = sleep {
             console.increment_late_sample(elapsed);
         }
@@ -145,7 +146,7 @@ fn sample_flame(process: &mut PythonSpy, filename: &str, config: &config::Config
 
     let mut exit_message = "";
 
-    for sleep in utils::Timer::new(Duration::from_nanos(1_000_000_000 / config.sampling_rate)) {
+    for sleep in utils::Timer::new(config.sampling_rate as f64) {
         if let Err(delay) = sleep {
             if delay > Duration::from_secs(1) {
                 // TODO: once this available on crates.io https://github.com/mitsuhiko/indicatif/pull/41
