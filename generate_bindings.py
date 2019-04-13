@@ -9,6 +9,7 @@ also build different versions of cpython for testing out
 import argparse
 import os
 import sys
+import tempfile
 
 
 def build_python(cpython_path, version):
@@ -35,17 +36,76 @@ def build_python(cpython_path, version):
     return os.system(f"{pip} install setuptools_rust wheel")
 
 
+def calculate_pyruntime_offsets(cpython_path, version, configure=False):
+    ret = os.system(f"""cd {cpython_path} && git checkout {version}""")
+    if ret:
+        return ret
+
+    if configure:
+        os.system(f"cd {cpython_path} && ./configure prefix=" + os.path.join(cpython_path, version))
+
+    # simple little c program to get the offsets we need from the pyruntime struct
+    # (using rust bindgen here is more complicated than necessary)
+    program = r"""
+        #include <stddef.h>
+        #include <stdio.h>
+        #define Py_BUILD_CORE 1
+        #include "Include/Python.h"
+        #include "Include/internal/pystate.h"
+
+        int main(int argc, const char * argv[]) {
+            size_t interp_head = offsetof(_PyRuntimeState, interpreters.head);
+            printf("pub static INTERP_HEAD_OFFSET: usize = %i;\n", interp_head);
+
+            size_t tstate_current = offsetof(_PyRuntimeState, gilstate.tstate_current);
+            printf("pub static TSTATE_CURRENT: usize = %i;\n", tstate_current);
+        }
+    """
+
+    if not os.path.isfile(os.path.join(cpython_path, "Include", "internal", "pystate.h")):
+        if os.path.isfile(os.path.join(cpython_path, "Include", "internal", "pycore_pystate.h")):
+            program = program.replace("pystate.h", "pycore_pystate.h")
+        else:
+            print("failed to find Include/internal/pystate.h in cpython directory =(")
+            return
+
+    with tempfile.TemporaryDirectory() as path:
+        if sys.platform.startswith("win"):
+            source_filename = os.path.join(path, "pyruntime_offsets.cpp")
+            exe = os.path.join("pyruntime_offsets.exe")
+        else:
+            source_filename = os.path.join(path, "pyruntime_offsets.c")
+            exe = os.path.join(path, "pyruntime_offsets")
+
+        with open(source_filename, "w") as o:
+            o.write(program)
+        if sys.platform.startswith("win"):
+            # this requires a 'x64 Native Tools Command Prompt' to work out properly for 64 bit installs
+            # also expects that you have run something like 'PCBuild\build.bat' first
+            ret = os.system(f"cl {source_filename} /I {cpython_path} /I {cpython_path}\PC /I {cpython_path}\Include")
+        else:
+            ret = os.system(f"""gcc {source_filename} -I {cpython_path} -I {cpython_path}/include -o {exe}""")
+        if ret:
+            print("Failed to compile""")
+            return ret
+
+        ret = os.system(exe)
+        if ret:
+            print("Failed to run pyruntime file")
+            return ret
+
+
 def extract_bindings(cpython_path, version, configure=False):
     print("Generating bindings for python %s from repo at %s" % (version, cpython_path))
-    return os.system(f"""
+    ret = os.system(f"""
         cd {cpython_path}
         git checkout {version}
 
         # need to run configure on the current branch to generate pyconfig.h sometimes
         {("./configure prefix=" + os.path.join(cpython_path, version)) if configure else ""}
 
-        cat include/Python.h > bindgen_input.h
-        cat include/frameobject.h >> bindgen_input.h
+        cat Include/Python.h > bindgen_input.h
+        cat Include/frameobject.h >> bindgen_input.h
 
         bindgen  bindgen_input.h -o bindgen_output.rs \
             --with-derive-default \
@@ -62,6 +122,8 @@ def extract_bindings(cpython_path, version, configure=False):
             --whitelist-type PyStringObject \
              -- -I . -I ./Include
     """)
+    if ret:
+        return ret
 
     # write the file out to the appropiate place, disabling some warnings
     with open(os.path.join("src", "python_bindings", version.replace(".", "_") + ".rs"), "w") as o:
@@ -70,15 +132,19 @@ def extract_bindings(cpython_path, version, configure=False):
         o.write("#![allow(non_upper_case_globals)]\n")
         o.write("#![allow(non_camel_case_types)]\n")
         o.write("#![allow(non_snake_case)]\n")
-        o.write("#![cfg_attr(feature = \"cargo-clippy\", allow(useless_transmute))]\n")
-        o.write("#![cfg_attr(feature = \"cargo-clippy\", allow(default_trait_access))]\n")
-        o.write("#![cfg_attr(feature = \"cargo-clippy\", allow(cast_lossless))]\n")
-        o.write("#![cfg_attr(feature = \"cargo-clippy\", allow(trivially_copy_pass_by_ref))]\n\n")
+        o.write("#![allow(clippy::useless_transmute)]\n")
+        o.write("#![allow(clippy::default_trait_access)]\n")
+        o.write("#![allow(clippy::cast_lossless)]\n")
+        o.write("#![allow(clippy::trivially_copy_pass_by_ref)]\n\n")
         o.write(open(os.path.join(cpython_path, "bindgen_output.rs")).read())
 
 
 if __name__ == "__main__":
-    default_cpython_path = os.path.join(os.getenv("HOME"), "code", "cpython")
+
+    if sys.platform.startswith("win"):
+        default_cpython_path = os.path.join(os.getenv("userprofile"), "code", "cpython")
+    else:
+        default_cpython_path = os.path.join(os.getenv("HOME"), "code", "cpython")
 
     parser = argparse.ArgumentParser(description="runs bindgen on cpython version",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -86,6 +152,9 @@ if __name__ == "__main__":
                         dest="cpython", help="path to cpython repo")
     parser.add_argument("--configure",
                         help="Run configure script prior to generating bindings",
+                        action="store_true")
+    parser.add_argument("--pyruntime",
+                        help="generate offsets for pyruntime",
                         action="store_true")
     parser.add_argument("--build",
                         help="Build python for this version",
@@ -116,6 +185,9 @@ if __name__ == "__main__":
             # todo: this probably shoudl be a separate script
             if build_python(args.cpython, version):
                 print("Failed to build python")
+        elif args.pyruntime:
+            calculate_pyruntime_offsets(args.cpython, version, configure=args.configure)
+
         else:
             if extract_bindings(args.cpython, version, configure=args.configure):
                 print("Failed to generate bindings")

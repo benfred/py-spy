@@ -6,8 +6,7 @@ Py-Spy: A sampling profiler for Python programs.
 Py-Spy is a sampling profiler for Python programs. It lets you visualize what your Python
 program is spending time on without restarting the program or modifying the code in any way.
 Py-Spy is extremely low overhead: it is written in Rust for speed and doesn't run
-in the same process as the profiled Python program, nor does it interrupt the running program
-in any way. This means Py-Spy is safe to use against production Python code.
+in the same process as the profiled Python program. This means Py-Spy is safe to use against production Python code.
 
 Py-Spy works on Linux, OSX and Windows, and supports profiling all recent versions of the CPython
 interpreter (versions 2.3-2.7 and 3.3-3.7).
@@ -24,6 +23,13 @@ If you're a Rust user, py-spy can also be installed with:
 
 ```
 cargo install py-spy
+```
+
+On Arch Linux, [py-spy is in AUR](https://aur.archlinux.org/packages/py-spy/) and can be
+installed by using your favorite AUR helper, for example:
+
+```
+yay -S py-spy
 ```
 
 ## Usage
@@ -112,7 +118,7 @@ OSX always requires running as root, but on Linux it depends on how you are laun
 security settings.
 
 On Linux the default configuration is to require root permissions when attaching to a process that isn't a child.
-For py-spy this means you can profile without root access by getting py-spy to create the process (```py-spy -- python myprogram.py```) but attaching to an existing process by specifying a PID will usually require root (```sudo py-spy -pid 123456```).
+For py-spy this means you can profile without root access by getting py-spy to create the process (```py-spy -- python myprogram.py```) but attaching to an existing process by specifying a PID will usually require root (```sudo py-spy --pid 123456```).
 You can remove this restriction on linux by setting the [ptrace_scope sysctl variable](https://wiki.ubuntu.com/SecurityTeam/Roadmap/KernelHardening#ptrace_Protection).
 
 ### Why am I having issues profiling /usr/bin/python on OSX?
@@ -124,13 +130,25 @@ There are a couple of different ways to deal with this:
  * You can use [virtualenv](https://virtualenv.pypa.io/en/stable/) to run the system python in an environment where SIP doesn't apply.
  * You can [disable System Integrity Protection](https://www.macworld.co.uk/how-to/mac/how-turn-off-mac-os-x-system-integrity-protection-rootless-3638975/).
 
-### Running py-spy in Docker
+### How do I run py-spy in Docker?
 
 Running py-spy inside of a docker container will also usually bring up a permissions denied error even when running as root.
-This error is caused by docker restricting the process_vm_readv system call we are using. This can be overridden by setting
+
+This error is caused by docker restricting the process_vm_readv system call we are using. This can
+be overridden by setting
 [```--cap-add SYS_PTRACE```](https://docs.docker.com/engine/security/seccomp/) when starting the docker container.
 
-### Running under Kubernetes
+Alternatively you can edit the docker-compose yaml file
+
+```
+your_service:
+   cap_add:
+     - SYS_PTRACE
+```
+
+Note that you'll need to restart the docker container in order for this setting to take effect.
+
+### How do I run py-spy in Kubernetes?
 
 py-spy needs `SYS_PTRACE` to be able to read process memory. Kubernetes drops that capability by default, resulting in the error
 ```
@@ -146,9 +164,23 @@ securityContext:
 More details on this here: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-capabilities-for-a-container
 Note that this will remove the existing pods and create those again.
 
-### How do you avoid pausing the Python program?
+### Running py-spy in Alpine Linux
 
-Py-spy doesn't pause the target python program we are sampling from, and reads the interpreter state from the python process as it is running. Since the calls we use to read memory from are not atomic, and we have to issue multiple calls to get a stack trace this means that occasionally we get errors when sampling. If you run the flame graph code it will report the number of errors at the end (and the top view will report the error rate if it goes beyond 1%). This happens infrequently enough that it shouldn't affect the output that much though. Julia Evans wrote a [great blog post talking about this trade off with rbspy](https://jvns.ca/blog/2018/01/15/should-i-pause-a-ruby-process-to-collect-its-stack/.)
+Alpine python opts out of the `manylinux` wheels: [pypa/pip#3969 (comment)](https://github.com/pypa/pip/issues/3969#issuecomment-247381915). Before installing py-spy on Alpine docker containers do:
+
+    echo 'manylinux1_compatible = True' > /usr/local/lib/python3.7/site-packages/_manylinux.py
+
+
+### How can you avoid pausing the Python program?
+
+By setting the ```--nonblocking``` option, py-spy won't pause the target python you are profiling from. While
+the performance impact of sampling from a process with py-spy is usually extremely low, setting this option 
+will totally avoid interrupting your running python program.
+
+With this option set, py-spy will instead read the interpreter state from the python process as it is running. 
+Since the calls we use to read memory from are not atomic, and we have to issue multiple calls to get a stack trace this 
+means that occasionally we get errors when sampling. This can show up as an increased error rate when sampling, or as 
+partial stack frames being included in the output.
 
 ### How are you distributing Rust executable binaries over PyPI?
 Ok, so no-one has ever actually asked me this - but I wanted to share since it's a pretty terrible hack
@@ -172,9 +204,9 @@ Not yet =).
 
 py-spy is heavily inspired by [Julia Evans](https://github.com/jvns/) excellent work on [rbspy](http://github.com/rbspy/rbspy).
 In particular, the code to generate the flamegraphs is taken directly from rbspy, and this project uses the
-([read-process-memory](https://github.com/luser/read-process-memory) and [proc-maps](https://github.com/benfred/proc-maps)) crates that were spun off from rbspy.
+[read-process-memory](https://github.com/luser/read-process-memory) and [proc-maps](https://github.com/benfred/proc-maps) crates that were spun off from rbspy.
 
 
 ## License
 
-Py-spy is released under the GNU General Public License v3.0, see  [LICENSE](https://github.com/benfred/py-spy/blob/master/LICENSE) file for the full text.
+Py-spy is released under the GNU General Public License v3.0, see the [LICENSE](https://github.com/benfred/py-spy/blob/master/LICENSE) file for the full text.

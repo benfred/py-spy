@@ -43,7 +43,6 @@ class PostInstallCommand(install):
         # but we can't install to the bin directory:
         #     https://github.com/pypa/setuptools/issues/210#issuecomment-216657975
         # take the advice from that comment, and move over after install
-        install.run(self)
         source_dir = os.path.dirname(os.path.abspath(__file__))
 
         # if we have these env variables defined, then compile against the musl toolchain
@@ -51,12 +50,10 @@ class PostInstallCommand(install):
         # issues like https://github.com/benfred/py-spy/issues/5.
         # Note: we're only doing this on demand since this requires musl-tools installed
         # but the released wheels should have this option set
-        if os.getenv("PYSPY_MUSL_64"):
-            compile_args = " --target=x86_64-unknown-linux-musl"
-            build_dir = os.path.join(source_dir, "target", "x86_64-unknown-linux-musl", "release")
-        elif os.getenv("PYSPY_MUSL_32"):
-            compile_args = " --target=i686-unknown-linux-musl"
-            build_dir = os.path.join(source_dir, "target", "i686-unknown-linux-musl", "release")
+        cross_compile_target = os.getenv("PYSPY_CROSS_COMPILE_TARGET")
+        if cross_compile_target:
+            compile_args = " --target=%s" % cross_compile_target
+            build_dir = os.path.join(source_dir, "target", cross_compile_target, "release")
         else:
             compile_args = ""
             build_dir = os.path.join(source_dir, "target", "release")
@@ -65,6 +62,10 @@ class PostInstallCommand(install):
         # so instead just build ourselves here =(.
         if os.system("cargo build --release %s" % compile_args):
             raise ValueError("Failed to compile!")
+
+        # run this after trying to build with cargo (as otherwise this leaves
+        # venv in a bad state: https://github.com/benfred/py-spy/issues/69)
+        install.run(self)
 
         # we're going to install the py-spy executable into the scripts directory
         # but first make sure the scripts directory exists
@@ -86,7 +87,7 @@ setup(name='py-spy',
       description="A Sampling Profiler for Python",
       long_description=long_description,
       long_description_content_type="text/markdown",
-      version="0.1.7",
+      version="0.2.0.dev0",
       license="GPL",
       cmdclass={'install': PostInstallCommand, 'bdist_wheel': bdist_wheel},
       classifiers=[

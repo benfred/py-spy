@@ -83,7 +83,11 @@ impl ConsoleViewer {
 
             update_function_statistics(&mut self.stats.line_counts, trace, |frame| {
                 let filename = match &frame.short_filename { Some(f) => &f, None => &frame.filename };
-                format!("{} ({}:{})", frame.name, filename, frame.line)
+                if frame.line != 0 {
+                    format!("{} ({}:{})", frame.name, filename, frame.line)
+                } else {
+                    format!("{} ({})", frame.name, filename)
+                }
             });
 
             update_function_statistics(&mut self.stats.function_counts, trace, |frame| {
@@ -91,14 +95,7 @@ impl ConsoleViewer {
                 format!("{} ({})", frame.name, filename)
             });
         }
-        self.stats.current_samples += 1;
-        self.stats.overall_samples += 1;
-        self.stats.elapsed += self.sampling_rate;
-
-        if self.should_refresh() {
-            self.display()?;
-            self.stats.reset_current();
-        }
+        self.increment_common()?;
         Ok(())
     }
 
@@ -122,7 +119,7 @@ impl ConsoleViewer {
         let width = width as usize;
 
         // this macro acts like println but also clears the rest of the line if there is already text
-        // writtern there. This is to avoid flickering on redraw, and lets us update just by moving the cursor
+        // written there. This is to avoid flickering on redraw, and lets us update just by moving the cursor
         // position to the top left.
         macro_rules! out {
             () => (term.clear_line()?; term.write_line("")?);
@@ -226,11 +223,11 @@ impl ConsoleViewer {
         Ok(())
     }
 
-    pub fn increment_error(&mut self, err: &Error) {
+    pub fn increment_error(&mut self, err: &Error) ->  Result<(), Error> {
         self.maybe_reset();
         self.stats.errors += 1;
-        self.stats.overall_samples += 1;
         self.stats.last_error = Some(format!("{}", err));
+        self.increment_common()
     }
 
     pub fn increment_late_sample(&mut self, delay: std::time::Duration) {
@@ -245,6 +242,19 @@ impl ConsoleViewer {
             _ => self.options.lock().unwrap().dirty ||
                  self.stats.elapsed >= 1.0
         }
+    }
+
+    // shared code between increment and increment_error
+    fn increment_common(&mut self) -> Result<(), Error> {
+        self.stats.current_samples += 1;
+        self.stats.overall_samples += 1;
+        self.stats.elapsed += self.sampling_rate;
+
+        if self.should_refresh() {
+            self.display()?;
+            self.stats.reset_current();
+        }
+        Ok(())
     }
 
     fn maybe_reset(&mut self) {
@@ -395,7 +405,7 @@ mod os_impl {
 
             // flush current screen so that when we clear, we don't overwrite history
             let height = Term::stdout().size().0;
-            for _ in 0..height + 1 {
+            for _ in 0..=height {
                 println!();
             }
 

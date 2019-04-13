@@ -107,21 +107,17 @@ macro_rules! Python3StringImpl {
             }
         }
 
-        impl StringObject for $py::PyASCIIObject {
-            fn ascii(&self) -> bool { self.state.ascii() != 0 }
-            fn size(&self) -> usize { self.length as usize }
-            fn kind(&self) -> u32 { self.state.kind() }
+        impl StringObject for $py::PyUnicodeObject {
+            fn ascii(&self) -> bool { self._base._base.state.ascii() != 0 }
+            fn size(&self) -> usize { self._base._base.length as usize }
+            fn kind(&self) -> u32 { self._base._base.state.kind() }
 
             fn address(&self, base: usize) -> usize {
-                if self.state.compact() == 0 {
-                    // TODO: handle legacy strings. Not sure if this is needed yet
-                    // for the filename/ name cases we have. This will involve
-                    // adding an encoding method to this trait (and switching
-                    // type to PyUnicodeObject, since we will need the extra fields)
-                    panic!("legacy strings are not yet supported")
+                if self._base._base.state.compact() == 0 {
+                    return unsafe{ self.data.any as usize };
                 }
 
-                if self.state.ascii() == 1 {
+                if self._base._base.state.ascii() == 1 {
                     base + std::mem::size_of::<$py::PyASCIIObject>()
                 } else {
                     base + std::mem::size_of::<$py::PyCompactUnicodeObject>()
@@ -149,19 +145,19 @@ macro_rules! Python2StringImpl {
 }
 
 // Python 3.7
-PythonCommonImpl!(v3_7_0, PyBytesObject, PyASCIIObject);
+PythonCommonImpl!(v3_7_0, PyBytesObject, PyUnicodeObject);
 Python3StringImpl!(v3_7_0);
 
 // Python 3.6
-PythonCommonImpl!(v3_6_6, PyBytesObject, PyASCIIObject);
+PythonCommonImpl!(v3_6_6, PyBytesObject, PyUnicodeObject);
 Python3StringImpl!(v3_6_6);
 
 // python 3.5 and python 3.4
-PythonCommonImpl!(v3_5_5, PyBytesObject, PyASCIIObject);
+PythonCommonImpl!(v3_5_5, PyBytesObject, PyUnicodeObject);
 Python3StringImpl!(v3_5_5);
 
 // python 3.3
-PythonCommonImpl!(v3_3_7, PyBytesObject, PyASCIIObject);
+PythonCommonImpl!(v3_3_7, PyBytesObject, PyUnicodeObject);
 Python3StringImpl!(v3_3_7);
 
 // Python 2.7

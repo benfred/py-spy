@@ -2,76 +2,22 @@ use std;
 use std::time::{Instant, Duration};
 #[cfg(windows)]
 use winapi::um::timeapi;
-use failure::Error;
 
-use read_process_memory::{CopyAddress, Pid};
+use rand::{self, distributions::{Exp, Distribution}};
 
-/// Copies a struct from another process
-pub fn copy_struct<T, P>(addr: usize, process: &P) -> std::io::Result<T>
-    where P: CopyAddress {
-    let mut data = vec![0; std::mem::size_of::<T>()];
-    process.copy_address(addr, &mut data)?;
-    Ok(unsafe { std::ptr::read(data.as_ptr() as *const _) })
-}
-
-/// Given a pointer that points to a struct in another process, returns the
-/// struct from the other process
-pub fn copy_pointer<T, P>(ptr: *const T, process: &P) -> std::io::Result<T>
-    where P: CopyAddress {
-    copy_struct(ptr as usize, process)
-}
-
-#[cfg(target_os = "macos")]
-pub fn get_process_exe(pid: Pid) -> Result<String, Error> {
-    use libproc::libproc::proc_pid::pidpath;
-    pidpath(pid).map_err(|e| format_err!("proc_pidpath failed: {}", e))
-}
-
-#[cfg(target_os = "linux")]
-pub fn get_process_exe(pid: Pid) -> Result<String, Error> {
-    let path = std::fs::read_link(format!("/proc/{}/exe", pid))?;
-    Ok(path.to_string_lossy().to_string())
-}
-
-#[cfg(windows)]
-pub fn get_process_exe(pid: Pid) -> Result<String, Error> {
-    use winapi::um::processthreadsapi::OpenProcess;
-    use winapi::um::winnt::{PROCESS_QUERY_INFORMATION, WCHAR};
-    use winapi::shared::minwindef::{FALSE, DWORD, MAX_PATH};
-    use winapi::um::handleapi::{INVALID_HANDLE_VALUE, CloseHandle};
-    use winapi::um::winbase::QueryFullProcessImageNameW;
-    use std::ffi::OsString;
-    use std::os::windows::ffi::{OsStringExt};
-
-    unsafe {
-        let process = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, pid as DWORD);
-        if process == INVALID_HANDLE_VALUE {
-            return Err(std::io::Error::last_os_error().into());
-        }
-
-        let mut size = MAX_PATH as DWORD;
-        let mut filename: [WCHAR; MAX_PATH] = std::mem::zeroed();
-        let ret = QueryFullProcessImageNameW(process, 0, filename.as_mut_ptr(), &mut size);
-        CloseHandle(process);
-
-        if ret == 0 {
-            return Err(std::io::Error::last_os_error().into());
-        }
-
-        Ok(OsString::from_wide(&filename[0..size as usize]).to_string_lossy().into_owned())
-    }
-}
-
-/// Timer is an iterator that sleeps an appropiate amount of time so that
-/// each loop happens at a constant rate.
+/// Timer is an iterator that sleeps an appropiate amount of time between iterations
+/// so that we can sample the process a certain number of times a second.
+/// We're using an irregular sampling strategy to avoid aliasing effects that can happen
+/// if the target process runs code at a similar schedule as the profiler:
+/// https://github.com/benfred/py-spy/issues/94
 pub struct Timer {
-    rate: Duration,
     start: Instant,
-    samples: u32,
+    desired: Duration,
+    exp: Exp,
 }
 
 impl Timer {
-    pub fn new(rate: Duration) -> Timer {
+    pub fn new(rate: f64) -> Timer {
         // This changes a system-wide setting on Windows so that the OS wakes up every 1ms
         // instead of the default 15.6ms. This is required to have a sleep call
         // take less than 15ms, which we need since we usually profile at more than 64hz.
@@ -81,7 +27,8 @@ impl Timer {
         #[cfg(windows)]
         unsafe { timeapi::timeBeginPeriod(1); }
 
-        Timer{rate, samples: 0, start: Instant::now()}
+        let start = Instant::now();
+        Timer{start, desired: Duration::from_secs(0), exp: Exp::new(rate)}
     }
 }
 
@@ -89,14 +36,23 @@ impl Iterator for Timer {
     type Item = Result<Duration, Duration>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.samples += 1;
         let elapsed = self.start.elapsed();
-        let desired = self.rate * self.samples;
-        if desired > elapsed {
-            std::thread::sleep(desired - elapsed);
-            Some(Ok(desired - elapsed))
+
+        // figure out how many nanoseconds should come between the previous and
+        // the next sample using an exponential distribution to avoid aliasing
+        let nanos = 1_000_000_000.0 * self.exp.sample(&mut rand::thread_rng());
+
+        // since we want to account for the amount of time the sampling takes
+        // we keep track of when we should sleep to (rather than just sleeping
+        // the amount of time from the previous line).
+        self.desired += Duration::from_nanos(nanos as u64);
+
+        // sleep if appropiate, or warn if we are behind in sampling
+        if self.desired > elapsed {
+            std::thread::sleep(self.desired - elapsed);
+            Some(Ok(self.desired - elapsed))
         } else {
-            Some(Err(elapsed - desired))
+            Some(Err(elapsed - self.desired))
         }
     }
 }
@@ -108,36 +64,24 @@ impl Drop for Timer {
     }
 }
 
-#[cfg(test)]
-pub mod tests {
-    use super::*;
+pub fn resolve_filename(filename: &str, modulename: &str) -> Option<String> {
+    // check the filename first, if it exists use it
+    use std::path::Path;
+    let path = Path::new(filename);
+    if path.exists() {
+        return Some(filename.to_owned());
+    }
 
-    /// Mock for using CopyAddress on the local process.
-    pub struct LocalProcess;
-    impl CopyAddress for LocalProcess {
-        fn copy_address(&self, addr: usize, buf: &mut [u8]) -> std::io::Result<()> {
-            unsafe {
-                std::ptr::copy_nonoverlapping(addr as *mut u8, buf.as_mut_ptr(), buf.len());
+    // try resolving relative the shared library the file is in
+    let module = Path::new(modulename);
+    if let Some(parent) = module.parent() {
+        if let Some(name) = path.file_name() {
+        let temp = parent.join(name);
+            if temp.exists() {
+                return Some(temp.to_string_lossy().to_owned().to_string())
             }
-            Ok(())
         }
     }
 
-    struct Point { x: i32, y: i64 }
-
-    #[test]
-    fn test_copy_pointer() {
-        let original = Point{x:15, y:25};
-        let copy = copy_pointer(&original, &LocalProcess).unwrap();
-        assert_eq!(original.x, copy.x);
-        assert_eq!(original.y, copy.y);
-    }
-
-    #[test]
-    fn test_copy_struct() {
-        let original = Point{x:10, y:20};
-        let copy: Point = copy_struct(&original as *const Point as usize, &LocalProcess).unwrap();
-        assert_eq!(original.x, copy.x);
-        assert_eq!(original.y, copy.y);
-    }
+    None
 }

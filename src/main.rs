@@ -1,6 +1,11 @@
+// This lint is a little broken right now.
+// once this is live, probably can remove: https://github.com/rust-lang/rust-clippy/pull/3338
+#![allow(clippy::new_ret_no_self)]
+
 #[macro_use]
 extern crate clap;
 extern crate console;
+extern crate ctrlc;
 extern crate env_logger;
 #[macro_use]
 extern crate failure;
@@ -9,12 +14,10 @@ extern crate indicatif;
 #[macro_use]
 extern crate lazy_static;
 extern crate libc;
-#[cfg(target_os = "macos")]
-extern crate libproc;
 #[macro_use]
 extern crate log;
+extern crate memmap;
 extern crate proc_maps;
-extern crate benfred_read_process_memory as read_process_memory;
 extern crate regex;
 extern crate tempdir;
 extern crate tempfile;
@@ -22,23 +25,28 @@ extern crate tempfile;
 extern crate termios;
 #[cfg(windows)]
 extern crate winapi;
+extern crate cpp_demangle;
+extern crate rand;
+extern crate remoteprocess;
 
-
+mod config;
 mod binary_parser;
+mod cython;
+mod native_stack_trace;
 mod python_bindings;
 mod python_interpreters;
 mod python_spy;
 mod stack_trace;
 mod console_viewer;
 mod flamegraph;
-
 mod utils;
+mod version;
 
-use std::vec::Vec;
 use std::io::Read;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
-use clap::{App, Arg};
 use failure::Error;
 
 use python_spy::PythonSpy;
@@ -51,49 +59,48 @@ fn print_traces(traces: &[StackTrace], show_idle: bool) {
             continue;
         }
 
-        println!("Thread {:#X} ({})", trace.thread_id, trace.status_str());
+        if let Some(os_thread_id) = trace.os_thread_id {
+            println!("Thread {:#X}/{:#X} ({})", trace.thread_id,  os_thread_id, trace.status_str());
+        } else {
+            println!("Thread {:#X} ({})", trace.thread_id, trace.status_str());
+        }
         for frame in &trace.frames {
             let filename = match &frame.short_filename { Some(f) => &f, None => &frame.filename };
-            println!("\t {} ({}:{})", frame.name, filename, frame.line);
+            if frame.line != 0 {
+                println!("\t {} ({}:{})", frame.name, filename, frame.line);
+            } else {
+                println!("\t {} ({})", frame.name, filename);
+            }
         }
     }
 }
 
-// Given a failure::Error, tries to see if it is because the process exitted
-fn process_exitted(err: &Error) -> bool {
-    err.iter_chain().any(|cause| {
-        if let Some(ioerror) = cause.downcast_ref::<std::io::Error>() {
-            if let Some(err_code) = ioerror.raw_os_error() {
-                if err_code == 3 || err_code == 60 || err_code == 299 {
-                    return true;
-                }
-            }
-        }
-        false
-    })
+fn process_exitted(process: &remoteprocess::Process) -> bool {
+    process.exe().is_err()
 }
 
+#[cfg(unix)]
 fn permission_denied(err: &Error) -> bool {
     err.iter_chain().any(|cause| {
         if let Some(ioerror) = cause.downcast_ref::<std::io::Error>() {
             ioerror.kind() == std::io::ErrorKind::PermissionDenied
-        } else {
+        } else if let Some(remoteprocess::Error::IOError(ioerror)) = cause.downcast_ref::<remoteprocess::Error>() {
+            ioerror.kind() == std::io::ErrorKind::PermissionDenied
+        }else {
             false
         }
     })
 }
 
-fn sample_console(process: &PythonSpy,
+fn sample_console(process: &mut PythonSpy,
                   display: &str,
-                  args: &clap::ArgMatches) -> Result<(), Error> {
-    let rate = value_t!(args, "rate", u64)?;
-    let show_linenumbers = args.occurrences_of("function") == 0;
-    let mut console = ConsoleViewer::new(show_linenumbers, display,
+                  config: &config::Config) -> Result<(), Error> {
+    let rate = config.sampling_rate;
+    let mut console = ConsoleViewer::new(config.show_line_numbers, display,
                                          &format!("{}", process.version),
                                          1.0 / rate as f64)?;
-    let mut exitted_count = 0;
 
-    for sleep in utils::Timer::new(Duration::from_nanos(1_000_000_000 / rate)) {
+    for sleep in utils::Timer::new(rate as f64) {
         if let Err(elapsed) = sleep {
             console.increment_late_sample(elapsed);
         }
@@ -103,14 +110,11 @@ fn sample_console(process: &PythonSpy,
                 console.increment(&traces)?;
             },
             Err(err) => {
-                if process_exitted(&err) {
-                    exitted_count += 1;
-                    if exitted_count > 5 {
-                        println!("\nprocess {} ended", process.pid);
-                        break;
-                    }
+                if process_exitted(&process.process) {
+                    println!("\nprocess {} ended", process.pid);
+                    break;
                 } else {
-                    console.increment_error(&err);
+                    console.increment_error(&err)?;
                 }
             }
         }
@@ -120,32 +124,43 @@ fn sample_console(process: &PythonSpy,
 }
 
 
-fn sample_flame(process: &PythonSpy, filename: &str, args: &clap::ArgMatches) -> Result<(), Error> {
-    let rate = value_t!(args, "rate", u64)?;
-    let duration = value_t!(args, "duration", u64)?;
-    let max_samples = duration * rate;
-    let show_linenumbers = args.occurrences_of("function") == 0;
+fn sample_flame(process: &mut PythonSpy, filename: &str, config: &config::Config) -> Result<(), Error> {
+    let max_samples = config.duration * config.sampling_rate;
 
-    let mut flame = flamegraph::Flamegraph::new(show_linenumbers);
+    let mut flame = flamegraph::Flamegraph::new(config.show_line_numbers);
     use indicatif::ProgressBar;
     let progress = ProgressBar::new(max_samples);
 
-    println!("Sampling process {} times a second for {} seconds", rate, duration);
+    println!("Sampling process {} times a second for {} seconds. Press Control-C to exit.",
+             config.sampling_rate, config.duration);
+
     let mut errors = 0;
     let mut samples = 0;
-    let mut exitted_count = 0;
     println!();
 
-    for sleep in utils::Timer::new(Duration::from_nanos(1_000_000_000 / rate)) {
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
+    ctrlc::set_handler(move || {
+        r.store(false, Ordering::SeqCst);
+    })?;
+
+    let mut exit_message = "";
+
+    for sleep in utils::Timer::new(config.sampling_rate as f64) {
         if let Err(delay) = sleep {
             if delay > Duration::from_secs(1) {
-                    // TODO: once this available on crates.io https://github.com/mitsuhiko/indicatif/pull/41
-                    // go progress.println instead
-                    let term = console::Term::stdout();
-                    term.move_cursor_up(2)?;
-                    println!("{:.2?} behind in sampling, results may be inaccurate. Try reducing the sampling rate.", delay);
-                    term.move_cursor_down(1)?;
+                // TODO: once this available on crates.io https://github.com/mitsuhiko/indicatif/pull/41
+                // go progress.println instead
+                let term = console::Term::stdout();
+                term.move_cursor_up(2)?;
+                println!("{:.2?} behind in sampling, results may be inaccurate. Try reducing the sampling rate.", delay);
+                term.move_cursor_down(1)?;
             }
+        }
+
+        if !running.load(Ordering::SeqCst) {
+            exit_message = "Stopped sampling because Control-C pressed";
+            break;
         }
 
         match process.get_stack_traces() {
@@ -156,21 +171,22 @@ fn sample_flame(process: &PythonSpy, filename: &str, args: &clap::ArgMatches) ->
                     break;
                 }
             },
-            Err(err) => {
-                if process_exitted(&err) {
-                    exitted_count += 1;
-                    // there must be a better way to figure out if the process is still running
-                    if exitted_count > 3 {
-                        println!("process {} ended", process.pid);
-                        break;
-                    }
+            Err(_) => {
+                if process_exitted(&process.process) {
+                    exit_message = "Stopped sampling because the process ended";
+                    break;
+                } else {
+                    errors += 1;
                 }
-                errors += 1;
             }
         }
         progress.inc(1);
     }
     progress.finish();
+    // write out a message here (so as not to interfere with progress bar) if we ended earlier
+    if !exit_message.is_empty() {
+        println!("{}", exit_message);
+    }
 
     let out_file = std::fs::File::create(filename)?;
     flame.write(out_file)?;
@@ -186,50 +202,7 @@ fn sample_flame(process: &PythonSpy, filename: &str, args: &clap::ArgMatches) ->
 }
 
 fn pyspy_main() -> Result<(), Error> {
-    let matches = App::new("py-spy")
-        .version("0.1.7")
-        .about("A sampling profiler for Python programs")
-        .arg(Arg::with_name("function")
-            .short("F")
-            .long("function")
-            .help("Aggregate samples by function name instead of by line number"))
-        .arg(Arg::with_name("pid")
-            .short("p")
-            .long("pid")
-            .value_name("pid")
-            .help("PID of a running python program to spy on")
-            .takes_value(true)
-            .required_unless("python_program"))
-        .arg(Arg::with_name("dump")
-            .long("dump")
-            .help("Dump the current stack traces to stdout"))
-        .arg(Arg::with_name("flame")
-            .short("f")
-            .long("flame")
-            .value_name("flamefile")
-            .help("Generate a flame graph and write to a file")
-            .takes_value(true))
-        .arg(Arg::with_name("rate")
-            .short("r")
-            .long("rate")
-            .value_name("rate")
-            .help("The number of samples to collect per second")
-            .default_value("200")
-            .takes_value(true))
-        .arg(Arg::with_name("duration")
-            .short("d")
-            .long("duration")
-            .value_name("duration")
-            .help("The number of seconds to sample for when generating a flame graph")
-            .default_value("2")
-            .takes_value(true))
-
-        .arg(Arg::with_name("python_program")
-            .help("commandline of a python program to run")
-            .multiple(true)
-            )
-        .get_matches();
-
+    let config = config::Config::from_commandline()?;
 
     #[cfg(target_os="macos")]
     {
@@ -240,26 +213,22 @@ fn pyspy_main() -> Result<(), Error> {
         }
     }
 
-    info!("Command line args: {:?}", matches);
-
-    if let Some(pid_str) = matches.value_of("pid") {
-        let pid: read_process_memory::Pid = pid_str.parse().expect("invalid pid");
-        let process = PythonSpy::retry_new(pid, 3)?;
-
-        if matches.occurrences_of("dump") > 0 {
+    if let Some(pid) = config.pid {
+        let mut process = PythonSpy::retry_new(pid, &config, 3)?;
+        if config.dump {
+            println!("{}\nPython version {}", process.process.exe()?, process.version);
             print_traces(&process.get_stack_traces()?, true);
-        } else if let Some(flame_file) = matches.value_of("flame") {
-            sample_flame(&process, flame_file, &matches)?;
+        } else if let Some(ref flame_file) = config.flame_file_name {
+            sample_flame(&mut process, &flame_file, &config)?;
         } else {
-            sample_console(&process, &format!("pid: {}", pid), &matches)?;
+            sample_console(&mut process, &format!("pid: {}", pid), &config)?;
         }
     }
 
-    else if let Some(subprocess) = matches.values_of("python_program") {
+    else if let Some(ref subprocess) = config.python_program {
         // Dump out stdout/stderr from the process to a temp file, so we can view it later if needed
         let mut process_output = tempfile::NamedTempFile::new()?;
-        let subprocess: Vec<&str> = subprocess.collect();
-        let mut command = std::process::Command::new(subprocess[0])
+        let mut command = std::process::Command::new(&subprocess[0])
             .args(&subprocess[1..])
             .stdin(std::process::Stdio::null())
             .stdout(process_output.reopen()?)
@@ -271,12 +240,12 @@ fn pyspy_main() -> Result<(), Error> {
             // sleep just in case: https://jvns.ca/blog/2018/01/28/mac-freeze/
             std::thread::sleep(Duration::from_millis(50));
         }
-        let result = match PythonSpy::retry_new(command.id() as read_process_memory::Pid, 8) {
-            Ok(process) => {
-                if let Some(flame_file) = matches.value_of("flame") {
-                    sample_flame(&process, flame_file, &matches)
+        let result = match PythonSpy::retry_new(command.id() as remoteprocess::Pid, &config, 8) {
+            Ok(mut process) => {
+                if let Some(ref flame_file) = config.flame_file_name {
+                    sample_flame(&mut process, &flame_file, &config)
                 } else {
-                    sample_console(&process, &subprocess.join(" "), &matches)
+                    sample_console(&mut process, &subprocess.join(" "), &config)
                 }
             },
             Err(e) => Err(e)
@@ -314,9 +283,12 @@ fn main() {
     env_logger::init();
 
     if let Err(err) = pyspy_main() {
+        #[cfg(unix)]
+        {
         if permission_denied(&err) {
             eprintln!("Permission Denied: Try running again with elevated permissions by going 'sudo env \"PATH=$PATH\" !!'");
             std::process::exit(1);
+        }
         }
 
         eprintln!("Error: {}", err);
