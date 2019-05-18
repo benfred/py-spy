@@ -17,10 +17,22 @@ pub mod pyruntime {
     // There aren't any OS specific members of PyRuntime before pyinterpreters.head,
     // so these offsets should be valid for all OS'es
     #[cfg(target_pointer_width = "32")]
-    pub static INTERP_HEAD_OFFSET: usize = 16;
+    pub fn get_interp_head_offset(version: &Version) -> usize {
+        16
+    }
 
     #[cfg(target_pointer_width = "64")]
-    pub static INTERP_HEAD_OFFSET: usize = 24;
+    pub fn get_interp_head_offset(version: &Version) -> usize {
+        match version {
+             Version{major: 3, minor: 8, patch: 0, ..} => {
+                 match version.release_flags.as_ref() {
+                    "a3" | "a4" => 32,
+                    _ => 24
+                }
+             },
+             _ => 24
+        }
+    }
 
     // getting gilstate.tstate_current is different for all OS
     // and is also different for each python version, and even
@@ -33,7 +45,7 @@ pub mod pyruntime {
                  match version.release_flags.as_ref() {
                     "a1" => Some(1432),
                     "a2" => Some(888),
-                    "a3" => Some(1448),
+                    "a3" | "a4" => Some(1448),
                     _ => None
                 }
              },
@@ -49,7 +61,7 @@ pub mod pyruntime {
                  match version.release_flags.as_ref() {
                     "a1" => Some(792),
                     "a2" => Some(512),
-                    "a3" => Some(800),
+                    "a3" | "a4" => Some(800),
                     _ => None
                 }
              },
@@ -65,7 +77,7 @@ pub mod pyruntime {
                  match version.release_flags.as_ref() {
                     "a1" => Some(1384),
                     "a2" => Some(840),
-                    "a3" => Some(1400),
+                    "a3" | "a4" => Some(1400),
                     _ => None
                 }
              },

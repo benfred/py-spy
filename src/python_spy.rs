@@ -270,7 +270,7 @@ fn get_interpreter_address(python_info: &PythonProcessInfo,
     match version {
         Version{major: 3, minor: 7, ..} => {
             if let Some(&addr) = python_info.get_symbol("_PyRuntime") {
-                let addr = process.copy_struct(addr as usize + pyruntime::INTERP_HEAD_OFFSET)?;
+                let addr = process.copy_struct(addr as usize + pyruntime::get_interp_head_offset(&version))?;
 
                 // Make sure the interpreter addr is valid before returning
                 match check_interpreter_addresses(&[addr], &python_info.maps, process, version) {
