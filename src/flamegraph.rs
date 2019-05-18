@@ -28,20 +28,16 @@ SOFTWARE.
 
 use std;
 use std::collections::HashMap;
-use std::io::Write;
 use std::fs::File;
-use std::path::Path;
-use std::process::{Command, Stdio};
 
-use failure::{Error, ResultExt};
-use tempdir;
+
+use failure::Error;
+use inferno::flamegraph::{Direction, Options};
 
 use stack_trace::StackTrace;
 
-const FLAMEGRAPH_SCRIPT: &[u8] = include_bytes!("../vendor/flamegraph/flamegraph.pl");
-
 pub struct Flamegraph {
-    pub counts: HashMap<Vec<u8>, usize>,
+    pub counts: HashMap<String, usize>,
     pub show_linenumbers: bool,
 }
 
@@ -55,47 +51,33 @@ impl Flamegraph {
             if !(trace.active) {
                 continue;
             }
-            let mut buf = vec![];
-            for frame in trace.frames.iter().rev() {
+
+            // convert the frame into a single ';' delimited String
+            let frame = trace.frames.iter().rev().map(|frame| {
                 let filename = match &frame.short_filename { Some(f) => &f, None => &frame.filename };
                 if self.show_linenumbers && frame.line != 0 {
-                    write!(&mut buf, "{} ({}:{});", frame.name, filename, frame.line)?;
+                    format!("{} ({}:{})", frame.name, filename, frame.line)
                 } else {
-                    write!(&mut buf, "{} ({});", frame.name, filename)?;
+                    format!("{} ({})", frame.name, filename)
                 }
-            }
-            *self.counts.entry(buf).or_insert(0) += 1;
+            }).collect::<Vec<String>>().join(";");
+
+            // update counts for that frame
+            *self.counts.entry(frame).or_insert(0) += 1;
         }
         Ok(())
     }
 
     pub fn write(&self, w: File) -> Result<(), Error> {
-        let tempdir = tempdir::TempDir::new("flamegraph").unwrap();
-        let stacks_file = tempdir.path().join("stacks.txt");
-        let mut file = File::create(&stacks_file).expect("couldn't create file");
-        for (k, v) in &self.counts {
-            file.write_all(&k)?;
-            writeln!(file, " {}", v)?;
-        }
-        write_flamegraph(&stacks_file, w)
-    }
-}
+        let lines: Vec<String> = self.counts.iter().map(|(k, v)| format!("{} {}", k, v)).collect();
+        let mut opts =  Options {
+            direction: Direction::Inverted,
+            min_width: 1.0,
+            title: "py-spy".to_owned(),
+            ..Default::default()
+        };
 
-fn write_flamegraph(source: &Path, target: File) -> Result<(), Error> {
-    let mut child = Command::new("perl")
-        .arg("-")
-        .arg("--inverted") // icicle graphs are easier to read
-        .arg("--minwidth").arg("1") // min width 2 pixels saves on disk space
-        .arg(source)
-        .stdin(Stdio::piped()) // pipe in the flamegraph.pl script to stdin
-        .stdout(target)
-        .spawn()
-        .context("Couldn't execute perl")?;
-    // TODO(nll): Remove this silliness after non-lexical lifetimes land.
-    {
-        let stdin = child.stdin.as_mut().expect("failed to write to stdin");
-        stdin.write_all(FLAMEGRAPH_SCRIPT)?;
+        inferno::flamegraph::from_lines(&mut opts, lines.iter().map(|x| x.as_str()), w).unwrap();
+        Ok(())
     }
-    child.wait()?;
-    Ok(())
 }
