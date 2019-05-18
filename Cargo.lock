@@ -673,7 +673,7 @@ dependencies = [
 
 [[package]]
 name = "py-spy"
-version = "0.2.0"
+version = "0.2.0.dev0"
 dependencies = [
  "clap 2.32.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "console 0.7.5 (registry+https://github.com/rust-lang/crates.io-index)",
