@@ -1,3 +1,13 @@
+## v0.1.11
+
+* Fix to detect GIL status on Python 3.7+ [#104](https://github.com/benfred/py-spy/pull/104)
+* Generate flamegraphs without perl (using Inferno) [#38](https://github.com/benfred/py-spy/issues/38)
+* Use irregular sampling interval to avoid incorrect results [#94](https://github.com/benfred/py-spy/issues/94)
+* Detect python packages when generating short filenames [#75](https://github.com/benfred/py-spy/issues/75)
+* Fix issue with finding interpreter with Python 3.7 and 32bit Linux [#101](https://github.com/benfred/py-spy/issues/101)
+* Detect "v2.7.15+" as a valid version string [#81](https://github.com/benfred/py-spy/issues/81)
+* Fix to cleanup venv after failing to build with setup.py [#69](https://github.com/benfred/py-spy/issues/69)
+
 ## v0.1.10
 
 * Fix running py-spy inside a docker container [#68](https://github.com/benfred/py-spy/issues/68)
