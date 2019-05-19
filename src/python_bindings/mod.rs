@@ -18,7 +18,15 @@ pub mod pyruntime {
     // so these offsets should be valid for all OS'es
     #[cfg(target_pointer_width = "32")]
     pub fn get_interp_head_offset(version: &Version) -> usize {
-        16
+        match version {
+             Version{major: 3, minor: 8, patch: 0, ..} => {
+                 match version.release_flags.as_ref() {
+                    "a3" | "a4" => 20,
+                    _ => 16
+                }
+             },
+             _ => 16
+        }
     }
 
     #[cfg(target_pointer_width = "64")]
