@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::path::Path;
 
+use failure::Error;
 use goblin;
 use goblin::Object;
-use goblin::error::Error as GoblinError;
 use memmap::Mmap;
 
 pub struct BinaryInfo {
@@ -16,7 +16,7 @@ pub struct BinaryInfo {
 }
 
 /// Uses goblin to parse a binary file, returns information on symbols/bss/adjusted offset etc
-pub fn parse_binary(filename: &str, offset: u64) -> Result<BinaryInfo, GoblinError> {
+pub fn parse_binary(filename: &str, offset: u64) -> Result<BinaryInfo, Error> {
     let mut symbols = HashMap::new();
 
     // Read in the filename
@@ -35,7 +35,7 @@ pub fn parse_binary(filename: &str, offset: u64) -> Result<BinaryInfo, GoblinErr
                             Ok(arch) => arch.is_64(),
                             Err(_) => false
                         }
-                    ).expect("Failed to find 64 bit arch in FAT archive")?;
+                    ).ok_or_else(|| format_err!("Failed to find 64 bit arch in FAT archive in {}", filename))??;
                     let bytes = &buffer[arch.offset as usize..][..arch.size as usize];
                     goblin::mach::MachO::parse(bytes, 0)?
                 }
@@ -70,14 +70,14 @@ pub fn parse_binary(filename: &str, offset: u64) -> Result<BinaryInfo, GoblinErr
             let bss_header = elf.section_headers
                 .iter()
                 .find(|ref header| header.sh_type == goblin::elf::section_header::SHT_NOBITS)
-                .expect("Failed to find BSS section header in ELF binary");
+                .ok_or_else(|| format_err!("Failed to find BSS section header in {}", filename))?;
 
             let program_header = elf.program_headers
                 .iter()
                 .find(|ref header|
                     header.p_type == goblin::elf::program_header::PT_LOAD &&
                     header.p_flags & goblin::elf::program_header::PF_X != 0)
-                .expect("Failed to find executable PT_LOAD program header in ELF binary");
+                .ok_or_else(|| format_err!("Failed to find executable PT_LOAD program header in {}", filename))?;
 
             let offset = offset - program_header.p_vaddr;
 
@@ -108,7 +108,7 @@ pub fn parse_binary(filename: &str, offset: u64) -> Result<BinaryInfo, GoblinErr
             Ok(BinaryInfo{symbols, bss_addr, bss_size, offset})
         },
         _ => {
-            Err(GoblinError::Malformed(String::from("Unhandled binary type")))
+            Err(format_err!("Unhandled binary type"))
         }
     }
 }
