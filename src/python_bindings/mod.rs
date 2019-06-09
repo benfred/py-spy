@@ -21,7 +21,7 @@ pub mod pyruntime {
         match version {
              Version{major: 3, minor: 8, patch: 0, ..} => {
                  match version.release_flags.as_ref() {
-                    "a3" | "a4" => 20,
+                    "a3" | "a4" | "b1" => 20,
                     _ => 16
                 }
              },
@@ -34,7 +34,7 @@ pub mod pyruntime {
         match version {
              Version{major: 3, minor: 8, patch: 0, ..} => {
                  match version.release_flags.as_ref() {
-                    "a3" | "a4" => 32,
+                    "a3" | "a4" | "b1" => 32,
                     _ => 24
                 }
              },
@@ -54,6 +54,7 @@ pub mod pyruntime {
                     "a1" => Some(1432),
                     "a2" => Some(888),
                     "a3" | "a4" => Some(1448),
+                    "b1" => Some(1416),
                     _ => None
                 }
              },
@@ -70,6 +71,7 @@ pub mod pyruntime {
                     "a1" => Some(792),
                     "a2" => Some(512),
                     "a3" | "a4" => Some(800),
+                    "b1" => Some(784),
                     _ => None
                 }
              },
@@ -86,6 +88,7 @@ pub mod pyruntime {
                     "a1" => Some(1384),
                     "a2" => Some(840),
                     "a3" | "a4" => Some(1400),
+                    "b1" => Some(1368),
                     _ => None
                 }
              },
@@ -101,7 +104,8 @@ pub mod pyruntime {
                  match version.release_flags.as_ref() {
                     "a1" => Some(1312),
                     "a2" => Some(768),
-                    "a3" => Some(1328),
+                    "a3" | "a4" => Some(1328),
+                    "b1" => Some(1296),
                     _ => None
                 }
              },
