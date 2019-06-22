@@ -8,6 +8,7 @@ description = "Sampling profiler for Python programs "
 readme = "README.md"
 exclude = ["images/*", "test_programs/*"]
 license = "GPL-3.0"
+build="build.rs"
 
 [dependencies]
 clap = "2"

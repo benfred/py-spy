@@ -4,7 +4,7 @@ extern crate goblin;
 #[cfg(target_os="linux")]
 extern crate nix;
 
-
+#[cfg(unwind)]
 fn get_backtrace(pid: remoteprocess::Pid) -> Result<(), remoteprocess::Error> {
     // Create a new handle to the process
     let process = remoteprocess::Process::new(pid)?;
@@ -32,6 +32,7 @@ fn get_backtrace(pid: remoteprocess::Pid) -> Result<(), remoteprocess::Error> {
     Ok(())
 }
 
+#[cfg(unwind)]
 fn main() {
     env_logger::init();
 
@@ -47,3 +48,9 @@ fn main() {
         println!("Failed to get backtrace {:?}", e);
     }
 }
+
+#[cfg(not(unwind))]
+fn main() {
+    panic!("unwind not supported!");
+}
+

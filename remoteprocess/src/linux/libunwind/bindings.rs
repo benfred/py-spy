@@ -450,15 +450,17 @@ fn bindgen_test_layout_ucontext() {
 pub type ucontext_t = ucontext;
 pub type unw_word_t = u64;
 pub type unw_sword_t = i64;
-pub type unw_tdep_fpreg_t = f64;
+pub type unw_tdep_fpreg_t = u128;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct unw_tdep_save_loc {}
+pub struct unw_tdep_save_loc {
+    pub unused: ::std::os::raw::c_char,
+}
 #[test]
 fn bindgen_test_layout_unw_tdep_save_loc() {
     assert_eq!(
         ::std::mem::size_of::<unw_tdep_save_loc>(),
-        0usize,
+        1usize,
         concat!("Size of: ", stringify!(unw_tdep_save_loc))
     );
     assert_eq!(
@@ -466,23 +468,45 @@ fn bindgen_test_layout_unw_tdep_save_loc() {
         1usize,
         concat!("Alignment of ", stringify!(unw_tdep_save_loc))
     );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<unw_tdep_save_loc>())).unused as *const _ as usize },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(unw_tdep_save_loc),
+            "::",
+            stringify!(unused)
+        )
+    );
 }
 pub type unw_tdep_save_loc_t = unw_tdep_save_loc;
 pub type unw_tdep_context_t = ucontext_t;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct unw_tdep_proc_info_t {}
+pub struct unw_tdep_proc_info_t {
+    pub unused: ::std::os::raw::c_char,
+}
 #[test]
 fn bindgen_test_layout_unw_tdep_proc_info_t() {
     assert_eq!(
         ::std::mem::size_of::<unw_tdep_proc_info_t>(),
-        0usize,
+        1usize,
         concat!("Size of: ", stringify!(unw_tdep_proc_info_t))
     );
     assert_eq!(
         ::std::mem::align_of::<unw_tdep_proc_info_t>(),
         1usize,
         concat!("Alignment of ", stringify!(unw_tdep_proc_info_t))
+    );
+    assert_eq!(
+        unsafe { &(*(::std::ptr::null::<unw_tdep_proc_info_t>())).unused as *const _ as usize },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(unw_tdep_proc_info_t),
+            "::",
+            stringify!(unused)
+        )
     );
 }
 pub const unw_dyn_operation_t_UNW_DYN_STOP: unw_dyn_operation_t = 0;
@@ -499,6 +523,7 @@ pub const unw_dyn_info_format_t_UNW_INFO_FORMAT_DYNAMIC: unw_dyn_info_format_t =
 pub const unw_dyn_info_format_t_UNW_INFO_FORMAT_TABLE: unw_dyn_info_format_t = 1;
 pub const unw_dyn_info_format_t_UNW_INFO_FORMAT_REMOTE_TABLE: unw_dyn_info_format_t = 2;
 pub const unw_dyn_info_format_t_UNW_INFO_FORMAT_ARM_EXIDX: unw_dyn_info_format_t = 3;
+pub const unw_dyn_info_format_t_UNW_INFO_FORMAT_IP_OFFSET: unw_dyn_info_format_t = 4;
 pub type unw_dyn_info_format_t = u32;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -1069,6 +1094,8 @@ pub const unw_caching_policy_t_UNW_CACHE_NONE: unw_caching_policy_t = 0;
 pub const unw_caching_policy_t_UNW_CACHE_GLOBAL: unw_caching_policy_t = 1;
 pub const unw_caching_policy_t_UNW_CACHE_PER_THREAD: unw_caching_policy_t = 2;
 pub type unw_caching_policy_t = u32;
+pub const unw_init_local2_flags_t_UNW_INIT_SIGNAL_FRAME: unw_init_local2_flags_t = 1;
+pub type unw_init_local2_flags_t = u32;
 pub type unw_regnum_t = ::std::os::raw::c_int;
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -1125,7 +1152,7 @@ pub struct unw_proc_info {
 fn bindgen_test_layout_unw_proc_info() {
     assert_eq!(
         ::std::mem::size_of::<unw_proc_info>(),
-        64usize,
+        72usize,
         concat!("Size of: ", stringify!(unw_proc_info))
     );
     assert_eq!(
@@ -1235,6 +1262,15 @@ fn bindgen_test_layout_unw_proc_info() {
     );
 }
 pub type unw_proc_info_t = unw_proc_info;
+pub type unw_reg_states_callback = ::std::option::Option<
+    unsafe extern "C" fn(
+        token: *mut ::std::os::raw::c_void,
+        reg_states_data: *mut ::std::os::raw::c_void,
+        reg_states_data_size: usize,
+        start_ip: unw_word_t,
+        end_ip: unw_word_t,
+    ) -> ::std::os::raw::c_int,
+>;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct unw_accessors {
@@ -1460,7 +1496,7 @@ fn bindgen_test_layout_unw_save_loc__bindgen_ty_1() {
 fn bindgen_test_layout_unw_save_loc() {
     assert_eq!(
         ::std::mem::size_of::<unw_save_loc>(),
-        16usize,
+        24usize,
         concat!("Size of: ", stringify!(unw_save_loc))
     );
     assert_eq!(

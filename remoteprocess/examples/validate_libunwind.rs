@@ -6,17 +6,17 @@ stack pointer for each frame and make sure they match up */
 extern crate remoteprocess;
 extern crate env_logger;
 
-#[cfg(target_os="linux")]
+#[cfg(all(target_os="linux", unwind))]
 extern crate goblin;
-#[cfg(target_os="linux")]
+#[cfg(all(target_os="linux", unwind))]
 extern crate nix;
 
-#[cfg(target_os="linux")]
+#[cfg(all(target_os="linux", unwind))]
 #[macro_use]
 extern crate log;
 
 
-#[cfg(target_os="linux")]
+#[cfg(all(target_os="linux", unwind))]
 fn libunwind_compare(pid: remoteprocess::Pid) -> Result<(), remoteprocess::Error> {
     let process = remoteprocess::Process::new(pid)?;
     let unwinder = process.unwinder()?;
@@ -61,7 +61,7 @@ fn libunwind_compare(pid: remoteprocess::Pid) -> Result<(), remoteprocess::Error
     Ok(())
 }
 
-#[cfg(target_os="linux")]
+#[cfg(all(target_os="linux", unwind))]
 fn main() {
     env_logger::init();
 
@@ -76,7 +76,7 @@ fn main() {
     libunwind_compare(pid as i32).unwrap();
 }
 
-#[cfg(not(target_os="linux"))]
+#[cfg(not(all(target_os="linux", unwind)))]
 fn main() {
-    panic!("This example only works on linux");
+    panic!("This example only works on linux built with unwinding support");
 }

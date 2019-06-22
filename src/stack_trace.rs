@@ -3,7 +3,7 @@ use std;
 use failure::{Error, ResultExt};
 use remoteprocess::ProcessMemory;
 
-use python_interpreters::{InterpreterState, ThreadState, FrameObject, CodeObject, StringObject, BytesObject};
+use crate::python_interpreters::{InterpreterState, ThreadState, FrameObject, CodeObject, StringObject, BytesObject};
 
 #[derive(Debug)]
 pub struct StackTrace {

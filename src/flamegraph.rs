@@ -34,7 +34,7 @@ use std::fs::File;
 use failure::Error;
 use inferno::flamegraph::{Direction, Options};
 
-use stack_trace::StackTrace;
+use crate::stack_trace::StackTrace;
 
 pub struct Flamegraph {
     pub counts: HashMap<String, usize>,

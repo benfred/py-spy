@@ -32,7 +32,9 @@ extern crate remoteprocess;
 
 mod config;
 mod binary_parser;
+#[cfg(unwind)]
 mod cython;
+#[cfg(unwind)]
 mod native_stack_trace;
 mod python_bindings;
 mod python_interpreters;
@@ -281,8 +283,6 @@ fn pyspy_main() -> Result<(), Error> {
 }
 
 fn main() {
-    env_logger::init();
-
     if let Err(err) = pyspy_main() {
         #[cfg(unix)]
         {

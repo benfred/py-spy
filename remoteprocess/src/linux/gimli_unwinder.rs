@@ -16,9 +16,9 @@ use gimli::EndianRcSlice;
 type RcReader = EndianRcSlice<NativeEndian>;
 
 use super::super::{ProcessMemory, Error};
-use dwarf_unwind::{UnwindInfo, Registers};
+use crate::dwarf_unwind::{UnwindInfo, Registers};
 
-use linux::symbolication::{SymbolData};
+use crate::linux::symbolication::{SymbolData};
 use super::super::StackFrame;
 use super::{Pid, Thread, Process};
 

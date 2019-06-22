@@ -2,6 +2,7 @@
 name = "remoteprocess"
 version = "0.1.0"
 authors = ["Ben Frederickson <github@benfrederickson.com>"]
+build="build.rs"
 
 [dependencies]
 gimli = "0.17.0"

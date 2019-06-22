@@ -12,7 +12,7 @@ pub mod v3_7_0;
 // member variables we care about here
 // (note 'generate_bindings.py' has code to figure out these offsets)
 pub mod pyruntime {
-    use version::Version;
+    use crate::version::Version;
 
     // There aren't any OS specific members of PyRuntime before pyinterpreters.head,
     // so these offsets should be valid for all OS'es

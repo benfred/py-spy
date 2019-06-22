@@ -33,7 +33,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 */
 
-use std::sync::atomic::ATOMIC_USIZE_INIT;
+use std::sync::atomic::AtomicUsize;
 
 use libc::{c_char, c_int, c_void};
 use dylib::{self, Dylib, Symbol as DylibSymbol};
@@ -51,7 +51,7 @@ const CSREF_NULL: CSTypeRef = CSTypeRef {
     cpp_obj: 0 as *const c_void,
 };
 
-static CORESYMBOLICATION: Dylib = Dylib { init: ATOMIC_USIZE_INIT };
+static CORESYMBOLICATION: Dylib = Dylib { init: AtomicUsize::new(0) };
 
 dlsym! {
     extern {

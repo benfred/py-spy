@@ -8,14 +8,16 @@ use regex::Regex;
 use failure::{Error, ResultExt};
 use remoteprocess::{Process, ProcessMemory, Pid};
 use proc_maps::{get_process_maps, MapRange};
-use python_bindings::{pyruntime, v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0};
 
-use binary_parser::{parse_binary, BinaryInfo};
-use config::Config;
-use native_stack_trace::NativeStack;
-use python_interpreters::{self, InterpreterState, ThreadState};
-use stack_trace::{StackTrace, get_stack_traces};
-use version::Version;
+
+use crate::binary_parser::{parse_binary, BinaryInfo};
+use crate::config::Config;
+#[cfg(unwind)]
+use crate::native_stack_trace::NativeStack;
+use crate::python_bindings::{pyruntime, v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0};
+use crate::python_interpreters::{self, InterpreterState, ThreadState};
+use crate::stack_trace::{StackTrace, get_stack_traces};
+use crate::version::Version;
 
 
 pub struct PythonSpy {
@@ -27,6 +29,7 @@ pub struct PythonSpy {
     pub python_filename: String,
     pub version_string: String,
     pub config: Config,
+    #[cfg(unwind)]
     pub native: Option<NativeStack>,
     pub short_filenames: HashMap<String, Option<String>>,
 }
@@ -81,6 +84,7 @@ impl PythonSpy {
 
         let version_string = format!("python{}.{}", version.major, version.minor);
 
+        #[cfg(unwind)]
         let native = if config.native {
             Some(NativeStack::new(pid, &python_info.python_filename, &python_info.libpython_filename)?)
         } else {
@@ -90,6 +94,7 @@ impl PythonSpy {
         Ok(PythonSpy{pid, process, version, interpreter_address, threadstate_address,
                      python_filename: python_info.python_filename,
                      version_string,
+                     #[cfg(unwind)]
                      native,
                      config: config.clone(),
                      short_filenames: HashMap::new()})
@@ -167,10 +172,14 @@ impl PythonSpy {
         let interp: I = self.process.copy_struct(self.interpreter_address)
             .context("Failed to copy PyInterpreterState from process")?;
 
+        #[cfg(unwind)]
         let mut traces = match self.native.as_mut() {
             Some(native) => native.get_native_stack_traces(&interp, &self.process)?,
             None => get_stack_traces(&interp, &self.process)?
         };
+
+        #[cfg(not(unwind))]
+        let mut traces = get_stack_traces(&interp, &self.process)?;
 
         // annotate traces to indicate which thread is holding the gil (if any),
         // and to provide a shortened filename
@@ -450,6 +459,7 @@ impl PythonProcessInfo {
             };
 
             // TODO: consistent types? u64 -> usize? for map.start etc
+            #[allow(unused_mut)]
             let mut python_binary = parse_binary(&filename, map.start() as u64)?;
 
             // windows symbols are stored in separate files (.pdb), load
@@ -486,6 +496,7 @@ impl PythonProcessInfo {
             if let Some(libpython) = libmap {
                 if let Some(filename) = &libpython.filename() {
                     info!("Found libpython binary @ {}", filename);
+                    #[allow(unused_mut)]
                     let mut parsed = parse_binary(filename, libpython.start() as u64)?;
                     #[cfg(windows)]
                     parsed.symbols.extend(get_windows_python_symbols(process.pid, filename, libpython.start() as u64)?);
