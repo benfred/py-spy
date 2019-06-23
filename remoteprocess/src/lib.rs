@@ -18,13 +18,13 @@ extern crate addr2line;
 extern crate mach_o_sys;
 #[cfg(target_os="macos")]
 extern crate mach;
-#[cfg(target_os = "macos")]
+#[cfg(target_os="macos")]
 extern crate libproc;
 
 #[cfg(windows)]
 extern crate winapi;
 
-#[cfg(unix)]
+#[cfg(target_os="macos")]
 #[macro_use]
 mod dylib;
 
@@ -45,7 +45,7 @@ mod windows;
 pub use windows::*;
 
 
-#[cfg(unix)]
+#[cfg(all(unix, unwind))]
 mod dwarf_unwind;
 
 #[derive(Debug)]
@@ -55,7 +55,7 @@ pub enum Error {
     GoblinError(::goblin::error::Error),
     IOError(std::io::Error),
     Other(String),
-    #[cfg(target_os="linux")]
+    #[cfg(all(target_os="linux", unwind))]
     LibunwindError(linux::libunwind::Error),
     #[cfg(target_os="linux")]
     NixError(nix::Error),
@@ -73,7 +73,7 @@ impl std::fmt::Display for Error {
             Error::GoblinError(ref e) => e.fmt(f),
             Error::IOError(ref e) => e.fmt(f),
             Error::Other(ref e) => write!(f, "{}", e),
-            #[cfg(target_os="linux")]
+            #[cfg(all(target_os="linux", unwind))]
             Error::LibunwindError(ref e) => e.fmt(f),
             #[cfg(target_os="linux")]
             Error::NixError(ref e) => e.fmt(f),
@@ -90,7 +90,7 @@ impl std::error::Error for Error {
             Error::GimliError(ref e) => e.description(),
             Error::GoblinError(ref e) => e.description(),
             Error::IOError(ref e) => e.description(),
-            #[cfg(target_os="linux")]
+            #[cfg(all(target_os="linux", unwind))]
             Error::LibunwindError(ref e) => e.description(),
             #[cfg(target_os="linux")]
             Error::NixError(ref e) => e.description(),
@@ -105,7 +105,7 @@ impl std::error::Error for Error {
             Error::GimliError(ref e) => Some(e),
             Error::GoblinError(ref e) => Some(e),
             Error::IOError(ref e) => Some(e),
-            #[cfg(target_os="linux")]
+            #[cfg(all(target_os="linux", unwind))]
             Error::LibunwindError(ref e) => Some(e),
             #[cfg(target_os="linux")]
             Error::NixError(ref e) => Some(e),
@@ -141,7 +141,7 @@ impl From<nix::Error> for Error {
     }
 }
 
-#[cfg(target_os="linux")]
+#[cfg(all(target_os="linux", unwind))]
 impl From<linux::libunwind::Error> for Error {
     fn from(err: linux::libunwind::Error) -> Error {
         Error::LibunwindError(err)

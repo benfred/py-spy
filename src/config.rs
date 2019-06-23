@@ -20,7 +20,7 @@ pub struct Config {
 impl Config {
     pub fn from_commandline() -> Result<Config, Error> {
         // we don't yet support native tracing on 32 bit linux
-        let allow_native = !cfg!(all(target_os="linux", target_pointer_width="32"));
+        let allow_native = cfg!(unwind);
 
         let matches = App::new("py-spy")
             .version("0.2.0.dev0")

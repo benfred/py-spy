@@ -1,5 +1,8 @@
+#[cfg(unwind)]
 pub mod libunwind;
+#[cfg(unwind)]
 mod gimli_unwinder;
+#[cfg(unwind)]
 mod symbolication;
 use libc::{c_void, pid_t};
 
@@ -8,10 +11,15 @@ use std::io::Read;
 use std::os::unix::io::AsRawFd;
 use std::fs::File;
 
-use dwarf_unwind::Registers;
+#[cfg(unwind)]
+use crate::dwarf_unwind::Registers;
 use super::Error;
+
+#[cfg(unwind)]
 pub use self::gimli_unwinder::*;
+#[cfg(unwind)]
 pub use self::symbolication::*;
+#[cfg(unwind)]
 pub use self::libunwind::{LibUnwind};
 
 use read_process_memory::{CopyAddress};
@@ -85,6 +93,7 @@ impl Process {
         Ok(ret)
     }
 
+    #[cfg(unwind)]
     pub fn unwinder(&self) -> Result<Unwinder, Error> {
         Unwinder::new(self.pid)
     }
@@ -96,7 +105,6 @@ impl super::ProcessMemory for Process {
     }
 }
 
-
 impl Thread {
     pub fn new(threadid: i32) -> Thread{
         Thread{tid: nix::unistd::Pid::from_raw(threadid)}
@@ -106,6 +114,7 @@ impl Thread {
         Ok(ThreadLock::new(self.tid)?)
     }
 
+    #[cfg(unwind)]
     pub fn registers(&self) -> Result<Registers, Error> {
         unsafe {
             let mut data: Registers = std::mem::zeroed();
@@ -148,7 +157,7 @@ pub struct ThreadLock {
 
 impl ThreadLock {
     fn new(tid: nix::unistd::Pid) -> Result<ThreadLock, nix::Error> {
-        nix::sys::ptrace::attach(tid)?;
+        ptrace::attach(tid)?;
         wait::waitpid(tid, Some(wait::WaitPidFlag::WSTOPPED))?;
         debug!("attached to thread {}", tid);
         Ok(ThreadLock{tid})
@@ -157,7 +166,7 @@ impl ThreadLock {
 
 impl Drop for ThreadLock {
     fn drop(&mut self) {
-        if let Err(e) = nix::sys::ptrace::detach(self.tid) {
+        if let Err(e) = ptrace::detach(self.tid) {
             error!("Failed to detach from thread {} : {}", self.tid, e);
         }
         debug!("detached from thread {}", self.tid);

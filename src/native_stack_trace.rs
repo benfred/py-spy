@@ -2,14 +2,12 @@ use std::collections::{HashMap, HashSet};
 
 use failure::Error;
 
-use remoteprocess::{ProcessMemory, Pid};
-use python_interpreters::{InterpreterState};
+use remoteprocess::{self, ProcessMemory, Pid};
 
-use cython;
-use stack_trace::{Frame, StackTrace, get_stack_traces};
-
-use remoteprocess;
-use utils::resolve_filename;
+use crate::python_interpreters::{InterpreterState};
+use crate::cython;
+use crate::stack_trace::{Frame, StackTrace, get_stack_traces};
+use crate::utils::resolve_filename;
 
 pub struct NativeStack {
     should_reload: bool,

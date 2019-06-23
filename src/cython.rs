@@ -5,8 +5,8 @@ use regex::Regex;
 
 use failure::Error;
 
-use utils::resolve_filename;
-use stack_trace::Frame;
+use crate::utils::resolve_filename;
+use crate::stack_trace::Frame;
 
 pub struct SourceMaps {
     maps: HashMap<String, Option<SourceMap>>,

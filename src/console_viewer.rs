@@ -9,7 +9,7 @@ use std::thread;
 use console::{Term, style};
 use failure::Error;
 
-use stack_trace::{StackTrace, Frame};
+use crate::stack_trace::{StackTrace, Frame};
 
 pub struct ConsoleViewer {
     #[allow(dead_code)]
