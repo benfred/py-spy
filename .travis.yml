@@ -7,28 +7,35 @@ matrix:
     - env: TARGET=i686-unknown-linux-gnu
     - env: TARGET=x86_64-unknown-linux-gnu
     - env: TARGET=x86_64-unknown-linux-musl
+    - env: TARGET=armv7-unknown-linux-gnueabihf
     - env: TARGET=x86_64-apple-darwin
       os: osx
 
 before_install:
 - |
   rustup target add $TARGET
-  # download libunwind and build a static version w/ musl-gcc if needed
   if [ $TARGET = x86_64-unknown-linux-musl ]; then
+      sudo apt-get install musl-tools
+      # download libunwind and build a static version w/ musl-gcc
       wget https://github.com/libunwind/libunwind/releases/download/v1.3.1/libunwind-1.3.1.tar.gz
       tar -zxvf libunwind-1.3.1.tar.gz
       cd libunwind-1.3.1/
       CC=musl-gcc ./configure --disable-minidebuginfo --enable-ptrace --disable-tests --disable-documentation
       make
       sudo make install
+  elif [ $TARGET = x86_64-unknown-linux-gnu ]; then
+      sudo apt-get install libunwind-dev
+  elif [ $TARGET = armv7-unknown-linux-gnueabihf ]; then
+      sudo apt-get install gcc-arm-linux-gnueabihf  gcc-5-multilib-arm-linux-gnueabihf libc-dev-armhf-cross
+  elif [ $TARGET = i686-unknown-linux-gnu ]; then
+      sudo apt-get install gcc-multilib
   fi
 
 script:
-  - cargo test --verbose --target $TARGET
-
-addons:
-  apt:
-    packages:
-    - libunwind-dev
-    - g++-multilib
-    - musl-tools
+- |
+  if [ $TARGET = armv7-unknown-linux-gnueabihf ]; then
+    # we can't run the unittest w/ ARM so just test that we can compile
+    cargo build --verbose --target $TARGET
+  else
+    cargo test --verbose --target $TARGET
+  fi
