@@ -4,7 +4,9 @@ pub mod libunwind;
 mod gimli_unwinder;
 #[cfg(unwind)]
 mod symbolication;
-use libc::{c_void, pid_t};
+use libc::pid_t;
+#[cfg(unwind)]
+use libc::c_void;
 
 use nix::{self, sys::wait, sys::ptrace, {sched::{setns, CloneFlags}}};
 use std::io::Read;
@@ -25,6 +27,7 @@ pub use self::libunwind::{LibUnwind};
 use read_process_memory::{CopyAddress};
 
 pub type Pid = pid_t;
+pub type Tid = pid_t;
 
 pub struct Process {
     pub pid: Pid,
@@ -106,8 +109,8 @@ impl super::ProcessMemory for Process {
 }
 
 impl Thread {
-    pub fn new(threadid: i32) -> Thread{
-        Thread{tid: nix::unistd::Pid::from_raw(threadid)}
+    pub fn new(threadid: i32) -> Result<Thread, Error> {
+        Ok(Thread{tid: nix::unistd::Pid::from_raw(threadid)})
     }
 
     pub fn lock(&self) -> Result<ThreadLock, Error> {
@@ -128,8 +131,8 @@ impl Thread {
         }
     }
 
-    pub fn id(&self) -> Result<u64, Error> {
-        Ok(self.tid.as_raw() as u64)
+    pub fn id(&self) -> Result<Tid, Error> {
+        Ok(self.tid.as_raw())
     }
 
     pub fn active(&self) -> Result<bool, Error> {

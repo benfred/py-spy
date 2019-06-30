@@ -9,14 +9,25 @@ use goblin::Object;
 use memmap::Mmap;
 
 pub struct BinaryInfo {
+    pub filename: String,
     pub symbols: HashMap<String, u64>,
     pub bss_addr: u64,
     pub bss_size: u64,
-    pub offset: u64
+    pub offset: u64,
+    pub addr: u64,
+    pub size: u64
+}
+
+impl BinaryInfo {
+    pub fn contains(&self, addr: u64) -> bool {
+        addr >= self.addr && addr < (self.addr + self.size)
+    }
 }
 
 /// Uses goblin to parse a binary file, returns information on symbols/bss/adjusted offset etc
-pub fn parse_binary(filename: &str, offset: u64) -> Result<BinaryInfo, Error> {
+pub fn parse_binary(filename: &str, addr: u64, size: u64) -> Result<BinaryInfo, Error> {
+    let offset = addr;
+
     let mut symbols = HashMap::new();
 
     // Read in the filename
@@ -63,7 +74,7 @@ pub fn parse_binary(filename: &str, offset: u64) -> Result<BinaryInfo, Error> {
 
                 }
             }
-            Ok(BinaryInfo{symbols, bss_addr, bss_size, offset})
+            Ok(BinaryInfo{filename: filename.to_owned(), symbols, bss_addr, bss_size, offset, addr, size})
         }
 
         Object::Elf(elf) => {
@@ -85,10 +96,13 @@ pub fn parse_binary(filename: &str, offset: u64) -> Result<BinaryInfo, Error> {
                 let name = elf.strtab[sym.st_name].to_string();
                 symbols.insert(name, sym.st_value + offset);
             }
-            Ok(BinaryInfo{symbols,
+            Ok(BinaryInfo{filename: filename.to_owned(),
+                          symbols,
                           bss_addr: bss_header.sh_addr + offset,
                           bss_size: bss_header.sh_size,
-                          offset})
+                          offset,
+                          addr,
+                          size})
         },
         Object::PE(pe) => {
             for export in pe.exports {
@@ -105,7 +119,7 @@ pub fn parse_binary(filename: &str, offset: u64) -> Result<BinaryInfo, Error> {
             let bss_addr = u64::from(data_section.virtual_address) + offset;
             let bss_size = u64::from(data_section.virtual_size);
 
-            Ok(BinaryInfo{symbols, bss_addr, bss_size, offset})
+            Ok(BinaryInfo{filename: filename.to_owned(), symbols, bss_addr, bss_size, offset, addr, size})
         },
         _ => {
             Err(format_err!("Unhandled binary type"))

@@ -63,7 +63,7 @@ fn print_traces(traces: &[StackTrace], show_idle: bool) {
         }
 
         if let Some(os_thread_id) = trace.os_thread_id {
-            println!("Thread {:#X}/{:#X} ({})", trace.thread_id,  os_thread_id, trace.status_str());
+            println!("Thread {:#X}/{} ({})", trace.thread_id,  os_thread_id, trace.status_str());
         } else {
             println!("Thread {:#X} ({})", trace.thread_id, trace.status_str());
         }
@@ -283,6 +283,8 @@ fn pyspy_main() -> Result<(), Error> {
 }
 
 fn main() {
+    env_logger::init();
+
     if let Err(err) = pyspy_main() {
         #[cfg(unix)]
         {

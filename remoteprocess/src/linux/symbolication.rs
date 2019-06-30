@@ -51,36 +51,41 @@ impl SymbolData {
         Ok(SymbolData{ctx, offset, dynamic_symbols, symbols, filename: filename.to_owned()})
     }
 
-    pub fn symbolicate(&self, addr: u64, callback: &mut FnMut(&StackFrame)) -> Result<(), Error> {
+    pub fn symbolicate(&self, addr: u64, line_info: bool, callback: &mut FnMut(&StackFrame)) -> Result<(), Error> {
         let mut ret = StackFrame{line:None, filename: None, function: None, addr, module: self.filename.clone()};
 
         // get the address before relocations
         let offset = addr - self.offset;
-        let mut has_debug_info = false;
 
-        // addr2line0.8 uses an older version of gimli (0.0.19) than we are using here (0.0.21),
-        // this means we can't use the type of the error returned ourselves here since the
-        // type alias is private. hack by re-mapping the error
-        let error_handler = |e| Error::Other(format!("addr2line error: {:?}", e));
+        // if we are being asked for line information, sue gimli addr2line to look up the debug info
+        // (this is slow, and not necessary all the time which is why we are skipping)
+        if line_info {
+            let mut has_debug_info = false;
 
-        // if we have debugging info, get the appropiate stack frames for the adresss
-        let mut frames = self.ctx.find_frames(offset).map_err(error_handler)?;
-        while let Some(frame) = frames.next().map_err(error_handler)? {
-            has_debug_info = true;
-            if let Some(func) = frame.function {
-                ret.function = Some(func.raw_name().map_err(error_handler)?.to_string());
-            }
-            if let Some(loc) = frame.location {
-                ret.line = loc.line;
-                if let Some(file) = loc.file.as_ref() {
-                    ret.filename = Some(file.to_string());
+            // addr2line0.8 uses an older version of gimli (0.0.19) than we are using here (0.0.21),
+            // this means we can't use the type of the error returned ourselves here since the
+            // type alias is private. hack by re-mapping the error
+            let error_handler = |e| Error::Other(format!("addr2line error: {:?}", e));
+
+            // if we have debugging info, get the appropiate stack frames for the adresss
+            let mut frames = self.ctx.find_frames(offset).map_err(error_handler)?;
+            while let Some(frame) = frames.next().map_err(error_handler)? {
+                has_debug_info = true;
+                if let Some(func) = frame.function {
+                    ret.function = Some(func.raw_name().map_err(error_handler)?.to_string());
                 }
+                if let Some(loc) = frame.location {
+                    ret.line = loc.line;
+                    if let Some(file) = loc.file.as_ref() {
+                        ret.filename = Some(file.to_string());
+                    }
+                }
+                callback(&ret);
             }
-            callback(&ret);
-        }
 
-        if has_debug_info {
-            return Ok(())
+            if has_debug_info {
+                return Ok(())
+            }
         }
 
         // otherwise try getting the function name from the symbols

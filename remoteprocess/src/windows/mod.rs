@@ -1,19 +1,25 @@
-use winapi::um::processthreadsapi::{OpenProcess, GetThreadId, SuspendThread, ResumeThread};
+use winapi::um::processthreadsapi::{OpenProcess, OpenThread, GetThreadId, SuspendThread, ResumeThread};
 use winapi::um::winnt::{ACCESS_MASK, MAXIMUM_ALLOWED, PROCESS_QUERY_INFORMATION,
-                        PROCESS_VM_READ, PROCESS_SUSPEND_RESUME, THREAD_QUERY_INFORMATION, THREAD_GET_CONTEXT,
+                        PROCESS_VM_READ, PROCESS_SUSPEND_RESUME, THREAD_QUERY_INFORMATION, THREAD_GET_CONTEXT, THREAD_ALL_ACCESS,
                         WCHAR, HANDLE};
 use winapi::shared::minwindef::{FALSE, DWORD, MAX_PATH, ULONG};
 use winapi::um::handleapi::{CloseHandle};
 use winapi::um::winbase::QueryFullProcessImageNameW;
+use winapi::um::winnt::OSVERSIONINFOEXW;
 use std::ffi::OsString;
 use std::os::windows::ffi::{OsStringExt};
 use winapi::shared::ntdef::{PVOID, NTSTATUS, USHORT, VOID, NULL};
 
 pub use read_process_memory::{Pid, ProcessHandle, CopyAddress};
 
+pub type Tid = Pid;
+
 use super::Error;
 
 mod unwinder;
+mod syscalls_x64;
+
+use self::syscalls_x64::{Syscall, lookup_syscall};
 pub use self::unwinder::Unwinder;
 
 pub struct Process {
@@ -29,6 +35,13 @@ extern "system" {
     fn RtlNtStatusToDosError(status: NTSTATUS) -> ULONG;
     fn NtSuspendProcess(process: HANDLE) -> NTSTATUS;
     fn NtResumeProcess(process: HANDLE) -> NTSTATUS;
+
+    // using GetVersion/GetVersionEx from processthreadsapi returns incorrect information after win 8.1,
+    // unless we provide a application manifest file, which is currently not fully supported w/ rust
+    // https://github.com/rust-lang/rfcs/issues/721
+    // https://stackoverflow.com/questions/17399302/how-can-i-detect-windows-8-1-in-a-desktop-application
+    // hack around this by using RtlGetVersion instead
+    fn RtlGetVersion(lpVersionInformation: &mut OSVERSIONINFOEXW) -> NTSTATUS;
 
     fn NtQueryInformationThread(thread: HANDLE, info_class: u32, info: PVOID, info_len: ULONG, ret_len: * mut ULONG) -> NTSTATUS;
 
@@ -86,7 +99,6 @@ impl Process {
     pub fn threads(&self) -> Result<Vec<Thread>, Error> {
         let mut ret = Vec::new();
         unsafe {
-            // TODO: do we need to CloseHandle the thing returned here?
             let mut thread: HANDLE = std::mem::zeroed();
             while NtGetNextThread(self.handle, thread, MAXIMUM_ALLOWED, 0, 0,
                                   &mut thread as *mut HANDLE) == 0 {
@@ -113,24 +125,34 @@ impl super::ProcessMemory for Process {
     }
 }
 
-#[derive(Eq, PartialEq, Hash, Copy, Clone)]
+#[derive(Eq, PartialEq, Hash, Clone)]
 pub struct Thread {
     thread: ProcessHandle
 }
 
 impl Thread {
+    pub fn new(tid: Tid) -> Result<Thread, Error> {
+        // we can't just use try_into_prcess_handle here because we need some additional permissions
+        unsafe {
+            let thread = OpenThread(THREAD_ALL_ACCESS, FALSE, tid);
+            if thread == (0 as std::os::windows::io::RawHandle) {
+                return Err(Error::from(std::io::Error::last_os_error()));
+            }
+            Ok(Thread{thread})
+        }
+    }
     pub fn lock(&self) -> Result<ThreadLock, Error> {
         ThreadLock::new(self.thread)
     }
 
-    pub fn id(&self) -> Result<u64, Error> {
-        unsafe { Ok(GetThreadId(self.thread) as u64) }
+    pub fn id(&self) -> Result<Tid, Error> {
+        unsafe { Ok(GetThreadId(self.thread)) }
     }
 
     pub fn active(&self) -> Result<bool, Error> {
         // Getting whether a thread is active or not is suprisingly difficult on windows
-        // Let's attempt this by checking if the thread is doing a syscall (like WaitForSingleObject,
-        // etc) and if so assume it's idle
+        // we're getting the syscall the thread is doing here, and then checking against a list
+        // of known waiting syscalls to get this
         unsafe {
             let mut data = std::mem::zeroed::<THREAD_LAST_SYSCALL_INFORMATION>();
             let ret = NtQueryInformationThread(self.thread, 21,
@@ -138,14 +160,45 @@ impl Thread {
                 std::mem::size_of::<THREAD_LAST_SYSCALL_INFORMATION>() as u32,
                 NULL as *mut u32);
 
-            // If this call fails (ret == 0), then the thread isn't waiting
-            // TODO: maybe inspect the syscall on sucess, and don't return idle for some
-            // of them?
-            return Ok(ret != 0);
+            // if we're not in a syscall, we're active
+            if ret != 0 {
+                return Ok(true);
+            }
+
+            // Get the major/minor/build version of the current windows systems
+            let mut os_info = std::mem::zeroed::<OSVERSIONINFOEXW>();
+            os_info.dwOSVersionInfoSize = std::mem::size_of::<OSVERSIONINFOEXW>() as DWORD;
+            if RtlGetVersion(&mut os_info) != 0 {
+                return Err(Error::from(std::io::Error::from_raw_os_error(RtlNtStatusToDosError(ret) as i32)));
+            }
+
+            // resolve the syscallnumber, and check if the thread is waiting
+            let active = match lookup_syscall(os_info.dwMajorVersion,
+                                              os_info.dwMinorVersion,
+                                              os_info.dwBuildNumber,
+                                              data.syscall_number.into()) {
+                Some(Syscall::NtWaitForAlertByThreadId) => false,
+                Some(Syscall::NtWaitForDebugEvent) => false,
+                Some(Syscall::NtWaitForKeyedEvent) => false,
+                Some(Syscall::NtWaitForMultipleObjects) => false,
+                Some(Syscall::NtWaitForMultipleObjects32) => false,
+                Some(Syscall::NtWaitForSingleObject) => false,
+                Some(Syscall::NtWaitForWnfNotifications) => false,
+                Some(Syscall::NtWaitForWorkViaWorkerFactory) => false,
+                Some(Syscall::NtWaitHighEventPair) => false,
+                Some(Syscall::NtWaitLowEventPair) => false,
+                _ => true
+            };
+            Ok(active)
         }
     }
 }
 
+impl Drop for Thread {
+    fn drop(&mut self) {
+        unsafe { CloseHandle(self.thread); }
+    }
+}
 
 pub struct Lock {
     process: ProcessHandle

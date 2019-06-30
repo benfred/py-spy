@@ -87,7 +87,7 @@ impl Unwinder {
         Ok(Cursor{registers: thread.registers()?, parent: self, initial_frame: true})
     }
 
-    pub fn symbolicate(&self, addr: u64, callback: &mut FnMut(&StackFrame)) -> Result<(), Error> {
+    pub fn symbolicate(&self, addr: u64, _line_info: bool, callback: &mut FnMut(&StackFrame)) -> Result<(), Error> {
         // Get the symbols for the current address
         let symbol = unsafe { self.cs.resolve(addr) };
 
