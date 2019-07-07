@@ -86,61 +86,26 @@ impl Unwinder {
             match Object::parse(&buffer) {
                 Ok(Object::Elf(elf)) => {
                     trace!("filename {} elf {:#?}", filename, elf);
-                    // Get the base address of everything here
+
                     let program_header = elf.program_headers
                         .iter()
                         .find(|ref header| header.p_type == PT_LOAD && header.p_flags & PF_X != 0);
 
                     let obj_base = match program_header {
                         Some(hdr) => { m.start() as u64 - hdr.p_vaddr },
-                        None => { warn!("Failed to find exectuable PT_LOAD header in {}", filename); continue; }
-                    };
-
-                    // get the eh_frame_hdr from the program headers
-                    let mut eh_frame_hdr_addr;
-                    let eh_frame_hdr =  match elf.program_headers.iter().find(|x| x.p_type == PT_GNU_EH_FRAME) {
-                        Some(hdr) => {
-                            eh_frame_hdr_addr = obj_base + hdr.p_vaddr;
-                            let data = Rc::from(&buffer[hdr.p_offset as usize..][..hdr.p_filesz as usize]);
-                            let bases = BaseAddresses::default().set_eh_frame_hdr(eh_frame_hdr_addr);
-                            match EhFrameHdr::from(RcReader::new(data, NativeEndian)).parse(&bases, 8) {
-                                Ok(hdr) => hdr,
-                                Err(e) => {
-                                    warn!("Failed to load eh_frame_hdr section from {:?}: {} - hdr {:#?}", filename, e, hdr);
-                                    continue;
-                                }
-                            }
-                        }
                         None => {
-                            warn!("Failed to find eh_frame_hdr section in {}", filename);
+                            warn!("Failed to find exectuable PT_LOAD header in {}", filename);
                             continue;
                         }
                     };
 
-                    let eh_frame_addr = match eh_frame_hdr.eh_frame_ptr() {
-                        Pointer::Direct(x) => x,
-                        Pointer::Indirect(x) => { self.process.copy_struct(x as usize)? }
-                    };
-
-                    // get the appropiate eh_frame section from the section_headers and load it up with gimli
-                    let eh_frame = match elf.section_headers.iter().filter(|x| x.sh_addr == eh_frame_addr - obj_base).next() {
-                        Some(hdr) => {
-                            debug!("Got eh_frame hdr {:?} from {}", hdr, filename);
-                            let data = Rc::from(&buffer[hdr.sh_offset as usize..][..hdr.sh_size as usize]);
-                            EhFrame::from(RcReader::new(data, NativeEndian))
-                        }
-                        None => {
-                            // TODO: we could build up a lookup table of the FDE's from the eh_frame section here
-                            warn!("Failed to find eh_frame section in {} (expected at {:016x})", filename, eh_frame_addr);
-                            continue;
+                    let unwind_info = match self.get_unwind_info(filename, &elf, buffer, obj_base) {
+                        Ok(unwind) => Some(unwind),
+                        Err(e) => {
+                            warn!("Failed to get unwind info for '{}': {}", filename, e);
+                            None
                         }
                     };
-
-                    let bases = BaseAddresses::default()
-                        .set_eh_frame(eh_frame_addr)
-                        .set_eh_frame_hdr(eh_frame_hdr_addr);
-
-                    let unwind_info = UnwindInfo{eh_frame_hdr, eh_frame, bases};
 
                     // the map key is the end address of this filename, which lets us do a relatively efficent range
                     // based lookup of the binary
@@ -159,6 +124,47 @@ impl Unwinder {
             }
         }
         Ok(())
+    }
+
+    fn get_unwind_info(&self, filename: &str, elf: &goblin::elf::Elf, buffer: &[u8], obj_base: u64) -> Result<UnwindInfo, Error> {
+        // get the eh_frame_hdr from the program headers
+        let eh_frame_hdr_addr;
+        let eh_frame_hdr =  match elf.program_headers.iter().find(|x| x.p_type == PT_GNU_EH_FRAME) {
+            Some(hdr) => {
+                eh_frame_hdr_addr = obj_base + hdr.p_vaddr;
+                let data = Rc::from(&buffer[hdr.p_offset as usize..][..hdr.p_filesz as usize]);
+                let bases = BaseAddresses::default().set_eh_frame_hdr(eh_frame_hdr_addr);
+                EhFrameHdr::from(RcReader::new(data, NativeEndian)).parse(&bases, 8)?
+            },
+            None => {
+                return Err(Error::Other("Failed to find eh_frame_hdr section in binary".to_owned()));
+            }
+        };
+
+        let eh_frame_addr = match eh_frame_hdr.eh_frame_ptr() {
+            Pointer::Direct(x) => x,
+            Pointer::Indirect(x) => { self.process.copy_struct(x as usize)? }
+        };
+
+        // get the appropiate eh_frame section from the section_headers and load it up with gimli
+        let eh_frame = match elf.section_headers.iter().filter(|x| x.sh_addr == eh_frame_addr - obj_base).next() {
+            Some(hdr) => {
+                debug!("Got eh_frame hdr {:?} from {}", hdr, filename);
+                let data = Rc::from(&buffer[hdr.sh_offset as usize..][..hdr.sh_size as usize]);
+                EhFrame::from(RcReader::new(data, NativeEndian))
+            }
+            None => {
+
+                return Err(Error::Other(format!("Failed to find eh_frame section (expected at {:016x})",
+                                                eh_frame_addr)));
+            }
+        };
+
+        let bases = BaseAddresses::default()
+            .set_eh_frame(eh_frame_addr)
+            .set_eh_frame_hdr(eh_frame_hdr_addr);
+
+        Ok(UnwindInfo{eh_frame_hdr, eh_frame, bases})
     }
 
     pub fn cursor(&self, thread: &Thread) -> Result<Cursor, Error> {
@@ -235,7 +241,13 @@ impl<'a> Iterator for Cursor<'a> {
 
         let mut old_reg = self.registers.clone();
 
-        match binary.unwind_info.unwind(&mut self.registers, &self.parent.process) {
+
+        let unwind_info = match binary.unwind_info.as_ref() {
+            Some(unwind) => unwind,
+            None => { return Some(Err(Error::Other("Failed to load unwindinfo".to_owned()))); }
+        };
+
+        match unwind_info.unwind(&mut self.registers, &self.parent.process) {
             Ok(true) => {},
             Ok(false) => return None,
             Err(e)  => return Some(Err(Error::from(e))),
@@ -258,7 +270,7 @@ struct BinaryInfo {
     size: u64,
     offset: u64,
     filename: String,
-    unwind_info: UnwindInfo,
+    unwind_info: Option<UnwindInfo>,
     symbols: RefCell<Option<Result<SymbolData, Error>>>
 }
 

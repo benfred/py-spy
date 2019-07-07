@@ -148,7 +148,7 @@ impl NativeStack {
                         },
                         None => {
                             merged.push(Frame{filename: frame.module.clone(),
-                                              name: format!("0x{:X}", addr),
+                                              name: format!("0x{:x}", addr),
                                               line: 0, short_filename: None, module: Some(frame.module.clone())})
                         }
                     }
@@ -159,7 +159,7 @@ impl NativeStack {
                 }
                 // if we can't symbolicate, just insert a stub here.
                 merged.push(Frame{filename: "?".to_owned(),
-                                  name: format!("0x{:X}", addr),
+                                  name: format!("0x{:x}", addr),
                                   line: 0, short_filename: None, module: None});
             });
         }

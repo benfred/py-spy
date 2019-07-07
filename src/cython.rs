@@ -55,7 +55,7 @@ impl SourceMaps {
         let map = match SourceMap::new(&frame.filename, &frame.module) {
             Ok(map) => map,
             Err(e) => {
-                warn!("Failed to load cython file {}: {:?}", &frame.filename, e);
+                info!("Failed to load cython file {}: {:?}", &frame.filename, e);
                 self.maps.insert(frame.filename.clone(), None);
                 return;
             }
