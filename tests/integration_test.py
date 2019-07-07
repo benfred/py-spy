@@ -41,7 +41,7 @@ class IntegrationTest(unittest.TestCase):
             python_process.kill()
             python_process.wait()
 
-    def test_basic(self):
+    def test_long_sleep(self):
         traces = self._profile_python_file("longsleep.py")
         self.assertEqual(len(traces), 1)
 
@@ -54,16 +54,19 @@ class IntegrationTest(unittest.TestCase):
             ],
         )
 
-    def test_gil(self):
+        # should be sleeping, not holding the gil
+        self.assertTrue("gil" not in thread.status)
+
+        # should be marked as idle
+        self.assertTrue("idle" in thread.status)
+
+    def test_busyloop(self):
         traces = self._profile_python_file("busyloop.py")
         self.assertEqual(len(traces), 1)
         thread, frames = traces[0]
-        assert "gil" in thread.status
 
-        traces = self._profile_python_file("longsleep.py")
-        self.assertEqual(len(traces), 1)
-        thread, frames = traces[0]
-        assert "gil" not in thread.status
+        self.assertTrue("gil" in thread.status)
+        self.assertTrue("active" in thread.status)
 
 
 def parse_frame(frame_line):
@@ -78,7 +81,7 @@ def parse_frame(frame_line):
 
 
 def parse_thread(thread_line):
-    matches = re.match(r"\s*(?P<id>0[xX][0-9a-fA-f]+) \((?P<status>\S+)\)", thread_line)
+    matches = re.match(r"\s*(?P<id>\S+) \((?P<status>\S+)\)", thread_line)
     if not matches:
         return None
     return Thread(**matches.groupdict())

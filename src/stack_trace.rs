@@ -26,6 +26,7 @@ pub struct Frame {
 /// Given an InterpreterState, this function returns a vector of stack traces for each thread
 pub fn get_stack_traces<I, P>(interpreter: &I, process: &P) -> Result<(Vec<StackTrace>), Error>
         where I: InterpreterState, P: ProcessMemory {
+    // TODO: deprecate this method
     let mut ret = Vec::new();
     let mut threads = interpreter.head();
     while !threads.is_null() {
@@ -43,6 +44,7 @@ pub fn get_stack_traces<I, P>(interpreter: &I, process: &P) -> Result<(Vec<Stack
 /// Gets a stack trace for an individual thread
 pub fn get_stack_trace<T, P >(thread: &T, process: &P) -> Result<StackTrace, Error>
         where T: ThreadState, P: ProcessMemory {
+    // TODO: just return frames here? everything else probably should be returned out of scopee
     let mut frames = Vec::new();
     let mut frame_ptr = thread.frame();
     while !frame_ptr.is_null() {
@@ -61,23 +63,7 @@ pub fn get_stack_trace<T, P >(thread: &T, process: &P) -> Result<StackTrace, Err
         frame_ptr = frame.back();
     }
 
-    // figure out if the thread is running
-    let idle = if frames.is_empty() {
-        true
-    } else {
-        // TODO: better idle detection. This is just hackily looking at the
-        // function/file to figure out if the thread is waiting (which seems to handle
-        // most cases)
-        let frame = &frames[0];
-        (frame.name == "wait" && frame.filename.ends_with("threading.py")) ||
-        (frame.name == "select" && frame.filename.ends_with("selectors.py")) ||
-        (frame.name == "poll" && (frame.filename.ends_with("asyncore.py") ||
-                                  frame.filename.contains("zmq") ||
-                                  frame.filename.contains("gevent") ||
-                                  frame.filename.contains("tornado")))
-    };
-
-    Ok(StackTrace{frames, thread_id: thread.thread_id(), owns_gil: false, active: !idle, os_thread_id: None})
+    Ok(StackTrace{frames, thread_id: thread.thread_id(), owns_gil: false, active: true, os_thread_id: None})
 }
 
 impl StackTrace {

@@ -10,7 +10,6 @@ use proc_maps;
 
 use gimli::{EhFrame, BaseAddresses, Pointer, NativeEndian, EhFrameHdr};
 use goblin::elf::program_header::*;
-use gimli;
 
 use gimli::EndianRcSlice;
 type RcReader = EndianRcSlice<NativeEndian>;
@@ -166,11 +165,11 @@ impl Unwinder {
         Ok(Cursor{registers: thread.registers()?, parent: self, initial_frame: true})
     }
 
-    pub fn symbolicate(&self, addr: u64, callback: &mut FnMut(&StackFrame)) -> Result<(), Error> {
+    pub fn symbolicate(&self, addr: u64, line_info: bool, callback: &mut FnMut(&StackFrame)) -> Result<(), Error> {
         let binary = match self.get_binary(addr) {
             Some(binary) => binary,
             None => {
-                return Err(gimli::Error::NoUnwindInfoForAddress.into());
+                return Err(Error::NoBinaryForAddress(addr));
             }
         };
         if binary.filename != "[vdso]" {
@@ -180,7 +179,7 @@ impl Unwinder {
                 *symbols = Some(SymbolData::new(&binary.filename, binary.offset));
             }
             match symbols.as_ref() {
-                Some(Ok(symbols)) => symbols.symbolicate(addr, callback),
+                Some(Ok(symbols)) => symbols.symbolicate(addr, line_info, callback),
                 _ => {
                     // we probably failed to load the symbols (maybe goblin v0.15 dependency causing error
                     // in gimli/object crate). Rather than fail add a stub

@@ -1,12 +1,16 @@
 use std;
 use std::collections::HashMap;
+#[cfg(all(target_os="linux", unwind))]
+use std::collections::HashSet;
 use std::mem::size_of;
 use std::slice;
 use std::path::Path;
+#[cfg(all(target_os="linux", unwind))]
+use std::iter::FromIterator;
 use regex::Regex;
 
 use failure::{Error, ResultExt};
-use remoteprocess::{Process, ProcessMemory, Pid};
+use remoteprocess::{Process, ProcessMemory, Pid, Tid};
 use proc_maps::{get_process_maps, MapRange};
 
 
@@ -16,7 +20,7 @@ use crate::config::Config;
 use crate::native_stack_trace::NativeStack;
 use crate::python_bindings::{pyruntime, v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0};
 use crate::python_interpreters::{self, InterpreterState, ThreadState};
-use crate::stack_trace::{StackTrace, get_stack_traces};
+use crate::stack_trace::{StackTrace, get_stack_traces, get_stack_trace};
 use crate::version::Version;
 
 
@@ -32,6 +36,7 @@ pub struct PythonSpy {
     #[cfg(unwind)]
     pub native: Option<NativeStack>,
     pub short_filenames: HashMap<String, Option<String>>,
+    pub python_thread_ids: HashMap<u64, Tid>,
 }
 
 impl PythonSpy {
@@ -84,12 +89,15 @@ impl PythonSpy {
 
         let version_string = format!("python{}.{}", version.major, version.minor);
 
-        #[cfg(unwind)]
+        #[cfg(all(unwind, not(target_os="linux")))]
         let native = if config.native {
-            Some(NativeStack::new(pid, &python_info.python_filename, &python_info.libpython_filename)?)
+            Some(NativeStack::new(pid, python_info.python_binary, python_info.libpython_binary)?)
         } else {
             None
         };
+
+        #[cfg(all(unwind, target_os="linux"))]
+        let native = Some(NativeStack::new(pid, python_info.python_binary, python_info.libpython_binary)?);
 
         Ok(PythonSpy{pid, process, version, interpreter_address, threadstate_address,
                      python_filename: python_info.python_filename,
@@ -97,7 +105,8 @@ impl PythonSpy {
                      #[cfg(unwind)]
                      native,
                      config: config.clone(),
-                     short_filenames: HashMap::new()})
+                     short_filenames: HashMap::new(),
+                     python_thread_ids: HashMap::new()})
     }
 
     /// Creates a PythonSpy object, retrying up to max_retries times
@@ -129,15 +138,6 @@ impl PythonSpy {
 
     /// Gets a StackTrace for each thread in the current process
     pub fn get_stack_traces(&mut self) -> Result<Vec<StackTrace>, Error> {
-        // lock the process if appropiate. note that native stack traces
-        // mean that we lock separately. todo: fix this up
-        // (gil check should be inside lock for native etc)
-        let _lock = if self.config.non_blocking || self.config.native {
-            None
-        } else {
-            Some(self.process.lock().context("Failed to suspend process")?)
-        };
-
         match self.version {
             // Currently 3.7.x and 3.8.0a0 have the same ABI, but this might change
             // as 3.8 evolves
@@ -156,42 +156,196 @@ impl PythonSpy {
 
     // implementation of get_stack_traces, where we have a type for the InterpreterState
     fn _get_stack_traces<I: InterpreterState>(&mut self) -> Result<Vec<StackTrace>, Error> {
-        // figure out what thread has the GIL by inspecting _PyThreadState_Current
-        let mut gil_thread_id = 0;
-        if self.threadstate_address > 0 {
-            let addr: usize = self.process.copy_struct(self.threadstate_address)?;
-            if addr != 0 {
-                match self.process.copy_struct::<I::ThreadState>(addr) {
-                    Ok(threadstate) => { gil_thread_id = threadstate.thread_id(); },
-                    Err(e) => { warn!("failed to copy threadstate: addr {:016x}. Err {:?}", addr, e); }
-                }
-            }
+        // Query the OS to get if each thread in the process is running or not
+        let mut thread_activity = HashMap::new();
+        for thread in self.process.threads()?.iter() {
+            let threadid: Tid = thread.id()?;
+            thread_activity.insert(threadid, thread.active()?);
         }
 
-        // Get the stack traces for each thread
-        let interp: I = self.process.copy_struct(self.interpreter_address)
-            .context("Failed to copy PyInterpreterState from process")?;
-
-        #[cfg(unwind)]
-        let mut traces = match self.native.as_mut() {
-            Some(native) => native.get_native_stack_traces(&interp, &self.process)?,
-            None => get_stack_traces(&interp, &self.process)?
+        // Lock the process if appropiate. Note we have to lock AFTER getting the thread
+        // activity status from the OS (otherwise each thread would report being inactive always).
+        // This has the potential for race conditions (in that the thread activity could change
+        // between getting the status and locking the thread, but seems unavoidable right now
+        let _lock = if self.config.non_blocking {
+            None
+        } else {
+            Some(self.process.lock().context("Failed to suspend process")?)
         };
 
-        #[cfg(not(unwind))]
-        let mut traces = get_stack_traces(&interp, &self.process)?;
+        let gil_thread_id = self._get_gil_threadid::<I>()?;
 
-        // annotate traces to indicate which thread is holding the gil (if any),
-        // and to provide a shortened filename
-        for trace in &mut traces {
-            if trace.thread_id == gil_thread_id {
-                trace.owns_gil = true;
+        // Get the python interpreter, and loop over all the python threads
+        let interp: I = self.process.copy_struct(self.interpreter_address)
+           .context("Failed to copy PyInterpreterState from process")?;
+
+        let mut traces = Vec::new();
+        let mut threads = interp.head();
+        while !threads.is_null() {
+            // Get the stack trace of the python thread
+            let thread = self.process.copy_pointer(threads).context("Failed to copy PyThreadState")?;
+            let mut trace = get_stack_trace(&thread, &self.process)?;
+
+            // Try getting the native thread id
+            let python_thread_id = thread.thread_id();
+            let os_thread_id = self._get_os_thread_id(python_thread_id, &interp)?;
+
+            #[cfg(unwind)]
+            {
+                if self.config.native {
+                    if let Some(native) = self.native.as_mut() {
+                        let os_thread = remoteprocess::Thread::new(os_thread_id.unwrap())?;
+                        trace.frames = native.merge_native_thread(&trace.frames, &os_thread)?;
+                    }
+                }
             }
+
+            trace.os_thread_id = os_thread_id.map(|id| id as u64);
+            trace.owns_gil = trace.thread_id == gil_thread_id;
+
+            trace.active = match os_thread_id.map(|id| thread_activity.get(&id)) {
+                Some(Some(active)) => *active,
+                _ => self._heuristic_thread_activity(&trace)
+            };
+
             for frame in &mut trace.frames {
                 frame.short_filename = self.shorten_filename(&frame.filename);
             }
+
+            // This seems to happen occasionally when scanning BSS addresses for valid interpeters
+            traces.push(trace);
+            if traces.len() > 4096 {
+                return Err(format_err!("Max thread recursion depth reached"));
+            }
+
+            threads = thread.next();
         }
         Ok(traces)
+    }
+
+    // heuristic fallback for determining if a thread is active, used
+    // when we don't have the ability to get the thread information from the OS
+    fn _heuristic_thread_activity(&self, trace: &StackTrace) -> bool {
+        let frames = &trace.frames;
+        if frames.is_empty() {
+            true
+        } else {
+            let frame = &frames[0];
+            (frame.name == "wait" && frame.filename.ends_with("threading.py")) ||
+            (frame.name == "select" && frame.filename.ends_with("selectors.py")) ||
+            (frame.name == "poll" && (frame.filename.ends_with("asyncore.py") ||
+                                    frame.filename.contains("zmq") ||
+                                    frame.filename.contains("gevent") ||
+                                    frame.filename.contains("tornado")))
+        }
+    }
+
+    #[cfg(windows)]
+    fn _get_os_thread_id<I: InterpreterState>(&mut self, python_thread_id: u64, _interp: &I) -> Result<Option<Tid>, Error> {
+        Ok(Some(python_thread_id as Tid))
+    }
+
+    #[cfg(target_os="macos")]
+    fn _get_os_thread_id<I: InterpreterState>(&mut self, python_thread_id: u64, _interp: &I) -> Result<Option<Tid>, Error> {
+        // If we've already know this threadid, we're good
+        if let Some(thread_id) = self.python_thread_ids.get(&python_thread_id) {
+            return Ok(Some(*thread_id));
+        }
+
+        for thread in self.process.threads()?.iter() {
+            // ok, this is crazy pants. is this 224 constant right?  Is this right for all versions of OSX? how is this determined?
+            // is this correct for all versions of python? Why does this even work?
+            let current_handle = thread.thread_handle()? - 224;
+            self.python_thread_ids.insert(current_handle, thread.id()?);
+        }
+
+        if let Some(thread_id) = self.python_thread_ids.get(&python_thread_id) {
+            return Ok(Some(*thread_id));
+        }
+        Ok(None)
+    }
+
+    #[cfg(all(target_os="linux", not(unwind)))]
+    fn _get_os_thread_id<I: InterpreterState>(&mut self, _python_thread_id: u64, _interp: &I) -> Result<Option<Tid>, Error> {
+        Ok(None)
+    }
+
+    #[cfg(all(target_os="linux", unwind))]
+    fn _get_os_thread_id<I: InterpreterState>(&mut self, python_thread_id: u64, interp: &I) -> Result<Option<Tid>, Error> {
+        // If we've already know this threadid, we're good
+        if let Some(thread_id) = self.python_thread_ids.get(&python_thread_id) {
+            return Ok(Some(*thread_id));
+        }
+
+        // Get a list of all the python thread ids
+        let mut all_python_threads = HashSet::new();
+        let mut threads = interp.head();
+        while !threads.is_null() {
+            let thread = self.process.copy_pointer(threads).context("Failed to copy PyThreadState")?;
+            let current = thread.thread_id();
+            all_python_threads.insert(current);
+            threads = thread.next();
+        }
+
+        let processed_os_threads: HashSet<Tid> = HashSet::from_iter(self.python_thread_ids.values().map(|x| *x));
+
+        let native = self.native.as_ref().unwrap();
+
+        // Try getting the pthread_id from the native stack registers for threads we haven't looked up yet
+        for thread in self.process.threads()?.iter() {
+            let threadid = thread.id()?;
+            if processed_os_threads.contains(&threadid) {
+                continue;
+            }
+
+            match native.get_pthread_id(&thread, &all_python_threads) {
+                Ok(pthread_id) => {
+                    if pthread_id != 0 {
+                        self.python_thread_ids.insert(pthread_id, threadid);
+                    }
+                },
+                Err(e) => { warn!("Failed to get get_pthread_id for {}: {}", threadid, e); }
+            };
+        }
+
+        // we can't get the python threadid for the main thread from registers,
+        // so instead assign the main threadid (pid) to the missing python thread
+        if !processed_os_threads.contains(&self.pid) {
+            let mut unknown_python_threadids = HashSet::new();
+            for python_thread_id in all_python_threads.iter() {
+                if !self.python_thread_ids.contains_key(python_thread_id) {
+                    unknown_python_threadids.insert(*python_thread_id);
+                }
+            }
+
+            if unknown_python_threadids.len() == 1 {
+                let python_thread_id = *unknown_python_threadids.iter().next().unwrap();
+                self.python_thread_ids.insert(python_thread_id, self.pid);
+            } else {
+                error!("failed to get python threadid for main thread!");
+            }
+        }
+
+        if let Some(thread_id) = self.python_thread_ids.get(&python_thread_id) {
+            return Ok(Some(*thread_id));
+        }
+        info!("failed looking up python threadid for {}. known python_thread_ids {:?}. all_python_threads {:?}",
+            python_thread_id, self.python_thread_ids, all_python_threads);
+        Ok(None)
+    }
+
+    fn _get_gil_threadid<I: InterpreterState>(&self) -> Result<u64, Error> {
+        // figure out what thread has the GIL by inspecting _PyThreadState_Current
+        if self.threadstate_address > 0 {
+            let addr: usize = self.process.copy_struct(self.threadstate_address)?;
+
+            // if the addr is 0, no thread is currently holding the GIL
+            if addr != 0 {
+                let threadstate: I::ThreadState = self.process.copy_struct(addr)?;
+                return Ok(threadstate.thread_id());
+            }
+        }
+        Ok(0)
     }
 
     /// We want to display filenames without the boilerplate of the python installation
@@ -400,8 +554,6 @@ pub struct PythonProcessInfo {
     libpython_binary: Option<BinaryInfo>,
     maps: Vec<MapRange>,
     python_filename: String,
-    #[allow(dead_code)]
-    libpython_filename: Option<String>,
 }
 
 impl PythonProcessInfo {
@@ -460,7 +612,7 @@ impl PythonProcessInfo {
 
             // TODO: consistent types? u64 -> usize? for map.start etc
             #[allow(unused_mut)]
-            let mut python_binary = parse_binary(&filename, map.start() as u64)?;
+            let mut python_binary = parse_binary(&filename, map.start() as u64, map.size() as u64)?;
 
             // windows symbols are stored in separate files (.pdb), load
             #[cfg(windows)]
@@ -483,8 +635,7 @@ impl PythonProcessInfo {
         };
 
         // likewise handle libpython for python versions compiled with --enabled-shared
-        let mut libpython_filename = None;
-        let libpython_binary = {
+         let libpython_binary = {
             let libmap = maps.iter()
                 .find(|m| if let Some(ref pathname) = &m.filename() {
                     is_python_lib(pathname) && m.is_exec()
@@ -497,11 +648,10 @@ impl PythonProcessInfo {
                 if let Some(filename) = &libpython.filename() {
                     info!("Found libpython binary @ {}", filename);
                     #[allow(unused_mut)]
-                    let mut parsed = parse_binary(filename, libpython.start() as u64)?;
+                    let mut parsed = parse_binary(filename, libpython.start() as u64, libpython.size() as u64)?;
                     #[cfg(windows)]
                     parsed.symbols.extend(get_windows_python_symbols(process.pid, filename, libpython.start() as u64)?);
                     libpython_binary = Some(parsed);
-                    libpython_filename = libpython.filename().clone();
                 }
             }
 
@@ -528,7 +678,7 @@ impl PythonProcessInfo {
                     if let Some(libpython) = python_dyld_data {
                         info!("Found libpython binary from dyld @ {}", libpython.filename);
 
-                        let mut binary = parse_binary(&libpython.filename, libpython.segment.vmaddr)?;
+                        let mut binary = parse_binary(&libpython.filename, libpython.segment.vmaddr, libpython.segment.vmsize)?;
 
                         // TODO: bss addr offsets returned from parsing binary are wrong
                         // (assumes data section isn't split from text section like done here).
@@ -537,7 +687,6 @@ impl PythonProcessInfo {
                         binary.bss_addr = libpython.segment.vmaddr;
                         binary.bss_size = libpython.segment.vmsize;
                         libpython_binary = Some(binary);
-                        libpython_filename = Some(libpython.filename.clone());
                     }
                 }
             }
@@ -545,7 +694,7 @@ impl PythonProcessInfo {
             libpython_binary
         };
 
-        Ok(PythonProcessInfo{python_binary, libpython_binary, maps, python_filename, libpython_filename})
+        Ok(PythonProcessInfo{python_binary, libpython_binary, maps, python_filename})
     }
 
     pub fn get_symbol(&self, symbol: &str) -> Option<&u64> {

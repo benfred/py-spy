@@ -11,7 +11,7 @@ fn get_backtrace(pid: remoteprocess::Pid) -> Result<(), remoteprocess::Error> {
     // Create a stack unwind object, and use it to get the stack for each thread
     let unwinder = process.unwinder()?;
     for thread in process.threads()?.iter() {
-        println!("Thread 0x{:0x} - {}", thread.id()?, if thread.active()? { "running" } else { "idle" });
+        println!("Thread {} - {}", thread.id()?, if thread.active()? { "running" } else { "idle" });
 
         // lock the thread to get a consistent snapshot (unwinding will fail otherwise)
         // Note: the thread will appear idle when locked, so wee are calling
@@ -24,8 +24,8 @@ fn get_backtrace(pid: remoteprocess::Pid) -> Result<(), remoteprocess::Error> {
 
             // Lookup the current stack frame containing a filename/function/linenumber etc
             // for the current address
-            unwinder.symbolicate(ip, &mut |sf| {
-                println!("{}", sf);
+            unwinder.symbolicate(ip, true, &mut |sf| {
+                println!("\t{}", sf);
             })?;
         }
     }

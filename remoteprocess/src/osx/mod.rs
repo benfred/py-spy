@@ -27,6 +27,7 @@ pub use self::unwinder::Unwinder;
 use libproc::libproc::proc_pid::{pidpath, pidinfo, PIDInfo, PidInfoFlavor};
 
 pub type Pid = pid_t;
+pub type Tid = u32;
 
 pub struct Process {
     pub pid: Pid,
@@ -35,7 +36,7 @@ pub struct Process {
 
 #[derive(Eq, PartialEq, Hash, Copy, Clone)]
 pub struct Thread {
-    pub tid: u32
+    pub tid: Tid
 }
 
 impl Process {
@@ -95,7 +96,15 @@ use self::mach_thread_bindings::{thread_info, thread_basic_info, thread_identifi
 
 
 impl Thread {
-    pub fn id(&self) -> Result<u64, Error> {
+    pub fn new(tid: Tid) -> Result<Thread, Error> {
+        Ok(Thread{tid})
+    }
+
+    pub fn id(&self) -> Result<Tid, Error> {
+        Ok(self.tid)
+    }
+
+    pub fn thread_handle(&self) -> Result<u64, Error> {
         let thread_id = self.get_thread_identifier_info()?;
         Ok(thread_id.thread_handle)
     }

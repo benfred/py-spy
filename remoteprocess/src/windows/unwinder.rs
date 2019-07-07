@@ -36,10 +36,8 @@ impl Unwinder {
     }
 
     pub fn reload(&mut self) -> Result<(), Error> {
+        info!("reloading symbol module list");
         unsafe { SymRefreshModuleList(self.handle); }
-
-        // TODO: Call SymRefreshModuleList on reload?
-        // TODO: this means we need to know when reload needs to happen
         Ok(())
     }
 
@@ -47,10 +45,9 @@ impl Unwinder {
         Cursor::new(thread.thread, self.handle)
     }
 
-    pub fn symbolicate(&self, addr: u64, callback: &mut FnMut(&StackFrame)) -> Result<(), Error> {
+    pub fn symbolicate(&self, addr: u64, line_info: bool, callback: &mut FnMut(&StackFrame)) -> Result<(), Error> {
         let function = unsafe { self.symbol_function(addr) };
 
-        // Get the module
         let module = match unsafe { self.symbol_module (addr) } {
             Ok(module) => module,
             Err(Error::NoBinaryForAddress(_)) => {
@@ -64,11 +61,13 @@ impl Unwinder {
 
         let mut line = None;
         let mut filename = None;
-        if let Some((f, l)) = unsafe { self.symbol_filename(addr) } {
-            line = Some(l);
-            filename = Some(f);
+
+        if line_info {
+            if let Some((f, l)) = unsafe { self.symbol_filename(addr) } {
+                line = Some(l);
+                filename = Some(f);
+            }
         }
-        // TODO: reload?
         callback(&StackFrame{function, filename, line, module, addr});
         Ok(())
     }
