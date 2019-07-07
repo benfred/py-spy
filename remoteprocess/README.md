@@ -11,6 +11,7 @@ Features:
 - Listing all the threads in the process
 - Getting a stack trace for a thread in the target process
 - Resolve symbols for an address in the other process
+- Figure out if a thread is active or not
 
 This crate provides implementations for Linux, OSX and Windows.
 

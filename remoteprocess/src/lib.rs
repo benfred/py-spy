@@ -1,3 +1,54 @@
+//! This crate provides a cross platform way of querying information about other processes running
+//! on the system. This let's you build profiling and debugging tools.
+//!
+//! Features:
+//!
+//! * Getting the process executable name and current working directory
+//! * Listing all the threads in the process
+//! * Suspending the execution of a process or thread
+//! * Returning if a thread is running or not
+//! * Getting a stack trace for a thread in the target process
+//! * Resolve symbols for an address in the other process
+//! * Copy memory from the other process (using the read_process_memory crate)
+//!
+//! This crate provides implementations for Linux, OSX and Windows. However this crate is still
+//! very much in alpha stage, and the following caveats apply:
+//!
+//! * Stack unwinding only works on x86_64 processors right now, and is disabled for arm/x86
+//! * the OSX stack unwinding code is very unstable and shouldn't be relied on
+//! * Getting the cwd on windows returns incorrect results
+//!
+//! # Example
+//!
+//! ```rust,no_run
+//! fn get_backtrace(pid: remoteprocess::Pid) -> Result<(), remoteprocess::Error> {
+//!     // Create a new handle to the process
+//!     let process = remoteprocess::Process::new(pid)?;
+//!     // Create a stack unwind object, and use it to get the stack for each thread
+//!     let unwinder = process.unwinder()?;
+//!     for thread in process.threads()?.iter() {
+//!         println!("Thread {} - {}", thread.id()?, if thread.active()? { "running" } else { "idle" });
+//!
+//!         // lock the thread to get a consistent snapshot (unwinding will fail otherwise)
+//!         // Note: the thread will appear idle when locked, so we are calling
+//!         // thread.active() before this
+//!         let _lock = thread.lock()?;
+//!
+//!         // Iterate over the callstack for the current thread
+//!         for ip in unwinder.cursor(&thread)? {
+//!             let ip = ip?;
+//!
+//!             // Lookup the current stack frame containing a filename/function/linenumber etc
+//!             // for the current address
+//!             unwinder.symbolicate(ip, true, &mut |sf| {
+//!                 println!("\t{}", sf);
+//!             })?;
+//!         }
+//!     }
+//!     Ok(())
+//! }
+//! ```
+
 extern crate proc_maps;
 extern crate goblin;
 extern crate benfred_read_process_memory as read_process_memory;
@@ -37,7 +88,6 @@ pub use osx::*;
 mod linux;
 #[cfg(target_os="linux")]
 pub use linux::*;
-
 
 #[cfg(target_os="windows")]
 mod windows;
@@ -176,6 +226,8 @@ impl std::fmt::Display for StackFrame {
 }
 
 pub trait ProcessMemory {
+    /// Copies memory from another process into an already allocated
+    /// byte buffer
     fn read(&self, addr: usize, buf: &mut [u8]) -> Result<(), Error>;
 
     /// Copies a series of bytes from another process. Main difference
@@ -199,6 +251,7 @@ pub trait ProcessMemory {
     }
 }
 
+#[doc(hidden)]
 /// Mock for using ProcessMemory on the local process.
 pub struct LocalProcess;
 impl ProcessMemory for LocalProcess {
@@ -209,6 +262,7 @@ impl ProcessMemory for LocalProcess {
         Ok(())
     }
 }
+
 
 #[cfg(test)]
 pub mod tests {

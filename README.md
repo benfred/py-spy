@@ -1,14 +1,14 @@
-Py-Spy: A sampling profiler for Python programs.
+py-spy: A sampling profiler for Python programs.
 =====
 [![Build Status](https://travis-ci.org/benfred/py-spy.svg?branch=master)](https://travis-ci.org/benfred/py-spy)
 [![Windows Build status](https://ci.appveyor.com/api/projects/status/x0jwd5ygaybsa0md?svg=true)](https://ci.appveyor.com/project/benfred/py-spy)
 
-Py-Spy is a sampling profiler for Python programs. It lets you visualize what your Python
+py-spy is a sampling profiler for Python programs. It lets you visualize what your Python
 program is spending time on without restarting the program or modifying the code in any way.
-Py-Spy is extremely low overhead: it is written in Rust for speed and doesn't run
-in the same process as the profiled Python program. This means Py-Spy is safe to use against production Python code.
+py-spy is extremely low overhead: it is written in Rust for speed and doesn't run
+in the same process as the profiled Python program. This means py-spy is safe to use against production Python code.
 
-Py-Spy works on Linux, OSX and Windows, and supports profiling all recent versions of the CPython
+py-spy works on Linux, OSX and Windows, and supports profiling all recent versions of the CPython
 interpreter (versions 2.3-2.7 and 3.3-3.7).
 
 ## Installation
@@ -78,7 +78,7 @@ that runs totally in a separate process is [pyflame](https://github.com/uber/pyf
 
 ### How does py-spy work?
 
-Py-spy works by directly reading the memory of the python program using the
+py-spy works by directly reading the memory of the python program using the
 [process_vm_readv](http://man7.org/linux/man-pages/man2/process_vm_readv.2.html) system call on Linux,
 the [vm_read](https://developer.apple.com/documentation/kernel/1585350-vm_read?language=objc) call on OSX
 or the [ReadProcessMemory](https://msdn.microsoft.com/en-us/library/windows/desktop/ms680553(v=vs.85).aspx) call
@@ -112,7 +112,7 @@ native code in the Python Extensions. If this is something that interests you [p
 
 ### When do you need to run as sudo?
 
-Py-spy works by reading memory from a different python process, and this might not be allowed for security reasons depending on
+py-spy works by reading memory from a different python process, and this might not be allowed for security reasons depending on
 your OS and system settings. In many cases, running as a root user (with sudo or similar) gets around these security restrictions.
 OSX always requires running as root, but on Linux it depends on how you are launching py-spy and the system
 security settings.

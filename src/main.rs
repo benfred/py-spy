@@ -1,7 +1,3 @@
-// This lint is a little broken right now.
-// once this is live, probably can remove: https://github.com/rust-lang/rust-clippy/pull/3338
-#![allow(clippy::new_ret_no_self)]
-
 #[macro_use]
 extern crate clap;
 extern crate console;
@@ -20,7 +16,6 @@ extern crate log;
 extern crate memmap;
 extern crate proc_maps;
 extern crate regex;
-extern crate tempdir;
 extern crate tempfile;
 #[cfg(unix)]
 extern crate termios;
@@ -43,6 +38,7 @@ mod stack_trace;
 mod console_viewer;
 mod flamegraph;
 mod utils;
+mod timer;
 mod version;
 
 use std::io::Read;
@@ -103,7 +99,7 @@ fn sample_console(process: &mut PythonSpy,
                                          &format!("{}", process.version),
                                          1.0 / rate as f64)?;
 
-    for sleep in utils::Timer::new(rate as f64) {
+    for sleep in timer::Timer::new(rate as f64) {
         if let Err(elapsed) = sleep {
             console.increment_late_sample(elapsed);
         }
@@ -149,7 +145,7 @@ fn sample_flame(process: &mut PythonSpy, filename: &str, config: &config::Config
 
     let mut exit_message = "";
 
-    for sleep in utils::Timer::new(config.sampling_rate as f64) {
+    for sleep in timer::Timer::new(config.sampling_rate as f64) {
         if let Err(delay) = sleep {
             if delay > Duration::from_secs(1) {
                 // TODO: once this available on crates.io https://github.com/mitsuhiko/indicatif/pull/41
