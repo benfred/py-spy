@@ -22,9 +22,9 @@ impl Config {
         // we don't yet support native tracing on 32 bit linux
         let allow_native = cfg!(unwind);
 
-        let matches = App::new("py-spy")
-            .version("0.2.0.dev0")
-            .about("A sampling profiler for Python programs")
+        let matches = App::new(crate_name!())
+            .version(crate_version!())
+            .about(crate_description!())
             .arg(Arg::with_name("function")
                 .short("F")
                 .long("function")
