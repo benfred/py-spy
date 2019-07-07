@@ -573,7 +573,7 @@ impl PythonProcessInfo {
         let maps = get_process_maps(process.pid)?;
         info!("Got virtual memory maps from pid {}:", process.pid);
         for map in &maps {
-            info!("map: {:016x}-{:016x} {}{}{} {}", map.start(), map.start() + map.size(),
+            debug!("map: {:016x}-{:016x} {}{}{} {}", map.start(), map.start() + map.size(),
                 if map.is_read() {'r'} else {'-'}, if map.is_write() {'w'} else {'-'}, if map.is_exec() {'x'} else {'-'},
                 map.filename().as_ref().unwrap_or(&"".to_owned()));
         }
@@ -666,7 +666,7 @@ impl PythonProcessInfo {
 
                     for dyld in &dyld_infos {
                         let segname = unsafe { std::ffi::CStr::from_ptr(dyld.segment.segname.as_ptr()) };
-                        info!("dyld: {:016x}-{:016x} {:10} {}",
+                        debug!("dyld: {:016x}-{:016x} {:10} {}",
                             dyld.segment.vmaddr, dyld.segment.vmaddr + dyld.segment.vmsize,
                             segname.to_string_lossy(), dyld.filename);
                     }
