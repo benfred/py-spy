@@ -14,7 +14,7 @@ fn get_backtrace(pid: remoteprocess::Pid) -> Result<(), remoteprocess::Error> {
         println!("Thread {} - {}", thread.id()?, if thread.active()? { "running" } else { "idle" });
 
         // lock the thread to get a consistent snapshot (unwinding will fail otherwise)
-        // Note: the thread will appear idle when locked, so wee are calling
+        // Note: the thread will appear idle when locked, so we are calling
         // thread.active() before this
         let _lock = thread.lock()?;
 
@@ -53,4 +53,3 @@ fn main() {
 fn main() {
     panic!("unwind not supported!");
 }
-

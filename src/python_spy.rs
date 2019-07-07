@@ -23,7 +23,7 @@ use crate::python_interpreters::{self, InterpreterState, ThreadState};
 use crate::stack_trace::{StackTrace, get_stack_traces, get_stack_trace};
 use crate::version::Version;
 
-
+/// Lets you retrieve stack traces of a running python program
 pub struct PythonSpy {
     pub pid: Pid,
     pub process: Process,
@@ -40,6 +40,7 @@ pub struct PythonSpy {
 }
 
 impl PythonSpy {
+    /// Constructs a new PythonSpy object.
     pub fn new(pid: Pid, config: &Config) -> Result<PythonSpy, Error> {
         let process = remoteprocess::Process::new(pid)
             .context("Failed to open process - check if it is running.")?;
@@ -109,9 +110,9 @@ impl PythonSpy {
                      python_thread_ids: HashMap::new()})
     }
 
-    /// Creates a PythonSpy object, retrying up to max_retries times
-    /// mainly useful for the case where the process is just started and
-    /// symbols/python interpreter might not be loaded yet
+    /// Creates a PythonSpy object, retrying up to max_retries times.
+    /// Mainly useful for the case where the process is just started and
+    /// symbols or the python interpreter might not be loaded yet.
     pub fn retry_new(pid: Pid, config: &Config, max_retries:u64) -> Result<PythonSpy, Error> {
         let mut retries = 0;
         loop {
@@ -351,7 +352,7 @@ impl PythonSpy {
     /// We want to display filenames without the boilerplate of the python installation
     /// directory etc. This function looks only includes paths inside a python
     /// package or subpackage, and not the path the package is installed at
-    pub fn shorten_filename(&mut self, filename: &str) -> Option<String> {
+    fn shorten_filename(&mut self, filename: &str) -> Option<String> {
         // if we have figured out the short filename already, use it
         if let Some(short) = self.short_filenames.get(filename) {
             return short.clone();

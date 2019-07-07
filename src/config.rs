@@ -2,22 +2,47 @@ use clap::{App, Arg};
 use failure::Error;
 use remoteprocess::Pid;
 
+/// Options on how to collect samples from a python process
 #[derive(Debug, Clone)]
 pub struct Config {
-    pub pid: Option<Pid>,
-    pub python_program: Option<Vec<String>>,
-
-    pub dump: bool,
-    pub flame_file_name: Option<String>,
-
+    /// Whether or not we should stop the python process when taking samples.
+    /// Setting this to false will reduce the performance impact on the target
+    /// python process, but can lead to incorrect results like partial stack
+    /// traces being returned or a higher sampling error rate
     pub non_blocking: bool,
-    pub show_line_numbers: bool,
+
+    /// Whether or not to profile native extensions. Note: this option can not be
+    /// used with the nonblocking option, as we have to pause the process to collect
+    /// the native stack traces
+    pub native: bool,
+
+    // The following config options only apply when using py-spy as an application
+    #[doc(hidden)]
     pub sampling_rate: u64,
+    #[doc(hidden)]
+    pub pid: Option<Pid>,
+    #[doc(hidden)]
+    pub python_program: Option<Vec<String>>,
+    #[doc(hidden)]
+    pub dump: bool,
+    #[doc(hidden)]
+    pub flame_file_name: Option<String>,
+    #[doc(hidden)]
+    pub show_line_numbers: bool,
+    #[doc(hidden)]
     pub duration: u64,
-    pub native: bool
 }
 
 impl Config {
+    /// Initializes a new Config object with default parameters
+    #[allow(dead_code)]
+    pub fn default() -> Config {
+        Config{pid: None, python_program: None, dump: false, flame_file_name: None,
+               non_blocking: false, show_line_numbers: false, sampling_rate: 100,
+               duration: 2, native: false}
+    }
+
+    /// Uses clap to set config options from commandline arguments
     pub fn from_commandline() -> Result<Config, Error> {
         // we don't yet support native tracing on 32 bit linux
         let allow_native = cfg!(unwind);
@@ -94,6 +119,11 @@ impl Config {
 
         if !allow_native && native {
             error!("Native stack traces are not yet supported on this OS. Disabling");
+            native = false;
+        }
+
+        if native && non_blocking {
+            error!("Can't get native stack traces with the --nonblocking option. Disabling native.");
             native = false;
         }
 

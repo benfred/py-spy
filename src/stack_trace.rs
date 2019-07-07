@@ -5,21 +5,33 @@ use remoteprocess::ProcessMemory;
 
 use crate::python_interpreters::{InterpreterState, ThreadState, FrameObject, CodeObject, StringObject, BytesObject};
 
+/// Call stack for a single python thread
 #[derive(Debug)]
 pub struct StackTrace {
+    /// The python thread id for this stack trace
     pub thread_id: u64,
+    /// The OS thread id for this stack tracee
     pub os_thread_id: Option<u64>,
+    /// Whether or not the thread was active
     pub active: bool,
+    /// Whether or not the thread held the GIL
     pub owns_gil: bool,
+    /// The frames
     pub frames: Vec<Frame>
 }
 
+/// Information about a single function call in a stack trace
 #[derive(Debug, Hash, Eq, PartialEq, Ord, PartialOrd, Clone)]
 pub struct Frame {
+    /// The function name
     pub name: String,
+    /// The full filename of the file
     pub filename: String,
+    /// The module/shared library the
     pub module: Option<String>,
+    /// A short, more readable, representation of the filename
     pub short_filename: Option<String>,
+    /// The line number inside the file (or 0 for native frames without line information)
     pub line: i32,
 }
 

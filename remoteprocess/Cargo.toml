@@ -2,6 +2,11 @@
 name = "remoteprocess"
 version = "0.1.0"
 authors = ["Ben Frederickson <github@benfrederickson.com>"]
+repository = "https://github.com/benfred/py-spy"
+homepage = "https://github.com/benfred/py-spy/tree/master/remoteprocess"
+description = "cross platform api for getting information on a running processes"
+readme = "README.md"
+license = "GPL-3.0"
 build="build.rs"
 
 [dependencies]
@@ -28,4 +33,3 @@ winapi = {version = "0.3", features = ["winbase", "consoleapi", "wincon", "handl
 
 [dev-dependencies]
 env_logger = "0.6.1"
-

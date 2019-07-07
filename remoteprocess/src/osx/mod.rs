@@ -1,3 +1,4 @@
+#[doc(hidden)]
 pub mod compact_unwind;
 mod utils;
 mod symbolication;
