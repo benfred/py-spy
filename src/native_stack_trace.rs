@@ -155,6 +155,7 @@ impl NativeStack {
                 }
             }).unwrap_or_else(|e| {
                 if let remoteprocess::Error::NoBinaryForAddress(_) = e {
+                    debug!("don't have a binary for symbols at 0x{:x} - reloading", addr);
                     self.should_reload = true;
                 }
                 // if we can't symbolicate, just insert a stub here.
@@ -165,8 +166,27 @@ impl NativeStack {
         }
 
         if python_frame_index != frames.len() {
-            return Err(format_err!("Failed to merge native and python frames (Have {} native and {} python",
-                                    python_frame_index, frames.len()));
+            if python_frame_index == 0 {
+                // I've seen a problem come up a bunch where we only get 1-2 native stack traces and then it fails
+                // (with a valid python stack trace on top of that). both the gimli and libunwind unwinder don't
+                // return the full stack, and connecting up to the process with GDB brings a corrupt stack error:
+                //    from /home/ben/anaconda3/lib/python3.7/site-packages/numpy/core/../../../../libmkl_avx512.so
+                //    Backtrace stopped: previous frame inner to this frame (corrupt stack?)
+                //
+                // rather than fail here, lets just insert the python frames after the native frames
+                for frame in frames {
+                    merged.push(frame.clone());
+                }
+            } else if python_frame_index == frames.len() + 1 {
+                // if we have seen exactly one more python frame in the native stack than the python stack - let it go.
+                // (can happen when the python stack has been unwound, but haven't exitted the PyEvalFrame function
+                // yet)
+                info!("Have {} native and {} python threads in stack - allowing for now",
+                    python_frame_index, frames.len());
+            } else {
+                 return Err(format_err!("Failed to merge native and python frames (Have {} native and {} python)",
+                                       python_frame_index, frames.len()));
+            }
         }
 
         for frame in merged.iter_mut() {
@@ -182,8 +202,9 @@ impl NativeStack {
         let mut cursor = self.unwinder.cursor(thread)?;
 
         while let Some(ip) = cursor.next() {
-            if let Err(remoteprocess::Error::NoBinaryForAddress(_)) = ip {
-                // self.should_reload = true;
+            if let Err(remoteprocess::Error::NoBinaryForAddress(addr)) = ip {
+                debug!("don't have a binary for 0x{:x} - reloading", addr);
+                self.should_reload = true;
             }
             stack.push(ip?);
         }
