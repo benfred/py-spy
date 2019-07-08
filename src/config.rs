@@ -33,15 +33,17 @@ pub struct Config {
     pub duration: u64,
 }
 
-impl Config {
+impl Default for Config {
     /// Initializes a new Config object with default parameters
     #[allow(dead_code)]
-    pub fn default() -> Config {
+    fn default() -> Config {
         Config{pid: None, python_program: None, dump: false, flame_file_name: None,
                non_blocking: false, show_line_numbers: false, sampling_rate: 100,
                duration: 2, native: false}
     }
+}
 
+impl Config {
     /// Uses clap to set config options from commandline arguments
     pub fn from_commandline() -> Result<Config, Error> {
         // we don't yet support native tracing on 32 bit linux
