@@ -227,12 +227,26 @@ fn pyspy_main() -> Result<(), Error> {
     else if let Some(ref subprocess) = config.python_program {
         // Dump out stdout/stderr from the process to a temp file, so we can view it later if needed
         let mut process_output = tempfile::NamedTempFile::new()?;
-        let mut command = std::process::Command::new(&subprocess[0])
-            .args(&subprocess[1..])
+
+        let mut command = std::process::Command::new(&subprocess[0]);
+        #[cfg(unix)]
+        {
+            // Drop root permissions if possible: https://github.com/benfred/py-spy/issues/116
+            if unsafe { libc::geteuid() } == 0 {
+                if let Ok(sudo_uid) = std::env::var("SUDO_UID") {
+                    use std::os::unix::process::CommandExt;
+                    info!("Dropping root and running python command as {}", std::env::var("SUDO_USER")?);
+                    command.uid(sudo_uid.parse::<u32>()?);
+                }
+            }
+        }
+
+        let mut command = command.args(&subprocess[1..])
             .stdin(std::process::Stdio::null())
             .stdout(process_output.reopen()?)
             .stderr(process_output.reopen()?)
-            .spawn().map_err(|e| format_err!("Failed to create process '{}': {}", subprocess[0], e))?;
+            .spawn()
+            .map_err(|e| format_err!("Failed to create process '{}': {}", subprocess[0], e))?;
 
         #[cfg(target_os="macos")]
         {
