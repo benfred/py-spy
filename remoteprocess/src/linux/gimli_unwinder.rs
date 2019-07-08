@@ -42,6 +42,8 @@ impl Unwinder {
     }
 
     pub fn reload(&mut self) -> Result<(), Error> {
+        info!("reloading process binaries");
+
         // Get shared libraries from virtual memory mapped files
         let maps = &proc_maps::get_process_maps(self.pid)?;
         let shared_maps = maps.iter().filter(|m| m.is_exec() && !m.is_write() && m.is_read());
@@ -77,8 +79,13 @@ impl Unwinder {
                 vdso_data = self.process.copy(m.start(), m.size())?;
                 &vdso_data
             } else {
-                // vsyscall region, can be ignored
-                debug!("skipping {} region", filename);
+                // vsyscall region, can be ignored, but lets not keep on trying to do this
+                info!("skipping {} region", filename);
+
+                // insert a stub for [vsyscall] so that we don't continually try to load it etc
+                self.binaries.insert(address_key,
+                        BinaryInfo{unwind_info: None, offset: 0, address: m.start() as u64, size: m.size() as u64,
+                                   filename: filename.to_string(), symbols: RefCell::new(None)});
                 continue;
             };
 
