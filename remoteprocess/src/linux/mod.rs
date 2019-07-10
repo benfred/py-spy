@@ -9,6 +9,7 @@ use libc::pid_t;
 use libc::c_void;
 
 use nix::{self, sys::wait, sys::ptrace, {sched::{setns, CloneFlags}}};
+use std::convert::TryInto;
 use std::io::Read;
 use std::os::unix::io::AsRawFd;
 use std::fs::File;
@@ -24,7 +25,7 @@ pub use self::symbolication::*;
 #[cfg(unwind)]
 pub use self::libunwind::{LibUnwind};
 
-use read_process_memory::{CopyAddress};
+use read_process_memory::{CopyAddress, ProcessHandle};
 
 pub type Pid = pid_t;
 pub type Tid = pid_t;
@@ -104,7 +105,8 @@ impl Process {
 
 impl super::ProcessMemory for Process {
     fn read(&self, addr: usize, buf: &mut [u8]) -> Result<(), Error> {
-        Ok(self.pid.copy_address(addr, buf)?)
+        let handle: ProcessHandle = self.pid.try_into()?;
+        Ok(handle.copy_address(addr, buf)?)
     }
 }
 
