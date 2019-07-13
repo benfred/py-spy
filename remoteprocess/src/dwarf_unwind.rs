@@ -2,10 +2,8 @@ use gimli;
 use super::{Error, Process, ProcessMemory};
 
 pub type RcReader = gimli::EndianRcSlice<gimli::NativeEndian>;
-pub type FrameDescriptionEntry = gimli::FrameDescriptionEntry<gimli::EhFrame<RcReader>, RcReader>;
-pub type UninitializedUnwindContext = gimli::UninitializedUnwindContext<gimli::EhFrame<RcReader>, RcReader>;
-pub type InitializedUnwindContext = gimli::InitializedUnwindContext<gimli::EhFrame<RcReader>, RcReader>;
-
+pub type FrameDescriptionEntry = gimli::FrameDescriptionEntry<RcReader>;
+pub type UninitializedUnwindContext = gimli::UninitializedUnwindContext<RcReader>;
 
 #[cfg(target_os="linux")]
 use libc::c_ulonglong;
@@ -70,13 +68,8 @@ impl UnwindInfo {
         debug!("got fde covers range 0x{:016x}-0x{:016x}", fde.initial_address(), fde.initial_address() + fde.len());
 
         // TODO: reuse context?
-        let ctx = UninitializedUnwindContext::new();
-        let mut ctx = match ctx.initialize(fde.cie()) {
-            Ok(ctx) => ctx,
-            Err((e, _)) => return Err(e.into())
-        };
-
-        let row = get_unwind_row(pc, &mut ctx, &fde)?;
+        let mut ctx = UninitializedUnwindContext::new();
+        let row = self.get_unwind_row(pc, &mut ctx, &fde)?;
         let cfa = match *row.cfa() {
             gimli::CfaRule::RegisterAndOffset { register, offset } => {
                 debug!("cfa rule register and offset: {:?}, {}", register, offset);
@@ -132,9 +125,19 @@ impl UnwindInfo {
     fn get_fde(&self, pc: u64) -> gimli::Result<FrameDescriptionEntry> {
         // lookup FDE inside the eh_frame_hdr section on linux
         self.eh_frame_hdr.table().unwrap()
-            .lookup_and_parse(pc, &self.bases,
-                              self.eh_frame.clone(),  // can we do this without cloning?
-                              |offset| self.eh_frame.cie_from_offset(&self.bases, offset))
+            .fde_for_address(&self.eh_frame, &self.bases, pc, gimli::EhFrame::cie_from_offset)
+    }
+
+    fn get_unwind_row(&self, pc: u64, ctx: &mut UninitializedUnwindContext, fde: &FrameDescriptionEntry)
+            -> gimli::Result<gimli::UnwindTableRow<RcReader>> {
+        let mut table = gimli::UnwindTable::new(&self.eh_frame, &self.bases, ctx, &fde)?;
+        while let Some(row) = table.next_row()? {
+            if row.contains(pc) {
+                return Ok(row.clone());
+            }
+        }
+        error!("Failed to find unwind row for 0x{:016x}", pc);
+        Err(gimli::Error::NoUnwindInfoForAddress)
     }
 
     /// Creates a new UnwindInfo object for OSX. This iterates over the eh_frame section
@@ -155,7 +158,8 @@ impl UnwindInfo {
                 match entry {
                     gimli::CieOrFde::Cie(_) => continue,
                     gimli::CieOrFde::Fde(partial) => {
-                        let fde = partial.parse(|offset| eh_frame.cie_from_offset(&bases, offset))?;
+
+                        let fde = partial.parse(|_, bases, offset| eh_frame.cie_from_offset(bases, offset))?;
                         frame_descriptions.push((fde.initial_address(), fde));
                     }
                 }
@@ -221,18 +225,6 @@ fn evaluate_dwarf_expression(e: &gimli::Expression<RcReader>,
             return Err(Error::Other(format!("Unhandled dwarf evaluation result {:#?}", other)));
         }
     }
-}
-
-fn get_unwind_row(pc: u64, ctx: &mut InitializedUnwindContext, fde: &FrameDescriptionEntry)
-            -> gimli::Result<gimli::UnwindTableRow<RcReader>> {
-    let mut table = gimli::UnwindTable::new(ctx, &fde);
-    while let Some(row) = table.next_row()? {
-        if row.contains(pc) {
-            return Ok(row.clone());
-        }
-    }
-    error!("Failed to find unwind row for 0x{:016x}", pc);
-    Err(gimli::Error::NoUnwindInfoForAddress)
 }
 
 // TODO: refactor register handling code (make functions methods, add getrsp/get_ip etc)
