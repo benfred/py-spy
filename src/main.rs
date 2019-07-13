@@ -13,6 +13,8 @@ extern crate lazy_static;
 extern crate libc;
 #[macro_use]
 extern crate log;
+#[cfg(unwind)]
+extern crate lru;
 extern crate memmap;
 extern crate proc_maps;
 extern crate regex;
