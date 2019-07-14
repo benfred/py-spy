@@ -1,5 +1,11 @@
+set -ex
+
 mktempd() {
     echo $(mktemp -d 2>/dev/null || mktemp -d -t tmp)
+}
+
+mk_artifacts() {
+    cargo build --target $TARGET --release
 }
 
 mk_tarball() {
@@ -16,4 +22,9 @@ mk_tarball() {
     rm -r $td
 }
 
-mk_tarball
+main() {
+    mk_artifacts
+    mk_tarball
+}
+
+main
