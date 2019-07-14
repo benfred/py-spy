@@ -34,7 +34,7 @@ impl SymbolData {
             .map_err(|e| Error::Other(format!("Failed to get symbol context for {}: {:?}", filename, e)))?;
 
         let mut symbols = Vec::new();
-        for sym in file.symbols() {
+        for (_, sym) in file.symbols() {
             if let Some(name) = sym.name() {
                 symbols.push((sym.address(), sym.size(), name.to_string()));
             }
@@ -42,7 +42,7 @@ impl SymbolData {
         symbols.sort_unstable_by(|a, b| a.0.cmp(&b.0));
 
         let mut dynamic_symbols = Vec::new();
-        for sym in file.dynamic_symbols() {
+        for (_, sym) in file.dynamic_symbols() {
             if let Some(name) = sym.name() {
                 dynamic_symbols.push((sym.address(), sym.size(), name.to_string()));
             }
