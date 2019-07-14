@@ -80,7 +80,7 @@ class PostInstallCommand(install):
         if os.path.isfile(target):
             os.remove(target)
 
-        self.move_file(source, target)
+        self.copy_file(source, target)
 
 
 setup(name='py-spy',

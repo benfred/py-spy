@@ -23,6 +23,7 @@ before_install:
       CC=musl-gcc ./configure --disable-minidebuginfo --enable-ptrace --disable-tests --disable-documentation
       make
       sudo make install
+      cd ..
   elif [ $TARGET = x86_64-unknown-linux-gnu ]; then
       sudo apt-get install libunwind-dev
   elif [ $TARGET = armv7-unknown-linux-gnueabihf ]; then
