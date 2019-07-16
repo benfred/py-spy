@@ -52,7 +52,7 @@
 
 extern crate proc_maps;
 extern crate goblin;
-extern crate akhramov_read_process_memory as read_process_memory;
+extern crate benfred_read_process_memory as read_process_memory;
 extern crate memmap;
 extern crate gimli;
 extern crate libc;
