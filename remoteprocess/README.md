@@ -9,11 +9,12 @@ Features:
 - Suspending the execution of the process
 - Getting the process executable name and current working directory
 - Listing all the threads in the process
+- Figure out if a thread is active or not
+- Read memory from the other proceses (using read_proceses_memory crate)
 - Getting a stack trace for a thread in the target process
 - Resolve symbols for an address in the other process
-- Figure out if a thread is active or not
 
-This crate provides implementations for Linux, OSX and Windows.
+This crate provides implementations for Linux, OSX, FreeBSD and Windows
 
 ## Usage
 
@@ -48,6 +49,12 @@ fn get_backtrace(pid: remoteprocess::Pid) -> Result<(), remoteprocess::Error> {
 ```
 
 A complete program with this code can be found in the examples folder.
+
+## Limitations
+
+Currently we only have implementations for getting stack traces on x86_64 processors running
+Linux/Windows or OSX. We don't have the abilitiy to get stack traces at all from ARM or i686
+processors, or from FreeBSD.
 
 ## Credits
 

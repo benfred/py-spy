@@ -8,7 +8,7 @@ program is spending time on without restarting the program or modifying the code
 py-spy is extremely low overhead: it is written in Rust for speed and doesn't run
 in the same process as the profiled Python program. This means py-spy is safe to use against production Python code.
 
-py-spy works on Linux, OSX and Windows, and supports profiling all recent versions of the CPython
+py-spy works on Linux, OSX, Windows and FreeBSD, and supports profiling all recent versions of the CPython
 interpreter (versions 2.3-2.7 and 3.3-3.7).
 
 ## Installation
@@ -74,7 +74,7 @@ to use these profilers for debugging issues in production services since they wi
 a noticeable impact on performance. The only other Python profiler
 that runs totally in a separate process is [pyflame](https://github.com/uber/pyflame), which profiles
  remote python processes by using the ptrace system call. While pyflame is a great project,
- it doesn't support Python 3.7 yet and doesn't work on OSX or Windows.
+ it doesn't support Python 3.7 yet and doesn't work on OSX, Windows or FreeBSD.
 
 ### How does py-spy work?
 
@@ -99,16 +99,15 @@ and check if the layout of that address is what we expect.
 
 ### Can py-spy profile native extensions?
 
-Since we're getting the call stacks of the python
-program by looking at the
+Since we're getting the call stacks of the python program by looking at the
 [PyInterpreterState](https://docs.python.org/3/c-api/init.html#c.PyInterpreterState) we don't yet
 get information about non-python threads and can't profile native extensions like those written in languages
 like Cython or C++. Native code will instead show up as spending time in the line of Python that calls the native function,
-rather than as its own entry right now.
+rather than as its own entry in the current stable release.
 
-It should be possible to use something like [libunwind](https://www.nongnu.org/libunwind/) to profile the
-native code in the Python Extensions. If this is something that interests you [please upvote this issue](https://github.com/benfred/py-spy/issues/2).
-
+However, there is a pre-release at ```pip install py-spy==0.2.0.dev3``` that will let you profile
+native C/C++ or Cython extensions on 64-bit Linux and Windows machines. Any feedback on this feature is appreciated,
+and you can follow progress or leave comments [on this issue](https://github.com/benfred/py-spy/issues/2).
 
 ### When do you need to run as sudo?
 
@@ -164,9 +163,10 @@ securityContext:
 More details on this here: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-capabilities-for-a-container
 Note that this will remove the existing pods and create those again.
 
-### Running py-spy in Alpine Linux
+### How do I install py-spy on Alpine Linux?
 
-Alpine python opts out of the `manylinux` wheels: [pypa/pip#3969 (comment)](https://github.com/pypa/pip/issues/3969#issuecomment-247381915). Before installing py-spy on Alpine docker containers do:
+Alpine python opts out of the `manylinux` wheels: [pypa/pip#3969 (comment)](https://github.com/pypa/pip/issues/3969#issuecomment-247381915).
+You can override this behaviour to use pip to install py-spy on Alpine by going:
 
     echo 'manylinux1_compatible = True' > /usr/local/lib/python3.7/site-packages/_manylinux.py
 
@@ -174,15 +174,16 @@ Alpine python opts out of the `manylinux` wheels: [pypa/pip#3969 (comment)](http
 ### How can you avoid pausing the Python program?
 
 By setting the ```--nonblocking``` option, py-spy won't pause the target python you are profiling from. While
-the performance impact of sampling from a process with py-spy is usually extremely low, setting this option 
+the performance impact of sampling from a process with py-spy is usually extremely low, setting this option
 will totally avoid interrupting your running python program.
 
-With this option set, py-spy will instead read the interpreter state from the python process as it is running. 
-Since the calls we use to read memory from are not atomic, and we have to issue multiple calls to get a stack trace this 
-means that occasionally we get errors when sampling. This can show up as an increased error rate when sampling, or as 
+With this option set, py-spy will instead read the interpreter state from the python process as it is running.
+Since the calls we use to read memory from are not atomic, and we have to issue multiple calls to get a stack trace this
+means that occasionally we get errors when sampling. This can show up as an increased error rate when sampling, or as
 partial stack frames being included in the output.
 
 ### How are you distributing Rust executable binaries over PyPI?
+
 Ok, so no-one has ever actually asked me this - but I wanted to share since it's a pretty terrible hack
 that might be useful to other people.
 
@@ -196,7 +197,7 @@ to copy the built binary into the python scripts folder. By doing this with preb
 platforms means that we can install py-spy with pip, and not require a Rust compiler on the machine that
 this is being installed onto.
 
-### Does this run on BSD? Support 32-bit Windows? Integrate with PyPy? Work with USC-16 versions of Python2?
+### Does py-spy support 32-bit Windows? Integrate with PyPy? Work with USC2 versions of Python2?
 
 Not yet =).
 
@@ -206,7 +207,6 @@ py-spy is heavily inspired by [Julia Evans](https://github.com/jvns/) excellent 
 In particular, the code to generate the flamegraphs is taken directly from rbspy, and this project uses the
 [read-process-memory](https://github.com/luser/read-process-memory) and [proc-maps](https://github.com/benfred/proc-maps) crates that were spun off from rbspy.
 
-
 ## License
 
-Py-spy is released under the GNU General Public License v3.0, see the [LICENSE](https://github.com/benfred/py-spy/blob/master/LICENSE) file for the full text.
+py-spy is released under the GNU General Public License v3.0, see the [LICENSE](https://github.com/benfred/py-spy/blob/master/LICENSE) file for the full text.
