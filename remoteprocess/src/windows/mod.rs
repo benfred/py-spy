@@ -58,7 +58,7 @@ impl Process {
             if handle == (0 as std::os::windows::io::RawHandle) {
                 return Err(Error::from(std::io::Error::last_os_error()));
             }
-            Ok(Process{pid, handle})
+            Ok(Process{pid, handle: ProcessHandle(handle)})
         }
     }
 
@@ -68,7 +68,7 @@ impl Process {
         unsafe {
             let mut size = MAX_PATH as DWORD;
             let mut filename: [WCHAR; MAX_PATH] = std::mem::zeroed();
-            let ret = QueryFullProcessImageNameW(self.handle, 0, filename.as_mut_ptr(), &mut size);
+            let ret = QueryFullProcessImageNameW(self.handle.0, 0, filename.as_mut_ptr(), &mut size);
             if ret == 0 {
                 return Err(std::io::Error::last_os_error().into());
             }
@@ -100,22 +100,22 @@ impl Process {
         let mut ret = Vec::new();
         unsafe {
             let mut thread: HANDLE = std::mem::zeroed();
-            while NtGetNextThread(self.handle, thread, MAXIMUM_ALLOWED, 0, 0,
+            while NtGetNextThread(self.handle.0, thread, MAXIMUM_ALLOWED, 0, 0,
                                   &mut thread as *mut HANDLE) == 0 {
-                ret.push(Thread{thread});
+                ret.push(Thread{ thread: ProcessHandle(thread) });
             }
         }
         Ok(ret)
     }
 
     pub fn unwinder(&self) -> Result<unwinder::Unwinder, Error> {
-        unwinder::Unwinder::new(self.handle)
+        unwinder::Unwinder::new(self.handle.0)
     }
 }
 
 impl Drop for Process {
     fn drop(&mut self) {
-        unsafe { CloseHandle(self.handle); }
+        unsafe { CloseHandle(self.handle.0); }
     }
 }
 
@@ -127,7 +127,7 @@ impl super::ProcessMemory for Process {
 
 #[derive(Eq, PartialEq, Hash, Clone)]
 pub struct Thread {
-    thread: ProcessHandle
+    thread: ProcessHandle,
 }
 
 impl Thread {
@@ -138,7 +138,8 @@ impl Thread {
             if thread == (0 as std::os::windows::io::RawHandle) {
                 return Err(Error::from(std::io::Error::last_os_error()));
             }
-            Ok(Thread{thread})
+
+            Ok(Thread { thread: ProcessHandle(thread) })
         }
     }
     pub fn lock(&self) -> Result<ThreadLock, Error> {
@@ -146,7 +147,7 @@ impl Thread {
     }
 
     pub fn id(&self) -> Result<Tid, Error> {
-        unsafe { Ok(GetThreadId(self.thread)) }
+        unsafe { Ok(GetThreadId(self.thread.0)) }
     }
 
     pub fn active(&self) -> Result<bool, Error> {
@@ -155,7 +156,7 @@ impl Thread {
         // of known waiting syscalls to get this
         unsafe {
             let mut data = std::mem::zeroed::<THREAD_LAST_SYSCALL_INFORMATION>();
-            let ret = NtQueryInformationThread(self.thread, 21,
+            let ret = NtQueryInformationThread(self.thread.0, 21,
                 &mut data as *mut _ as *mut VOID,
                 std::mem::size_of::<THREAD_LAST_SYSCALL_INFORMATION>() as u32,
                 NULL as *mut u32);
@@ -196,7 +197,7 @@ impl Thread {
 
 impl Drop for Thread {
     fn drop(&mut self) {
-        unsafe { CloseHandle(self.thread); }
+        unsafe { CloseHandle(self.thread.0); }
     }
 }
 
@@ -207,7 +208,7 @@ pub struct Lock {
 impl Lock {
     pub fn new(process: ProcessHandle) -> Result<Lock, Error> {
         unsafe {
-            let ret = NtSuspendProcess(process);
+            let ret = NtSuspendProcess(process.0);
             if ret != 0 {
                 return Err(Error::from(std::io::Error::from_raw_os_error(RtlNtStatusToDosError(ret) as i32)));
             }
@@ -219,7 +220,7 @@ impl Lock {
 impl Drop for Lock {
     fn drop(&mut self) {
         unsafe {
-            let ret = NtResumeProcess(self.process);
+            let ret = NtResumeProcess(self.process.0);
             if ret != 0 {
                 panic!("Failed to resume process: {}",
                         std::io::Error::from_raw_os_error(RtlNtStatusToDosError(ret) as i32));
@@ -235,7 +236,7 @@ pub struct ThreadLock {
 impl ThreadLock {
     pub fn new(thread: ProcessHandle) -> Result<ThreadLock, Error> {
         unsafe {
-            let ret = SuspendThread(thread);
+            let ret = SuspendThread(thread.0);
             if ret.wrapping_add(1) == 0 {
                 return Err(std::io::Error::last_os_error().into());
             }
@@ -248,7 +249,7 @@ impl ThreadLock {
 impl Drop for ThreadLock {
     fn drop(&mut self) {
         unsafe {
-            if ResumeThread(self.thread).wrapping_add(1) == 0 {
+            if ResumeThread(self.thread.0).wrapping_add(1) == 0 {
                 panic!("Failed to resume thread {}", std::io::Error::last_os_error());
             }
         }

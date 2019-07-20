@@ -21,6 +21,7 @@
 //! # Example
 //!
 //! ```rust,no_run
+//! #[cfg(unwind)]
 //! fn get_backtrace(pid: remoteprocess::Pid) -> Result<(), remoteprocess::Error> {
 //!     // Create a new handle to the process
 //!     let process = remoteprocess::Process::new(pid)?;
@@ -89,11 +90,15 @@ mod linux;
 #[cfg(target_os="linux")]
 pub use linux::*;
 
+#[cfg(target_os="freebsd")]
+mod freebsd;
+#[cfg(target_os="freebsd")]
+pub use freebsd::*;
+
 #[cfg(target_os="windows")]
 mod windows;
 #[cfg(target_os="windows")]
 pub use windows::*;
-
 
 #[cfg(all(unix, unwind))]
 mod dwarf_unwind;

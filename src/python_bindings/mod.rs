@@ -114,4 +114,20 @@ pub mod pyruntime {
              _ => None
         }
     }
+
+    #[cfg(target_os="freebsd")]
+    pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
+        match version {
+            Version{major: 3, minor: 7, ..} => Some(1248),
+            Version{major: 3, minor: 8, patch: 0, ..} => {
+                match version.release_flags.as_ref() {
+                    "a1" => Some(1240),
+                    "a2" => Some(696),
+                    "a3" | "a4" => Some(1256),
+                    _ => None
+                }
+            },
+            _ => None
+        }
+    }
 }

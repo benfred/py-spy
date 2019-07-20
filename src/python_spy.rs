@@ -335,6 +335,11 @@ impl PythonSpy {
         Ok(None)
     }
 
+    #[cfg(target_os="freebsd")]
+    fn _get_os_thread_id<I: InterpreterState>(&mut self, _python_thread_id: u64, _interp: &I) -> Result<Option<Tid>, Error> {
+        Ok(None)
+    }
+
     fn _get_gil_threadid<I: InterpreterState>(&self) -> Result<u64, Error> {
         // figure out what thread has the GIL by inspecting _PyThreadState_Current
         if self.threadstate_address > 0 {
@@ -741,7 +746,7 @@ pub fn get_windows_python_symbols(pid: Pid, filename: &str, offset: u64) -> std:
     Ok(ret)
 }
 
-#[cfg(target_os="linux")]
+#[cfg(any(target_os="linux", target_os="freebsd"))]
 pub fn is_python_lib(pathname: &str) -> bool {
     lazy_static! {
         static ref RE: Regex = Regex::new(r"/libpython\d.\d(m|d|u)?.so").unwrap();

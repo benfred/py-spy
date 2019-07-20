@@ -6,13 +6,14 @@ mod mach_thread_bindings;
 mod unwinder;
 
 use std;
+use std::convert::TryInto;
 use mach;
 
 use super::{ProcessMemory, Error};
 use mach::kern_return::{KERN_SUCCESS};
 use mach::port::{mach_port_name_t, MACH_PORT_NULL};
 use mach::traps::{task_for_pid, mach_task_self};
-use read_process_memory::{CopyAddress};
+use read_process_memory::{CopyAddress, ProcessHandle};
 
 use libc::{c_int, pid_t};
 
@@ -87,7 +88,8 @@ impl Process {
 
 impl super::ProcessMemory for Process {
     fn read(&self, addr: usize, buf: &mut [u8]) -> Result<(), Error> {
-        Ok(self.task.copy_address(addr, buf)?)
+        let handle: ProcessHandle = self.task.try_into()?;
+        Ok(handle.copy_address(addr, buf)?)
     }
 }
 
@@ -185,5 +187,3 @@ impl Default for proc_vnodepathinfo {
 impl PIDInfo for proc_vnodepathinfo {
     fn flavor() -> PidInfoFlavor { PidInfoFlavor::VNodePathInfo }
 }
-
-
