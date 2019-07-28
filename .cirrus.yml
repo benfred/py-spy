@@ -6,8 +6,6 @@ freebsd_task:
   env:
     matrix:
       - TOOLCHAIN: stable
-      - TOOLCHAIN: beta
-      - TOOLCHAIN: nightly
   setup_script:
     - pkg install -y curl
     - curl https://sh.rustup.rs -sSf --output rustup.sh
