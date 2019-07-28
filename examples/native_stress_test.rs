@@ -33,7 +33,6 @@ fn native_stress_test(pid: remoteprocess::Pid) -> Result<(), failure::Error> {
            }
         }
     }
-    Ok(())
 }
 
 

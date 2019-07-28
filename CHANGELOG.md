@@ -1,3 +1,15 @@
+## v0.2.0 (pre-release)
+
+* Add ability to profile native python extensions [#2](https://github.com/benfred/py-spy/issues/2)
+* Add FreeBSD support [#112](https://github.com/benfred/py-spy/issues/112)
+* Add option to write out Speedscope files [#115](https://github.com/benfred/py-spy/issues/115)
+* Add option to output raw call stack data [#35](https://github.com/benfred/py-spy/issues/35)
+* Get thread idle status from OS [#92](https://github.com/benfred/py-spy/issues/92)
+* Allow use as a library by other rust programs [#110](https://github.com/benfred/py-spy/issues/110)
+* Show OS threadids in --dump [#57](https://github.com/benfred/py-spy/issues/57)
+* Drop root permissions when starting new process [#116](https://github.com/benfred/py-spy/issues/116)
+* Support building for ARM procesesors [#89](https://github.com/benfred/py-spy/issues/89)
+
 ## v0.1.11
 
 * Fix to detect GIL status on Python 3.7+ [#104](https://github.com/benfred/py-spy/pull/104)

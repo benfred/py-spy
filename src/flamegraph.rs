@@ -48,7 +48,7 @@ impl Flamegraph {
 
     pub fn increment(&mut self, traces: &[StackTrace]) -> std::io::Result<()> {
         for trace in traces {
-            if !(trace.active) {
+            if !trace.active {
                 continue;
             }
 
@@ -68,8 +68,11 @@ impl Flamegraph {
         Ok(())
     }
 
-    pub fn write(&self, w: File) -> Result<(), Error> {
-        let lines: Vec<String> = self.counts.iter().map(|(k, v)| format!("{} {}", k, v)).collect();
+    fn get_lines(&self) -> Vec<String> {
+        self.counts.iter().map(|(k, v)| format!("{} {}", k, v)).collect()
+    }
+
+    pub fn write(&self, w: &File) -> Result<(), Error> {
         let mut opts =  Options {
             direction: Direction::Inverted,
             min_width: 1.0,
@@ -77,7 +80,18 @@ impl Flamegraph {
             ..Default::default()
         };
 
-        inferno::flamegraph::from_lines(&mut opts, lines.iter().map(|x| x.as_str()), w).unwrap();
+        let lines = self.get_lines();
+        inferno::flamegraph::from_lines(&mut opts, lines.iter().map(|x| x.as_str()), w)
+            .map_err(|e| format_err!("Failed to write flamegraph: {}", e))?;
+        Ok(())
+    }
+
+    pub fn write_raw(&self, w: &mut File) -> Result<(), Error> {
+        use std::io::Write;
+        for line in self.get_lines() {
+            w.write_all(line.as_bytes())?;
+            w.write_all(b"\n")?;
+        }
         Ok(())
     }
 }

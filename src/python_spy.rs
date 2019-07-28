@@ -56,7 +56,7 @@ impl PythonSpy {
 
         // lets us figure out which thread has the GIL
          let threadstate_address = match version {
-             Version{major: 3, minor: 7...8, ..} => {
+             Version{major: 3, minor: 7..=8, ..} => {
                 match python_info.get_symbol("_PyRuntime") {
                     Some(&addr) => {
                         if let Some(offset) = pyruntime::get_tstate_current_offset(&version) {
@@ -150,7 +150,7 @@ impl PythonSpy {
             Version{major: 3, minor: 4, ..} => self._get_stack_traces::<v3_5_5::_is>(),
             Version{major: 3, minor: 3, ..} => self._get_stack_traces::<v3_3_7::_is>(),
             // ABI for 2.3/2.4/2.5/2.6/2.7 is also compatible
-            Version{major: 2, minor: 3...7, ..} => self._get_stack_traces::<v2_7_15::_is>(),
+            Version{major: 2, minor: 3..=7, ..} => self._get_stack_traces::<v2_7_15::_is>(),
             _ => Err(format_err!("Unsupported version of Python: {}", self.version)),
         }
     }
@@ -546,7 +546,7 @@ fn check_interpreter_addresses(addrs: &[usize],
         Version{major: 3, minor: 5, ..} => check::<v3_5_5::_is>(addrs, maps, process),
         Version{major: 3, minor: 4, ..} => check::<v3_5_5::_is>(addrs, maps, process),
         Version{major: 3, minor: 3, ..} => check::<v3_3_7::_is>(addrs, maps, process),
-        Version{major: 2, minor: 3...7, ..} => check::<v2_7_15::_is>(addrs, maps, process),
+        Version{major: 2, minor: 3..=7, ..} => check::<v2_7_15::_is>(addrs, maps, process),
         _ => Err(format_err!("Unsupported version of Python: {}", version))
     }
 }

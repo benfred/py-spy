@@ -6,7 +6,7 @@ use remoteprocess::ProcessMemory;
 use crate::python_interpreters::{InterpreterState, ThreadState, FrameObject, CodeObject, StringObject, BytesObject};
 
 /// Call stack for a single python thread
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StackTrace {
     /// The python thread id for this stack trace
     pub thread_id: u64,

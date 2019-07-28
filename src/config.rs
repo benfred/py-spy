@@ -1,9 +1,8 @@
 use clap::{App, Arg};
-use failure::Error;
 use remoteprocess::Pid;
 
 /// Options on how to collect samples from a python process
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Config {
     /// Whether or not we should stop the python process when taking samples.
     /// Setting this to false will reduce the performance impact on the target
@@ -18,26 +17,39 @@ pub struct Config {
 
     // The following config options only apply when using py-spy as an application
     #[doc(hidden)]
-    pub sampling_rate: u64,
+    pub command: String,
     #[doc(hidden)]
     pub pid: Option<Pid>,
     #[doc(hidden)]
     pub python_program: Option<Vec<String>>,
     #[doc(hidden)]
-    pub dump: bool,
+    pub sampling_rate: u64,
     #[doc(hidden)]
-    pub flame_file_name: Option<String>,
+    pub filename: Option<String>,
+    #[doc(hidden)]
+    pub format: Option<FileFormat>,
     #[doc(hidden)]
     pub show_line_numbers: bool,
     #[doc(hidden)]
     pub duration: u64,
 }
 
+arg_enum!{
+    #[derive(Debug, Clone, Eq, PartialEq)]
+    #[allow(non_camel_case_types)]
+    pub enum FileFormat {
+        flamegraph,
+        raw,
+        speedscope
+    }
+}
+
 impl Default for Config {
     /// Initializes a new Config object with default parameters
     #[allow(dead_code)]
     fn default() -> Config {
-        Config{pid: None, python_program: None, dump: false, flame_file_name: None,
+        Config{pid: None, python_program: None, filename: None, format: None,
+               command: String::from("top"),
                non_blocking: false, show_line_numbers: false, sampling_rate: 100,
                duration: 2, native: false}
     }
@@ -45,92 +57,211 @@ impl Default for Config {
 
 impl Config {
     /// Uses clap to set config options from commandline arguments
-    pub fn from_commandline() -> Result<Config, Error> {
+    pub fn from_commandline() -> Config {
+        let args: Vec<String> = std::env::args().collect();
+        Config::from_args(&args).unwrap_or_else( |e| e.exit() )
+    }
+
+    pub fn from_args(args: &[String]) -> clap::Result<Config> {
         // we don't yet support native tracing on 32 bit linux
         let allow_native = cfg!(unwind);
+
+        // pid/native/nonblocking/rate/pythonprogram arguments can be
+        // used across various subcommand - define once here
+        let pid = Arg::with_name("pid")
+                    .short("p")
+                    .long("pid")
+                    .value_name("pid")
+                    .help("PID of a running python program to spy on")
+                    .takes_value(true)
+                    .required_unless("python_program");
+        let native = Arg::with_name("native")
+                    .short("n")
+                    .long("native")
+                    .hidden(!allow_native)
+                    .help("Collect stack traces from native extensions written in Cython, C or C++");
+        let nonblocking = Arg::with_name("nonblocking")
+                    .long("nonblocking")
+                    .help("Don't pause the python process when collecting samples. Setting this option will reduce \
+                          the perfomance impact of sampling, but may lead to inaccurate results");
+        let rate = Arg::with_name("rate")
+                    .short("r")
+                    .long("rate")
+                    .value_name("rate")
+                    .help("The number of samples to collect per second")
+                    .default_value("100")
+                    .takes_value(true);
+        let program = Arg::with_name("python_program")
+                    .help("commandline of a python program to run")
+                    .multiple(true);
 
         let matches = App::new(crate_name!())
             .version(crate_version!())
             .about(crate_description!())
-            .arg(Arg::with_name("function")
-                .short("F")
-                .long("function")
-                .help("Aggregate samples by function name instead of by line number"))
-            .arg(Arg::with_name("native")
-                .short("n")
-                .long("native")
-                .hidden(!allow_native)
-                .help("Collect stack traces from native extensions written in Cython, C or C++"))
-            .arg(Arg::with_name("pid")
-                .short("p")
-                .long("pid")
-                .value_name("pid")
-                .help("PID of a running python program to spy on")
-                .takes_value(true)
-                .required_unless("python_program"))
-            .arg(Arg::with_name("dump")
-                .long("dump")
-                .help("Dump the current stack traces to stdout"))
-            .arg(Arg::with_name("nonblocking")
-                .long("nonblocking")
-                .help("Don't pause the python process when collecting samples. Setting this option will reduce \
-                      the perfomance impact of sampling, but may lead to inaccurate results"))
-            .arg(Arg::with_name("flame")
-                .short("f")
-                .long("flame")
-                .value_name("flamefile")
-                .help("Generate a flame graph and write to a file")
-                .takes_value(true))
-            .arg(Arg::with_name("rate")
-                .short("r")
-                .long("rate")
-                .value_name("rate")
-                .help("The number of samples to collect per second")
-                .default_value("100")
-                .takes_value(true))
-            .arg(Arg::with_name("duration")
-                .short("d")
-                .long("duration")
-                .value_name("duration")
-                .help("The number of seconds to sample for when generating a flame graph")
-                .default_value("2")
-                .takes_value(true))
-            .arg(Arg::with_name("python_program")
-                .help("commandline of a python program to run")
-                .multiple(true)
-                )
-            .get_matches();
+            .setting(clap::AppSettings::InferSubcommands)
+            .setting(clap::AppSettings::SubcommandRequiredElseHelp)
+            .global_setting(clap::AppSettings::DeriveDisplayOrder)
+            .global_setting(clap::AppSettings::UnifiedHelpMessage)
+            .subcommand(clap::SubCommand::with_name("record")
+                .about("Records stack trace information to a flamegraph, speedscope or raw file")
+                .arg(program.clone())
+                .arg(pid.clone())
+                .arg(Arg::with_name("output")
+                    .short("o")
+                    .long("output")
+                    .value_name("filename")
+                    .help("Output filename to write to")
+                    .takes_value(true)
+                    .required(true))
+                .arg(Arg::with_name("format")
+                    .short("f")
+                    .long("format")
+                    .value_name("format")
+                    .help("Output file format")
+                    .takes_value(true)
+                    .possible_values(&FileFormat::variants())
+                    .case_insensitive(true)
+                    .default_value("Flamegraph"))
+                .arg(Arg::with_name("duration")
+                    .short("d")
+                    .long("duration")
+                    .value_name("duration")
+                    .help("The number of seconds to sample for when generating a flame graph")
+                    .default_value("2")
+                    .takes_value(true))
+                .arg(Arg::with_name("function")
+                    .short("F")
+                    .long("function")
+                    .help("Aggregate samples by function name instead of by line number"))
+                .arg(rate.clone())
+                .arg(native.clone())
+                .arg(nonblocking.clone())
+            )
+            .subcommand(clap::SubCommand::with_name("top")
+                .about("Displays a top like view of functions consuming CPU")
+                .arg(program.clone())
+                .arg(pid.clone())
+                .arg(rate.clone())
+                .arg(native.clone())
+                .arg(nonblocking.clone())
+            )
+            .subcommand(clap::SubCommand::with_name("dump")
+                .about("Dumps stack traces for a target program to stdout")
+                .arg(pid.clone().required(true))
+                .arg(native.clone())
+                .arg(nonblocking.clone())
+            )
+            .get_matches_from_safe(args)?;
         info!("Command line args: {:?}", matches);
 
-        // what to sample
-        let pid = matches.value_of("pid").map(|p| p.parse().expect("invalid pid"));
-        let python_program = matches.values_of("python_program").map(|vals| {
+        let mut config = Config::default();
+
+        let (subcommand, matches) = matches.subcommand();
+        let matches = matches.unwrap();
+
+        match subcommand {
+            "record" => {
+                config.sampling_rate = value_t!(matches, "rate", u64)?;
+                config.duration = value_t!(matches, "duration", u64)?;
+                config.format = Some(value_t!(matches.value_of("format"), FileFormat).unwrap_or_else(|e| e.exit()));
+                config.filename = matches.value_of("output").map(|f| f.to_owned());
+            },
+            "top" => {
+                config.sampling_rate = value_t!(matches, "rate", u64)?;
+            }
+            _ => {}
+        }
+        config.command = subcommand.to_owned();
+
+        // options that can be shared between subcommands
+        config.pid = matches.value_of("pid").map(|p| p.parse().expect("invalid pid"));
+        config.python_program = matches.values_of("python_program").map(|vals| {
             vals.map(|v| v.to_owned()).collect()
         });
+        config.show_line_numbers = matches.occurrences_of("function") == 0;
+        config.non_blocking = matches.occurrences_of("nonblocking") > 0;
+        config.native = matches.occurrences_of("native") > 0;
 
-        // what to generate
-        let flame_file_name = matches.value_of("flame").map(|f| f.to_owned());
-        let dump = matches.occurrences_of("dump") > 0;
-
-        // how to sample
-        let sampling_rate = value_t!(matches, "rate", u64)?;
-        let duration = value_t!(matches, "duration", u64)?;
-        let show_line_numbers = matches.occurrences_of("function") == 0;
-        let non_blocking = matches.occurrences_of("nonblocking") > 0;
-        let mut native = matches.occurrences_of("native") > 0;
-
-        if !allow_native && native {
+        // disable native profiling if invalidly asked for
+        if !allow_native && config.native {
             error!("Native stack traces are not yet supported on this OS. Disabling");
-            native = false;
+            config.native = false;
         }
 
-        if native && non_blocking {
+        if config.native && config.non_blocking {
             error!("Can't get native stack traces with the --nonblocking option. Disabling native.");
-            native = false;
+            config.native = false;
         }
 
-        Ok(Config{pid, python_program, dump, flame_file_name,
-                  sampling_rate, duration,
-                  show_line_numbers, non_blocking, native})
+        Ok(config)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn split(cmd: &str) -> Vec<String> {
+        cmd.split_whitespace().map(|x| x.to_owned()).collect()
+    }
+
+    #[test]
+    fn test_parse_record_args() {
+        // basic use case
+        let config = Config::from_args(&split("py-spy record --pid 1234 --output foo")).unwrap();
+        assert_eq!(config.pid, Some(1234));
+        assert_eq!(config.filename, Some(String::from("foo")));
+        assert_eq!(config.format, Some(FileFormat::flamegraph));
+        assert_eq!(config.command, String::from("record"));
+
+        // same command using short versions of everything
+        let short_config = Config::from_args(&split("py-spy r -p 1234 -o foo")).unwrap();
+        assert_eq!(config, short_config);
+
+        // missing the --pid argument should fail
+        assert_eq!(Config::from_args(&split("py-spy record -o foo")).unwrap_err().kind,
+                   clap::ErrorKind::MissingRequiredArgument);
+
+        // but should work when passed a python program
+        let program_config = Config::from_args(&split("py-spy r -o foo -- python test.py")).unwrap();
+        assert_eq!(program_config.python_program, Some(vec![String::from("python"), String::from("test.py")]));
+        assert_eq!(program_config.pid, None);
+
+        // passing an invalid file format should fail
+        assert_eq!(Config::from_args(&split("py-spy r -p 1234 -o foo -f unknown")).unwrap_err().kind,
+                   clap::ErrorKind::InvalidValue);
+    }
+
+    #[test]
+    fn test_parse_dump_args() {
+        // basic use case
+        let config = Config::from_args(&split("py-spy dump --pid 1234")).unwrap();
+        assert_eq!(config.pid, Some(1234));
+        assert_eq!(config.command, String::from("dump"));
+
+        // short version
+        let short_config = Config::from_args(&split("py-spy d -p 1234")).unwrap();
+        assert_eq!(config, short_config);
+
+        // missing the --pid argument should fail
+        assert_eq!(Config::from_args(&split("py-spy dump")).unwrap_err().kind,
+                   clap::ErrorKind::MissingRequiredArgument);
+    }
+
+    #[test]
+    fn test_parse_top_args() {
+        // basic use case
+        let config = Config::from_args(&split("py-spy top --pid 1234")).unwrap();
+        assert_eq!(config.pid, Some(1234));
+        assert_eq!(config.command, String::from("top"));
+
+        // short version
+        let short_config = Config::from_args(&split("py-spy t -p 1234")).unwrap();
+        assert_eq!(config, short_config);
+    }
+
+    #[test]
+    fn test_parse_args() {
+        assert_eq!(Config::from_args(&split("py-spy dude")).unwrap_err().kind,
+                   clap::ErrorKind::UnrecognizedSubcommand);
     }
 }
