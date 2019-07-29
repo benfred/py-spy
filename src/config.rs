@@ -31,7 +31,7 @@ pub struct Config {
     #[doc(hidden)]
     pub show_line_numbers: bool,
     #[doc(hidden)]
-    pub duration: u64,
+    pub duration: RecordDuration,
 }
 
 arg_enum!{
@@ -44,6 +44,12 @@ arg_enum!{
     }
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum RecordDuration {
+    Unlimited,
+    Seconds(u64)
+}
+
 impl Default for Config {
     /// Initializes a new Config object with default parameters
     #[allow(dead_code)]
@@ -51,7 +57,7 @@ impl Default for Config {
         Config{pid: None, python_program: None, filename: None, format: None,
                command: String::from("top"),
                non_blocking: false, show_line_numbers: false, sampling_rate: 100,
-               duration: 2, native: false}
+               duration: RecordDuration::Unlimited, native: false}
     }
 }
 
@@ -110,7 +116,7 @@ impl Config {
                     .short("o")
                     .long("output")
                     .value_name("filename")
-                    .help("Output filename to write to")
+                    .help("Output filename")
                     .takes_value(true)
                     .required(true))
                 .arg(Arg::with_name("format")
@@ -121,19 +127,19 @@ impl Config {
                     .takes_value(true)
                     .possible_values(&FileFormat::variants())
                     .case_insensitive(true)
-                    .default_value("Flamegraph"))
+                    .default_value("flamegraph"))
                 .arg(Arg::with_name("duration")
                     .short("d")
                     .long("duration")
                     .value_name("duration")
-                    .help("The number of seconds to sample for when generating a flame graph")
-                    .default_value("2")
+                    .help("The number of seconds to sample for")
+                    .default_value("unlimited")
                     .takes_value(true))
+                .arg(rate.clone())
                 .arg(Arg::with_name("function")
                     .short("F")
                     .long("function")
                     .help("Aggregate samples by function name instead of by line number"))
-                .arg(rate.clone())
                 .arg(native.clone())
                 .arg(nonblocking.clone())
             )
@@ -162,7 +168,12 @@ impl Config {
         match subcommand {
             "record" => {
                 config.sampling_rate = value_t!(matches, "rate", u64)?;
-                config.duration = value_t!(matches, "duration", u64)?;
+
+
+                config.duration = match matches.value_of("duration") {
+                    Some("unlimited") | None => RecordDuration::Unlimited,
+                    Some(seconds) => RecordDuration::Seconds(seconds.parse().expect("invalid duration"))
+                };
                 config.format = Some(value_t!(matches.value_of("format"), FileFormat).unwrap_or_else(|e| e.exit()));
                 config.filename = matches.value_of("output").map(|f| f.to_owned());
             },
