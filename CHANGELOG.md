@@ -5,6 +5,7 @@
 * Add option to write out Speedscope files [#115](https://github.com/benfred/py-spy/issues/115)
 * Add option to output raw call stack data [#35](https://github.com/benfred/py-spy/issues/35)
 * Get thread idle status from OS [#92](https://github.com/benfred/py-spy/issues/92)
+* Add 'unlimited' default option for the duration (#93)[https://github.com/benfred/py-spy/issues/93]
 * Allow use as a library by other rust programs [#110](https://github.com/benfred/py-spy/issues/110)
 * Show OS threadids in --dump [#57](https://github.com/benfred/py-spy/issues/57)
 * Drop root permissions when starting new process [#116](https://github.com/benfred/py-spy/issues/116)
@@ -39,7 +40,7 @@
 ## v0.1.7
 
 * Console viewer improvements for Windows 7 [#37](https://github.com/benfred/py-spy/issues/37)
-  
+
 ## v0.1.6
 
 * Warn if we can't sample fast enough [#33](https://github.com/benfred/py-spy/issues/33)
@@ -50,7 +51,7 @@
 
 * Use musl libc for linux wheels [#5](https://github.com/benfred/py-spy/issues/5)
 * Fix for OSX python built with '--enable-framework' [#15](https://github.com/benfred/py-spy/issues/15)
-* Fix for running on Centos7 
+* Fix for running on Centos7
 
 ## v0.1.4
 

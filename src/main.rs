@@ -59,7 +59,7 @@ use failure::Error;
 use python_spy::PythonSpy;
 use stack_trace::StackTrace;
 use console_viewer::ConsoleViewer;
-use config::{Config, FileFormat};
+use config::{Config, FileFormat, RecordDuration};
 
 fn print_traces(traces: &[StackTrace], show_idle: bool) {
     for trace in traces {
@@ -170,8 +170,6 @@ impl Recorder for RawFlamegraph {
 }
 
 fn record_samples(process: &mut PythonSpy, config: &Config) -> Result<(), Error> {
-    let max_samples = config.duration * config.sampling_rate;
-
     let mut output: Box<dyn Recorder> = match config.format {
         Some(FileFormat::flamegraph) => Box::new(flamegraph::Flamegraph::new(config.show_line_numbers)),
         Some(FileFormat::speedscope) =>  Box::new(speedscope::Stats::new()),
@@ -184,11 +182,22 @@ fn record_samples(process: &mut PythonSpy, config: &Config) -> Result<(), Error>
         None => return Err(format_err!("A filename is required to record samples"))
     };
 
+    let mut max_samples = None;
     use indicatif::ProgressBar;
-    let progress = ProgressBar::new(max_samples);
 
-    println!("Sampling process {} times a second for {} seconds. Press Control-C to exit.",
-             config.sampling_rate, config.duration);
+    let progress = match config.duration {
+        RecordDuration::Seconds(sec) => {
+            max_samples = Some(sec * config.sampling_rate);
+            println!("Sampling process {} times a second for {} seconds. Press Control-C to exit.",
+                config.sampling_rate, sec);
+            ProgressBar::new(max_samples.unwrap())
+        }
+        RecordDuration::Unlimited => {
+            println!("Sampling process {} times a second. Press Control-C to exit.",
+                config.sampling_rate);
+            ProgressBar::new_spinner()
+        }
+    };
 
     let mut errors = 0;
     let mut samples = 0;
@@ -205,8 +214,6 @@ fn record_samples(process: &mut PythonSpy, config: &Config) -> Result<(), Error>
     for sleep in timer::Timer::new(config.sampling_rate as f64) {
         if let Err(delay) = sleep {
             if delay > Duration::from_secs(1) {
-                // TODO: once this available on crates.io https://github.com/mitsuhiko/indicatif/pull/41
-                // go progress.println instead
                 let term = console::Term::stdout();
                 term.move_cursor_up(2)?;
                 println!("{:.2?} behind in sampling, results may be inaccurate. Try reducing the sampling rate.", delay);
@@ -223,8 +230,10 @@ fn record_samples(process: &mut PythonSpy, config: &Config) -> Result<(), Error>
             Ok(traces) => {
                 output.increment(&traces)?;
                 samples += 1;
-                if samples >= max_samples {
-                    break;
+                if let Some(max_samples) = max_samples {
+                    if samples >= max_samples {
+                        break;
+                    }
                 }
             },
             Err(_) => {
@@ -236,6 +245,15 @@ fn record_samples(process: &mut PythonSpy, config: &Config) -> Result<(), Error>
                 }
             }
         }
+        if config.duration == RecordDuration::Unlimited {
+            let msg = if errors > 0 {
+                format!("Collected {} samples ({} errors)", samples, errors)
+            } else {
+                format!("Collected {} samples", samples)
+            };
+            progress.set_message(&msg);
+        }
+
         progress.inc(1);
     }
     progress.finish();
