@@ -14,7 +14,7 @@ fi
 file_content_type="application/octet-stream"
 fpath=py-spy-$CIRRUS_TAG-x86_64-freebsd.tar.gz
 
-tar czf $fpath ./target/release/py-spy
+tar -C ./target/release -czf $fpath py-spy
 
 echo "Uploading $fpath..."
 name=$(basename "$fpath")
