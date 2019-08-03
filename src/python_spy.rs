@@ -206,7 +206,7 @@ impl PythonSpy {
 
             trace.active = match os_thread_id.map(|id| thread_activity.get(&id)) {
                 Some(Some(active)) => *active,
-                _ => self._heuristic_thread_activity(&trace)
+                _ => !self._heuristic_is_thread_idle(&trace)
             };
 
             for frame in &mut trace.frames {
@@ -226,7 +226,7 @@ impl PythonSpy {
 
     // heuristic fallback for determining if a thread is active, used
     // when we don't have the ability to get the thread information from the OS
-    fn _heuristic_thread_activity(&self, trace: &StackTrace) -> bool {
+    fn _heuristic_is_thread_idle(&self, trace: &StackTrace) -> bool {
         let frames = &trace.frames;
         if frames.is_empty() {
             true
@@ -780,6 +780,7 @@ pub fn is_python_framework(pathname: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[cfg(target_os="macos")]
     #[test]
     fn test_is_python_lib() {

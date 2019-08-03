@@ -318,5 +318,5 @@ impl std::fmt::Display for CompactUnwindError {
 
 impl std::error::Error for CompactUnwindError {
     fn description(&self) -> &str { "CompactUnwindError" }
-    fn cause(&self) -> Option<&std::error::Error> { None }
+    fn cause(&self) -> Option<&dyn std::error::Error> { None }
 }

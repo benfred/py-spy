@@ -37,6 +37,10 @@ script:
   if [ $TARGET = armv7-unknown-linux-gnueabihf ]; then
     # we can't run the unittest w/ ARM so just test that we can compile
     cargo build --verbose --target $TARGET
+  elif [ $TARGET = i686-unknown-linux-gnu ]; then
+    # doesn't seem like the integration tests work with i686 (building a 32bit version
+    # then using to profile a 64bit pythhon issus?). Just test we can compile
+    cargo build --verbose --target $TARGET
   else
     cargo test --verbose --target $TARGET
   fi
@@ -76,3 +80,11 @@ branches:
 notifications:
   email:
     on_success: never
+
+addons:
+  apt:
+    packages:
+    - python
+  homebrew:
+    packages:
+    - python
