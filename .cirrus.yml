@@ -8,7 +8,7 @@ freebsd_task:
       - TOOLCHAIN: stable
     GITHUB_TOKEN: ENCRYPTED[67283c0b5c9880ac3b7d8fb0335c4b24f95c62dab30b5379dca192600801c380a41f7436c7daaebfaa8f1381237a8412]
   setup_script:
-    - pkg install -y curl bash
+    - pkg install -y curl bash python
     - curl https://sh.rustup.rs -sSf --output rustup.sh
     - sh rustup.sh -y --default-toolchain $TOOLCHAIN
   build_script:

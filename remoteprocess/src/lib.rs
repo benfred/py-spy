@@ -155,7 +155,7 @@ impl std::error::Error for Error {
         }
     }
 
-    fn cause(&self) -> Option<&std::error::Error> {
+    fn cause(&self) -> Option<&dyn std::error::Error> {
         match *self {
             Error::GimliError(ref e) => Some(e),
             Error::GoblinError(ref e) => Some(e),
