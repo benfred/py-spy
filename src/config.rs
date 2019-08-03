@@ -32,6 +32,12 @@ pub struct Config {
     pub show_line_numbers: bool,
     #[doc(hidden)]
     pub duration: RecordDuration,
+    #[doc(hidden)]
+    pub include_idle: bool,
+    #[doc(hidden)]
+    pub include_thread_ids: bool,
+    #[doc(hidden)]
+    pub gil_only: bool,
 }
 
 arg_enum!{
@@ -57,7 +63,8 @@ impl Default for Config {
         Config{pid: None, python_program: None, filename: None, format: None,
                command: String::from("top"),
                non_blocking: false, show_line_numbers: false, sampling_rate: 100,
-               duration: RecordDuration::Unlimited, native: false}
+               duration: RecordDuration::Unlimited, native: false,
+               gil_only: false, include_idle: false, include_thread_ids: false}
     }
 }
 
@@ -140,6 +147,18 @@ impl Config {
                     .short("F")
                     .long("function")
                     .help("Aggregate samples by function name instead of by line number"))
+                .arg(Arg::with_name("gil")
+                    .short("g")
+                    .long("gil")
+                    .help("Only include traces that are holding on to the GIL"))
+                .arg(Arg::with_name("threads")
+                    .short("t")
+                    .long("threads")
+                    .help("Show thread ids in the output"))
+                .arg(Arg::with_name("idle")
+                    .short("i")
+                    .long("idle")
+                    .help("Include stack traces for idle threads"))
                 .arg(native.clone())
                 .arg(nonblocking.clone())
             )
@@ -168,8 +187,6 @@ impl Config {
         match subcommand {
             "record" => {
                 config.sampling_rate = value_t!(matches, "rate", u64)?;
-
-
                 config.duration = match matches.value_of("duration") {
                     Some("unlimited") | None => RecordDuration::Unlimited,
                     Some(seconds) => RecordDuration::Seconds(seconds.parse().expect("invalid duration"))
@@ -190,6 +207,10 @@ impl Config {
             vals.map(|v| v.to_owned()).collect()
         });
         config.show_line_numbers = matches.occurrences_of("function") == 0;
+        config.include_idle = matches.occurrences_of("idle") > 0;
+        config.gil_only = matches.occurrences_of("gil") > 0;
+        config.include_thread_ids = matches.occurrences_of("threads") > 0;
+
         config.non_blocking = matches.occurrences_of("nonblocking") > 0;
         config.native = matches.occurrences_of("native") > 0;
 
@@ -240,6 +261,16 @@ mod tests {
         // passing an invalid file format should fail
         assert_eq!(Config::from_args(&split("py-spy r -p 1234 -o foo -f unknown")).unwrap_err().kind,
                    clap::ErrorKind::InvalidValue);
+
+        // test out overriding these params by setting flags
+        assert_eq!(config.include_idle, false);
+        assert_eq!(config.gil_only, false);
+        assert_eq!(config.include_thread_ids, false);
+
+        let config_flags = Config::from_args(&split("py-spy r -p 1234 -o foo --idle --gil --threads")).unwrap();
+        assert_eq!(config_flags.include_idle, true);
+        assert_eq!(config_flags.gil_only, true);
+        assert_eq!(config_flags.include_thread_ids, true);
     }
 
     #[test]

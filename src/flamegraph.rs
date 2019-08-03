@@ -46,25 +46,19 @@ impl Flamegraph {
         Flamegraph { counts: HashMap::new(), show_linenumbers }
     }
 
-    pub fn increment(&mut self, traces: &[StackTrace]) -> std::io::Result<()> {
-        for trace in traces {
-            if !trace.active {
-                continue;
+    pub fn increment(&mut self, trace: &StackTrace) -> std::io::Result<()> {
+        // convert the frame into a single ';' delimited String
+        let frame = trace.frames.iter().rev().map(|frame| {
+            let filename = match &frame.short_filename { Some(f) => &f, None => &frame.filename };
+            if self.show_linenumbers && frame.line != 0 {
+                format!("{} ({}:{})", frame.name, filename, frame.line)
+            } else {
+                format!("{} ({})", frame.name, filename)
             }
+        }).collect::<Vec<String>>().join(";");
 
-            // convert the frame into a single ';' delimited String
-            let frame = trace.frames.iter().rev().map(|frame| {
-                let filename = match &frame.short_filename { Some(f) => &f, None => &frame.filename };
-                if self.show_linenumbers && frame.line != 0 {
-                    format!("{} ({}:{})", frame.name, filename, frame.line)
-                } else {
-                    format!("{} ({})", frame.name, filename)
-                }
-            }).collect::<Vec<String>>().join(";");
-
-            // update counts for that frame
-            *self.counts.entry(frame).or_insert(0) += 1;
-        }
+        // update counts for that frame
+        *self.counts.entry(frame).or_insert(0) += 1;
         Ok(())
     }
 

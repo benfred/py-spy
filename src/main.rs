@@ -57,7 +57,7 @@ use std::time::Duration;
 use failure::Error;
 
 use python_spy::PythonSpy;
-use stack_trace::StackTrace;
+use stack_trace::{StackTrace, Frame};
 use console_viewer::ConsoleViewer;
 use config::{Config, FileFormat, RecordDuration};
 
@@ -132,16 +132,13 @@ fn sample_console(process: &mut PythonSpy,
 }
 
 pub trait Recorder {
-    fn increment(&mut self, traces: &[StackTrace]) -> Result<(), Error>;
+    fn increment(&mut self, trace: &StackTrace) -> Result<(), Error>;
     fn write(&self, w: &mut std::fs::File) -> Result<(), Error>;
 }
 
 impl Recorder for speedscope::Stats {
-    fn increment(&mut self, traces: &[StackTrace]) -> Result<(), Error> {
-        for trace in traces {
-            self.record(trace)?;
-        }
-        Ok(())
+    fn increment(&mut self, trace: &StackTrace) -> Result<(), Error> {
+        Ok(self.record(trace)?)
     }
     fn write(&self, w: &mut std::fs::File) -> Result<(), Error> {
         self.write(w)
@@ -149,8 +146,8 @@ impl Recorder for speedscope::Stats {
 }
 
 impl Recorder for flamegraph::Flamegraph {
-    fn increment(&mut self, traces: &[StackTrace]) -> Result<(), Error> {
-        Ok(self.increment(traces)?)
+    fn increment(&mut self, trace: &StackTrace) -> Result<(), Error> {
+        Ok(self.increment(trace)?)
     }
     fn write(&self, w: &mut std::fs::File) -> Result<(), Error> {
         self.write(w)
@@ -160,8 +157,8 @@ impl Recorder for flamegraph::Flamegraph {
 pub struct RawFlamegraph(flamegraph::Flamegraph);
 
 impl Recorder for RawFlamegraph {
-    fn increment(&mut self, traces: &[StackTrace]) -> Result<(), Error> {
-        Ok(self.0.increment(traces)?)
+    fn increment(&mut self, trace: &StackTrace) -> Result<(), Error> {
+        Ok(self.0.increment(trace)?)
     }
 
     fn write(&self, w: &mut std::fs::File) -> Result<(), Error> {
@@ -228,7 +225,24 @@ fn record_samples(process: &mut PythonSpy, config: &Config) -> Result<(), Error>
 
         match process.get_stack_traces() {
             Ok(traces) => {
-                output.increment(&traces)?;
+                for mut trace in traces {
+                    if !(config.include_idle || trace.active) {
+                        continue;
+                    }
+
+                    if config.gil_only && !trace.owns_gil {
+                        continue;
+                    }
+
+                    if config.include_thread_ids {
+                        trace.frames.push(Frame{name: format!("thread {}", trace.thread_id),
+                            filename: String::from(""),
+                            module: None, short_filename: None, line: 0});
+                    }
+
+                    output.increment(&trace)?;
+                }
+
                 samples += 1;
                 if let Some(max_samples) = max_samples {
                     if samples >= max_samples {
@@ -265,8 +279,22 @@ fn record_samples(process: &mut PythonSpy, config: &Config) -> Result<(), Error>
     {
     let mut out_file = std::fs::File::create(filename)?;
     output.write(&mut out_file)?;
-    println!("Wrote flame graph '{}'. Samples: {} Errors: {}", filename, samples, errors);
+
     }
+
+    match config.format.as_ref().unwrap() {
+        FileFormat::flamegraph => {
+            println!("Wrote flamegraph data to '{}'. Samples: {} Errors: {}", filename, samples, errors);
+        },
+        FileFormat::speedscope =>  {
+            println!("Wrote speedscope file to '{}'. Samples: {} Errors: {}", filename, samples, errors);
+            println!("Visit https://www.speedscope.app/ to view");
+        },
+        FileFormat::raw => {
+            println!("Wrote raw flamegraph data to '{}'. Samples: {} Errors: {}", filename, samples, errors);
+            println!("You can use the flamegraph.pl script from https://github.com/brendangregg/flamegraph to generate a SVG");
+        }
+    };
 
     // open generated flame graph in the browser on OSX (theory being that on linux
     // you might be SSH'ed into a server somewhere and this isn't desired, but on
@@ -294,7 +322,8 @@ fn run_spy_command(process: &mut PythonSpy, config: &config::Config) -> Result<(
             sample_console(process, &display, config)?;
         }
         _ => {
-            // TODO: ?
+            // shouldn't happen
+            return Err(format_err!("Unknown command {}", config.command));
         }
     }
     Ok(())
