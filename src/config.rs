@@ -38,6 +38,8 @@ pub struct Config {
     pub include_thread_ids: bool,
     #[doc(hidden)]
     pub gil_only: bool,
+    #[doc(hidden)]
+    pub hide_progess: bool,
 }
 
 arg_enum!{
@@ -64,7 +66,8 @@ impl Default for Config {
                command: String::from("top"),
                non_blocking: false, show_line_numbers: false, sampling_rate: 100,
                duration: RecordDuration::Unlimited, native: false,
-               gil_only: false, include_idle: false, include_thread_ids: false}
+               gil_only: false, include_idle: false, include_thread_ids: false,
+               hide_progess: false}
     }
 }
 
@@ -159,6 +162,10 @@ impl Config {
                     .short("i")
                     .long("idle")
                     .help("Include stack traces for idle threads"))
+                .arg(Arg::with_name("hideprogress")
+                    .long("hideprogress")
+                    .hidden(true)
+                    .help("Hides progress bar (useful for showing error output on record)"))
                 .arg(native.clone())
                 .arg(nonblocking.clone())
             )
@@ -213,6 +220,7 @@ impl Config {
 
         config.non_blocking = matches.occurrences_of("nonblocking") > 0;
         config.native = matches.occurrences_of("native") > 0;
+        config.hide_progess  = matches.occurrences_of("hideprogress") > 0;
 
         // disable native profiling if invalidly asked for
         if !allow_native && config.native {
