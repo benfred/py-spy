@@ -182,14 +182,15 @@ fn record_samples(process: &mut PythonSpy, config: &Config) -> Result<(), Error>
     let mut max_samples = None;
     use indicatif::ProgressBar;
 
-    let progress = match config.duration {
-        RecordDuration::Seconds(sec) => {
+    let progress = match (config.hide_progess, &config.duration) {
+        (true, _) => ProgressBar::hidden(),
+        (false, RecordDuration::Seconds(sec)) => {
             max_samples = Some(sec * config.sampling_rate);
             println!("Sampling process {} times a second for {} seconds. Press Control-C to exit.",
                 config.sampling_rate, sec);
             ProgressBar::new(max_samples.unwrap())
         }
-        RecordDuration::Unlimited => {
+        (false, RecordDuration::Unlimited) => {
             println!("Sampling process {} times a second. Press Control-C to exit.",
                 config.sampling_rate);
             ProgressBar::new_spinner()
@@ -210,7 +211,7 @@ fn record_samples(process: &mut PythonSpy, config: &Config) -> Result<(), Error>
 
     for sleep in timer::Timer::new(config.sampling_rate as f64) {
         if let Err(delay) = sleep {
-            if delay > Duration::from_secs(1) {
+            if delay > Duration::from_secs(1) && !config.hide_progess {
                 let term = console::Term::stdout();
                 term.move_cursor_up(2)?;
                 println!("{:.2?} behind in sampling, results may be inaccurate. Try reducing the sampling rate.", delay);
@@ -250,11 +251,12 @@ fn record_samples(process: &mut PythonSpy, config: &Config) -> Result<(), Error>
                     }
                 }
             },
-            Err(_) => {
+            Err(e) => {
                 if process_exitted(&process.process) {
                     exit_message = "Stopped sampling because the process ended";
                     break;
                 } else {
+                    warn!("Failed to get stack trace {:?}", e);
                     errors += 1;
                 }
             }
