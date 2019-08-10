@@ -30,3 +30,12 @@ build_script:
 artifacts:
   - path: "wheelhouse\\*.whl"
     name: Wheels
+
+deploy:
+  artifact: "wheelhouse\\*.whl"
+  auth_token:
+    secure: EMR1b8dxTTfdBx9uiUFTg1EG6Gzs9np7Szb1bETvEi10v8N+VKHj9PCNNCUZGpmC
+  description: ''
+  on:
+    appveyor_repo_tag: true
+  provider: GitHub
