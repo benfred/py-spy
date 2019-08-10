@@ -30,6 +30,8 @@ impl ProcessLock {
 
 impl Drop for ProcessLock {
     fn drop(&mut self) {
-        ptrace::detach(self.pid);
+        if let Err(e) = ptrace::detach(self.pid) {
+            error!("Failed to detach from process {} : {}", self.pid, e);
+        }
     }
 }
