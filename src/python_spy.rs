@@ -48,6 +48,12 @@ impl PythonSpy {
         // get basic process information (memory maps/symbols etc)
         let python_info = PythonProcessInfo::new(&process)?;
 
+        // lock the process when loading up on freebsd (rather than locking
+        // on every memory read). Needs done after getting python process info
+        // because procmaps also tries to attach w/ ptrace on freebsd
+        #[cfg(target_os="freebsd")]
+        let _lock = process.lock();
+
         let version = get_python_version(&python_info, &process)?;
         info!("python version {} detected", version);
 

@@ -50,7 +50,13 @@ impl Process {
     }
 
     pub fn exe(&self) -> Result<String, Error> {
-        Ok(procstat::exe(self.pid)?)
+        let filename = procstat::exe(self.pid)?;
+        if filename.is_empty() {
+            return Err(
+                Error::Other("Failed to get process executable name".into())
+            );
+        }
+        Ok(filename)
     }
 
     pub fn cwd(&self) -> Result<String, Error> {
