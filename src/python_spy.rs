@@ -146,10 +146,8 @@ impl PythonSpy {
     /// Gets a StackTrace for each thread in the current process
     pub fn get_stack_traces(&mut self) -> Result<Vec<StackTrace>, Error> {
         match self.version {
-            // Currently 3.7.x and 3.8.0a0 have the same ABI, but this might change
-            // as 3.8 evolves
-            Version{major: 3, minor: 8, ..} => self._get_stack_traces::<v3_7_0::_is>(),
-            Version{major: 3, minor: 7, ..} => self._get_stack_traces::<v3_7_0::_is>(),
+            // Currently 3.7.x and 3.8.x have the same ABI, but this might change as 3.8 evolves
+            Version{major: 3, minor: 7..=8, ..} => self._get_stack_traces::<v3_7_0::_is>(),
             Version{major: 3, minor: 6, ..} => self._get_stack_traces::<v3_6_6::_is>(),
             // ABI for 3.4 and 3.5 is the same for our purposes
             Version{major: 3, minor: 5, ..} => self._get_stack_traces::<v3_5_5::_is>(),
@@ -443,7 +441,7 @@ fn get_interpreter_address(python_info: &PythonProcessInfo,
     // get the address of the main PyInterpreterState object from loaded symbols if we can
     // (this tends to be faster than scanning through the bss section)
     match version {
-        Version{major: 3, minor: 7, ..} => {
+        Version{major: 3, minor: 7..=8, ..} => {
             if let Some(&addr) = python_info.get_symbol("_PyRuntime") {
                 let addr = process.copy_struct(addr as usize + pyruntime::get_interp_head_offset(&version))?;
 
@@ -546,8 +544,7 @@ fn check_interpreter_addresses(addrs: &[usize],
 
     // different versions have different layouts, check as appropiate
     match version {
-        Version{major: 3, minor: 8, ..} => check::<v3_7_0::_is>(addrs, maps, process),
-        Version{major: 3, minor: 7, ..} => check::<v3_7_0::_is>(addrs, maps, process),
+        Version{major: 3, minor: 7..=8, ..} => check::<v3_7_0::_is>(addrs, maps, process),
         Version{major: 3, minor: 6, ..} => check::<v3_6_6::_is>(addrs, maps, process),
         Version{major: 3, minor: 5, ..} => check::<v3_5_5::_is>(addrs, maps, process),
         Version{major: 3, minor: 4, ..} => check::<v3_5_5::_is>(addrs, maps, process),

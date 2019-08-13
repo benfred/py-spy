@@ -10,7 +10,7 @@ struct TestRunner {
 impl TestRunner {
     fn new(filename: &str) -> TestRunner {
         let mut child = std::process::Command::new("python").arg(filename).spawn().unwrap();
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        std::thread::sleep(std::time::Duration::from_millis(400));
 
         let config = Config::default();
         let mut spy = PythonSpy::retry_new(child.id() as _, &config, 20).unwrap();

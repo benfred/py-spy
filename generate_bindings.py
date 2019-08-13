@@ -83,6 +83,8 @@ def calculate_pyruntime_offsets(cpython_path, version, configure=False):
             # this requires a 'x64 Native Tools Command Prompt' to work out properly for 64 bit installs
             # also expects that you have run something like 'PCBuild\build.bat' first
             ret = os.system(f"cl {source_filename} /I {cpython_path} /I {cpython_path}\PC /I {cpython_path}\Include")
+        elif sys.platform.startswith("freebsd"):
+            ret = os.system(f"""cc {source_filename} -I {cpython_path} -I {cpython_path}/Include -o {exe}""")
         else:
             ret = os.system(f"""gcc {source_filename} -I {cpython_path} -I {cpython_path}/include -o {exe}""")
         if ret:
