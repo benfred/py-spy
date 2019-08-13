@@ -19,13 +19,13 @@ pub mod pyruntime {
     #[cfg(target_pointer_width = "32")]
     pub fn get_interp_head_offset(version: &Version) -> usize {
         match version {
-             Version{major: 3, minor: 8, patch: 0, ..} => {
-                 match version.release_flags.as_ref() {
-                    "a3" | "a4" | "b1" | "b2" => 20,
+            Version{major: 3, minor: 8, patch: 0, ..} => {
+                match version.release_flags.as_ref() {
+                    "a3" | "a4" | "b1" | "b2" | "b3" => 20,
                     _ => 16
                 }
-             },
-             _ => 16
+            },
+            _ => 16
         }
     }
 
@@ -34,11 +34,11 @@ pub mod pyruntime {
         match version {
              Version{major: 3, minor: 8, patch: 0, ..} => {
                  match version.release_flags.as_ref() {
-                    "a3" | "a4" | "b1" | "b2" => 32,
+                    "a3" | "a4" | "b1" | "b2" | "b3" => 32,
                     _ => 24
                 }
-             },
-             _ => 24
+            },
+            _ => 24
         }
     }
 
@@ -48,14 +48,14 @@ pub mod pyruntime {
     #[cfg(target_os="macos")]
     pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
         match version {
+             Version{major: 3, minor: 7, patch: 0..=3, ..} => Some(1440),
              Version{major: 3, minor: 7, patch: 4, ..} => Some(1528),
-             Version{major: 3, minor: 7, ..} => Some(1440),
              Version{major: 3, minor: 8, patch: 0, ..} => {
                  match version.release_flags.as_ref() {
                     "a1" => Some(1432),
                     "a2" => Some(888),
                     "a3" | "a4" => Some(1448),
-                    "b1" | "b2"  => Some(1416),
+                    "b1" | "b2" | "b3"  => Some(1416),
                     _ => None
                 }
              },
@@ -66,64 +66,66 @@ pub mod pyruntime {
     #[cfg(all(target_os="linux", target_pointer_width = "32"))]
     pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
         match version {
-             Version{major: 3, minor: 7, ..} => Some(796),
+            Version{major: 3, minor: 7, patch: 0..=4, ..} => Some(796),
              Version{major: 3, minor: 8, patch: 0, ..} => {
                  match version.release_flags.as_ref() {
                     "a1" => Some(792),
                     "a2" => Some(512),
                     "a3" | "a4" => Some(800),
-                    "b1" | "b2" => Some(784),
+                    "b1" | "b2" | "b3" => Some(784),
                     _ => None
                 }
-             },
-             _ => None
+            },
+            _ => None
         }
     }
 
     #[cfg(all(target_os="linux", target_pointer_width = "64"))]
     pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
         match version {
+            Version{major: 3, minor: 7, patch: 0..=3, ..} => Some(1392),
             Version{major: 3, minor: 7, patch: 4, ..} => Some(1480),
-             Version{major: 3, minor: 7, ..} => Some(1392),
-             Version{major: 3, minor: 8, patch: 0, ..} => {
-                 match version.release_flags.as_ref() {
+            Version{major: 3, minor: 8, patch: 0, ..} => {
+                match version.release_flags.as_ref() {
                     "a1" => Some(1384),
                     "a2" => Some(840),
                     "a3" | "a4" => Some(1400),
-                    "b1" | "b2"  => Some(1368),
+                    "b1" | "b2" | "b3"  => Some(1368),
                     _ => None
                 }
              },
-             _ => None
+            _ => None
         }
     }
 
     #[cfg(windows)]
     pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
         match version {
-             Version{major: 3, minor: 7, ..} => Some(1320),
-             Version{major: 3, minor: 8, patch: 0, ..} => {
-                 match version.release_flags.as_ref() {
+            Version{major: 3, minor: 7, patch: 0..=3, ..} => Some(1320),
+            Version{major: 3, minor: 8, patch: 0, ..} => {
+                match version.release_flags.as_ref() {
                     "a1" => Some(1312),
                     "a2" => Some(768),
                     "a3" | "a4" => Some(1328),
-                    "b1" | "b2" => Some(1296),
+                    "b1" | "b2" | "b3" => Some(1296),
                     _ => None
                 }
-             },
-             _ => None
+            },
+            _ => None
         }
     }
 
     #[cfg(target_os="freebsd")]
     pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
         match version {
-            Version{major: 3, minor: 7, ..} => Some(1248),
+            Version{major: 3, minor: 7, patch: 0..=3, ..} => Some(1248),
+            Version{major: 3, minor: 7, patch: 4, ..} => Some(1336),
             Version{major: 3, minor: 8, patch: 0, ..} => {
                 match version.release_flags.as_ref() {
                     "a1" => Some(1240),
                     "a2" => Some(696),
                     "a3" | "a4" => Some(1256),
+                    "b1" | "b2" | "b3" => Some(1224),
                     _ => None
                 }
             },
