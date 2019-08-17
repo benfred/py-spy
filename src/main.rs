@@ -287,6 +287,11 @@ fn record_samples(process: &mut PythonSpy, config: &Config) -> Result<(), Error>
     match config.format.as_ref().unwrap() {
         FileFormat::flamegraph => {
             println!("Wrote flamegraph data to '{}'. Samples: {} Errors: {}", filename, samples, errors);
+            // open generated flame graph in the browser on OSX (theory being that on linux
+            // you might be SSH'ed into a server somewhere and this isn't desired, but on
+            // that is pretty unlikely for osx) (note to self: xdg-open will open on linux)
+            #[cfg(target_os = "macos")]
+            std::process::Command::new("open").arg(filename).spawn()?;
         },
         FileFormat::speedscope =>  {
             println!("Wrote speedscope file to '{}'. Samples: {} Errors: {}", filename, samples, errors);
@@ -297,12 +302,6 @@ fn record_samples(process: &mut PythonSpy, config: &Config) -> Result<(), Error>
             println!("You can use the flamegraph.pl script from https://github.com/brendangregg/flamegraph to generate a SVG");
         }
     };
-
-    // open generated flame graph in the browser on OSX (theory being that on linux
-    // you might be SSH'ed into a server somewhere and this isn't desired, but on
-    // that is pretty unlikely for osx) (note to self: xdg-open will open on linux)
-    #[cfg(target_os = "macos")]
-    std::process::Command::new("open").arg(filename).spawn()?;
 
     Ok(())
 }
