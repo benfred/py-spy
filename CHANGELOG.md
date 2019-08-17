@@ -7,9 +7,10 @@
 * Get thread idle status from OS [#92](https://github.com/benfred/py-spy/issues/92)
 * Add 'unlimited' default option for the duration [#93](https://github.com/benfred/py-spy/issues/93)
 * Allow use as a library by other rust programs [#110](https://github.com/benfred/py-spy/issues/110)
-* Show OS threadids in --dump [#57](https://github.com/benfred/py-spy/issues/57)
+* Show OS threadids in dump [#57](https://github.com/benfred/py-spy/issues/57)
 * Drop root permissions when starting new process [#116](https://github.com/benfred/py-spy/issues/116)
-* Support building for ARM procesesors [#89](https://github.com/benfred/py-spy/issues/89)
+* Support building for ARM processors [#89](https://github.com/benfred/py-spy/issues/89)
+* Python 3.8 compatability
 
 ## v0.1.11
 

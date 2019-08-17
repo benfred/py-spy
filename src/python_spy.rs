@@ -18,7 +18,7 @@ use crate::binary_parser::{parse_binary, BinaryInfo};
 use crate::config::Config;
 #[cfg(unwind)]
 use crate::native_stack_trace::NativeStack;
-use crate::python_bindings::{pyruntime, v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0};
+use crate::python_bindings::{pyruntime, v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0};
 use crate::python_interpreters::{self, InterpreterState, ThreadState};
 use crate::stack_trace::{StackTrace, get_stack_traces, get_stack_trace};
 use crate::version::Version;
@@ -62,7 +62,7 @@ impl PythonSpy {
 
         // lets us figure out which thread has the GIL
          let threadstate_address = match version {
-             Version{major: 3, minor: 7..=8, ..} => {
+             Version{major: 3, minor: 7..=9, ..} => {
                 match python_info.get_symbol("_PyRuntime") {
                     Some(&addr) => {
                         if let Some(offset) = pyruntime::get_tstate_current_offset(&version) {
@@ -146,15 +146,23 @@ impl PythonSpy {
     /// Gets a StackTrace for each thread in the current process
     pub fn get_stack_traces(&mut self) -> Result<Vec<StackTrace>, Error> {
         match self.version {
-            // Currently 3.7.x and 3.8.x have the same ABI, but this might change as 3.8 evolves
-            Version{major: 3, minor: 7..=8, ..} => self._get_stack_traces::<v3_7_0::_is>(),
-            Version{major: 3, minor: 6, ..} => self._get_stack_traces::<v3_6_6::_is>(),
-            // ABI for 3.4 and 3.5 is the same for our purposes
-            Version{major: 3, minor: 5, ..} => self._get_stack_traces::<v3_5_5::_is>(),
-            Version{major: 3, minor: 4, ..} => self._get_stack_traces::<v3_5_5::_is>(),
-            Version{major: 3, minor: 3, ..} => self._get_stack_traces::<v3_3_7::_is>(),
-            // ABI for 2.3/2.4/2.5/2.6/2.7 is also compatible
+            // ABI for 2.3/2.4/2.5/2.6/2.7 is compatible for our purpose
             Version{major: 2, minor: 3..=7, ..} => self._get_stack_traces::<v2_7_15::_is>(),
+            Version{major: 3, minor: 3, ..} => self._get_stack_traces::<v3_3_7::_is>(),
+            // ABI for 3.4 and 3.5 is the same for our purposes
+            Version{major: 3, minor: 4, ..} => self._get_stack_traces::<v3_5_5::_is>(),
+            Version{major: 3, minor: 5, ..} => self._get_stack_traces::<v3_5_5::_is>(),
+            Version{major: 3, minor: 6, ..} => self._get_stack_traces::<v3_6_6::_is>(),
+            Version{major: 3, minor: 7, ..} => self._get_stack_traces::<v3_7_0::_is>(),
+            // v3.8.0a1 to v3.8.0a3 is compatible with 3.7 ABI, but later versions of 3.8.0 aren't
+            Version{major: 3, minor: 8, patch: 0, ..} => {
+                match self.version.release_flags.as_ref() {
+                    "a1" | "a2" | "a3" => self._get_stack_traces::<v3_7_0::_is>(),
+                    _ => self._get_stack_traces::<v3_8_0::_is>()
+                }
+            }
+            // currently v3.8 and v3.9 have same ABI, but that will likely change as 3.9 evolves
+            Version{major: 3, minor: 8..=9, ..} => self._get_stack_traces::<v3_8_0::_is>(),
             _ => Err(format_err!("Unsupported version of Python: {}", self.version)),
         }
     }
@@ -392,7 +400,11 @@ fn get_python_version(python_info: &PythonProcessInfo, process: &remoteprocess::
     // If possible, grab the sys.version string from the processes memory (mac osx).
     if let Some(&addr) = python_info.get_symbol("Py_GetVersion.version") {
         info!("Getting version from symbol address");
-        return Ok(Version::scan_bytes(&process.copy(addr as usize, 128)?)?);
+        if let Ok(bytes) = process.copy(addr as usize, 128) {
+            if let Ok(version) = Version::scan_bytes(&bytes) {
+                return Ok(version);
+            }
+        }
     }
 
     // otherwise get version info from scanning BSS section for sys.version string
@@ -441,7 +453,7 @@ fn get_interpreter_address(python_info: &PythonProcessInfo,
     // get the address of the main PyInterpreterState object from loaded symbols if we can
     // (this tends to be faster than scanning through the bss section)
     match version {
-        Version{major: 3, minor: 7..=8, ..} => {
+        Version{major: 3, minor: 7..=9, ..} => {
             if let Some(&addr) = python_info.get_symbol("_PyRuntime") {
                 let addr = process.copy_struct(addr as usize + pyruntime::get_interp_head_offset(&version))?;
 
@@ -544,12 +556,18 @@ fn check_interpreter_addresses(addrs: &[usize],
 
     // different versions have different layouts, check as appropiate
     match version {
-        Version{major: 3, minor: 7..=8, ..} => check::<v3_7_0::_is>(addrs, maps, process),
-        Version{major: 3, minor: 6, ..} => check::<v3_6_6::_is>(addrs, maps, process),
-        Version{major: 3, minor: 5, ..} => check::<v3_5_5::_is>(addrs, maps, process),
-        Version{major: 3, minor: 4, ..} => check::<v3_5_5::_is>(addrs, maps, process),
-        Version{major: 3, minor: 3, ..} => check::<v3_3_7::_is>(addrs, maps, process),
         Version{major: 2, minor: 3..=7, ..} => check::<v2_7_15::_is>(addrs, maps, process),
+        Version{major: 3, minor: 3, ..} => check::<v3_3_7::_is>(addrs, maps, process),
+        Version{major: 3, minor: 4..=5, ..} => check::<v3_5_5::_is>(addrs, maps, process),
+        Version{major: 3, minor: 6, ..} => check::<v3_6_6::_is>(addrs, maps, process),
+        Version{major: 3, minor: 7, ..} => check::<v3_7_0::_is>(addrs, maps, process),
+        Version{major: 3, minor: 8, patch: 0, ..} => {
+            match version.release_flags.as_ref() {
+                "a1" | "a2" | "a3" => check::<v3_7_0::_is>(addrs, maps, process),
+                _ => check::<v3_8_0::_is>(addrs, maps, process)
+            }
+        },
+        Version{major: 3, minor: 8..=9, ..} => check::<v3_8_0::_is>(addrs, maps, process),
         _ => Err(format_err!("Unsupported version of Python: {}", version))
     }
 }

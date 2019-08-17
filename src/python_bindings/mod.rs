@@ -3,6 +3,7 @@ pub mod v3_3_7;
 pub mod v3_5_5;
 pub mod v3_6_6;
 pub mod v3_7_0;
+pub mod v3_8_0;
 
 // currently the PyRuntime struct used from Python 3.7 on really can't be
 // exposed in a cross platform way using bindgen. PyRuntime has several mutex's
@@ -25,6 +26,7 @@ pub mod pyruntime {
                     _ => 16
                 }
             },
+            Version{major: 3, minor: 8..=9, ..} => 20,
             _ => 16
         }
     }
@@ -32,12 +34,13 @@ pub mod pyruntime {
     #[cfg(target_pointer_width = "64")]
     pub fn get_interp_head_offset(version: &Version) -> usize {
         match version {
-             Version{major: 3, minor: 8, patch: 0, ..} => {
+            Version{major: 3, minor: 8, patch: 0, ..} => {
                  match version.release_flags.as_ref() {
                     "a3" | "a4" | "b1" | "b2" | "b3" => 32,
                     _ => 24
                 }
             },
+            Version{major: 3, minor: 8..=9, ..} => 32,
             _ => 24
         }
     }
