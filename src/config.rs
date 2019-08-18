@@ -79,9 +79,6 @@ impl Config {
     }
 
     pub fn from_args(args: &[String]) -> clap::Result<Config> {
-        // we don't yet support native tracing on 32 bit linux
-        let allow_native = cfg!(unwind);
-
         // pid/native/nonblocking/rate/pythonprogram arguments can be
         // used across various subcommand - define once here
         let pid = Arg::with_name("pid")
@@ -91,10 +88,10 @@ impl Config {
                     .help("PID of a running python program to spy on")
                     .takes_value(true)
                     .required_unless("python_program");
+        #[cfg(unwind)]
         let native = Arg::with_name("native")
                     .short("n")
                     .long("native")
-                    .hidden(!allow_native)
                     .help("Collect stack traces from native extensions written in Cython, C or C++");
         let nonblocking = Arg::with_name("nonblocking")
                     .long("nonblocking")
@@ -158,28 +155,31 @@ impl Config {
             .arg(Arg::with_name("hideprogress")
                 .long("hideprogress")
                 .hidden(true)
-                .help("Hides progress bar (useful for showing error output on record)"))
-            .arg(native.clone());
+                .help("Hides progress bar (useful for showing error output on record)"));
 
         let top = clap::SubCommand::with_name("top")
             .about("Displays a top like view of functions consuming CPU")
             .arg(program.clone())
             .arg(pid.clone())
-            .arg(rate.clone())
-            .arg(native.clone());
+            .arg(rate.clone());
 
         let dump = clap::SubCommand::with_name("dump")
             .about("Dumps stack traces for a target program to stdout")
-            .arg(pid.clone().required(true))
-            .arg(native.clone());
+            .arg(pid.clone().required(true));
+
+        // add native unwinding if appropiate
+        #[cfg(unwind)]
+        let record = record.arg(native.clone());
+        #[cfg(unwind)]
+        let top = top.arg(native.clone());
+        #[cfg(unwind)]
+        let dump = dump.arg(native.clone());
 
         // Nonblocking isn't an option for freebsd, remove
         #[cfg(not(target_os="freebsd"))]
         let record = record.arg(nonblocking.clone());
-
         #[cfg(not(target_os="freebsd"))]
         let top = top.arg(nonblocking.clone());
-
         #[cfg(not(target_os="freebsd"))]
         let dump = dump.arg(nonblocking.clone());
 
@@ -233,16 +233,10 @@ impl Config {
         config.hide_progess  = matches.occurrences_of("hideprogress") > 0;
 
         // disable native profiling if invalidly asked for
-        if !allow_native && config.native {
-            error!("Native stack traces are not yet supported on this OS. Disabling");
-            config.native = false;
-        }
-
         if config.native && config.non_blocking {
             error!("Can't get native stack traces with the --nonblocking option. Disabling native.");
             config.native = false;
         }
-
         Ok(config)
     }
 }
