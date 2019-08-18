@@ -76,7 +76,7 @@ extern crate libproc;
 #[cfg(windows)]
 extern crate winapi;
 
-#[cfg(target_os="macos")]
+#[cfg(all(target_os="macos", unwind))]
 #[macro_use]
 mod dylib;
 

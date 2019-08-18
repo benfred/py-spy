@@ -1,8 +1,10 @@
 #[doc(hidden)]
 pub mod compact_unwind;
 mod utils;
+#[cfg(unwind)]
 mod symbolication;
 mod mach_thread_bindings;
+#[cfg(unwwind)]
 mod unwinder;
 
 use std;
@@ -24,6 +26,7 @@ use mach::thread_status::x86_THREAD_STATE64;
 use mach::thread_act::{thread_get_state};
 
 pub use self::utils::{TaskLock, ThreadLock};
+#[cfg(unwwind)]
 pub use self::unwinder::Unwinder;
 
 use libproc::libproc::proc_pid::{pidpath, pidinfo, PIDInfo, PidInfoFlavor};
@@ -81,6 +84,7 @@ impl Process {
         Ok(ret)
     }
 
+    #[cfg(unwind)]
     pub fn unwinder(&self) -> Result<Unwinder, Error> {
         Ok(Unwinder::new(self.pid)?)
     }

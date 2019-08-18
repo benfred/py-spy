@@ -70,8 +70,7 @@ fn test_long_sleep() {
 
     assert!(!traces[0].owns_gil);
 
-    // we will only know this thread is sleeping in certain cases,
-    // and having unwind support is a reasonable proxy for that
-    #[cfg(unwind)]
+    // We don't have thread activity on freebsd or arm/i686 linux yet.
+    #[cfg(any(target_os="macos", target_os="windows", all(target_os="linux", target_pointer_width = "64")))]
     assert!(!traces[0].active);
 }
