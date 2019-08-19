@@ -54,6 +54,19 @@ impl Process {
         Ok(path.to_string_lossy().to_string())
     }
 
+    pub fn cmdline(&self) -> Result<Vec<String>, Error> {
+        let mut f = std::fs::File::open(format!("/proc/{}/cmdline", self.pid))?;
+        let mut buffer = Vec::new();
+        f.read_to_end(&mut buffer)?;
+
+        let mut ret = Vec::new();
+        for arg in buffer.split(|b| *b == 0) {
+            ret.push(String::from_utf8(arg.to_vec())
+                .map_err(|e| Error::Other(format!("Failed to convert ut8 {}", e)))?)
+        }
+        Ok(ret)
+    }
+
     pub fn lock(&self) -> Result<Lock, Error> {
         let mut locks = Vec::new();
         let mut locked = std::collections::HashSet::new();

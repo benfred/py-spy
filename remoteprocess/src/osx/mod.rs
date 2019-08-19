@@ -64,6 +64,46 @@ impl Process {
         Ok(unsafe { std::ffi::CStr::from_ptr(cwd.pvi_cdir.vip_path.as_ptr()) }.to_string_lossy().to_string())
     }
 
+    pub fn cmdline(&self) -> Result<Vec<String>, Error> {
+        unsafe {
+            let mib: [i32; 3] = [libc::CTL_KERN, libc::KERN_PROCARGS2, self.pid];
+            let args: [u8; 65536] = std::mem::zeroed();
+            let size: usize = std::mem::size_of_val(&args);
+            let ret = libc::sysctl(&mib as * const _ as * mut _, 3,
+                &args as * const _ as * mut _,
+                &size as *const _ as * mut _,
+                std::ptr::null_mut(), 0);
+
+            if ret < 0 {
+                return Err(Error::IOError(std::io::Error::last_os_error()))
+            }
+
+            // get the number of arguments
+            let argcount: i32 = *(&args as *const _ as * const i32);
+            let args = &args[std::mem::size_of_val(&argcount)..];
+
+            // split off of the exe from the beginning
+            let args = &args[libc::strlen(args as * const _ as * const i8)..];
+
+            let mut ret = Vec::new();
+            for arg in args.split(|b| *b == 0) {
+                // ignore leading nulls
+                if arg.len() == 0 && ret.len() == 0 {
+                    continue;
+                }
+
+                let arg = String::from_utf8(arg.to_vec())
+                    .map_err(|e| Error::Other(format!("Failed to convert utf8 {}", e)))?;
+
+                ret.push(arg);
+                if ret.len() >= argcount as usize {
+                    break;
+                }
+            }
+            Ok(ret)
+        }
+    }
+
     pub fn lock(&self) -> Result<TaskLock, Error> {
         Ok(TaskLock::new(self.task)?)
     }

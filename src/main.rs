@@ -62,22 +62,30 @@ use console_viewer::ConsoleViewer;
 use config::{Config, FileFormat, RecordDuration};
 
 fn print_traces(traces: &[StackTrace], show_idle: bool) {
-    for trace in traces {
+    use console::style;
+    for trace in traces.iter().rev() {
         if !show_idle && !trace.active {
             continue;
         }
 
-        if let Some(os_thread_id) = trace.os_thread_id {
-            println!("Thread {:#X}/{} ({})", trace.thread_id,  os_thread_id, trace.status_str());
+        // native threadids in osx are kinda useless, use the pthread id instead
+        #[cfg(target_os="macos")]
+        let thread_id = format!("{:#X}", trace.thread_id);
+
+        #[cfg(not(target_os="macos"))]
+        let thread_id = if let Some(tid) = trace.os_thread_id {
+            format!("{}", tid)
         } else {
-            println!("Thread {:#X} ({})", trace.thread_id, trace.status_str());
-        }
+            format!("0x{:#X}", trace.thread_id)
+        };
+
+        println!("Thread {} ({})", style(thread_id).bold().yellow(), trace.status_str());
         for frame in &trace.frames {
             let filename = match &frame.short_filename { Some(f) => &f, None => &frame.filename };
             if frame.line != 0 {
-                println!("\t {} ({}:{})", frame.name, filename, frame.line);
+                println!("\t {} ({}:{})", style(&frame.name).green(), style(&filename).cyan(), style(frame.line).dim());
             } else {
-                println!("\t {} ({})", frame.name, filename);
+                println!("\t {} ({})", style(&frame.name).green(), style(&filename).cyan());
             }
         }
     }
@@ -309,7 +317,13 @@ fn record_samples(process: &mut PythonSpy, config: &Config) -> Result<(), Error>
 fn run_spy_command(process: &mut PythonSpy, config: &config::Config) -> Result<(), Error> {
     match config.command.as_ref() {
         "dump" =>  {
-            println!("{}\nPython version {}", process.process.exe()?, process.version);
+            #[cfg(any(target_os="linux", target_os="macos"))]
+            let process_info = process.process.cmdline()?.join(" ");
+            #[cfg(not(any(target_os="linux", target_os="macos")))]
+            let process_info = process.process.exe()?;
+
+            println!("Process {}: {}", console::style(process.pid).bold().yellow(), process_info);
+            println!("Python v{}\n", console::style(&process.version).bold());
             print_traces(&process.get_stack_traces()?, true);
         },
         "record" => {
