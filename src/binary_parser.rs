@@ -19,6 +19,7 @@ pub struct BinaryInfo {
 }
 
 impl BinaryInfo {
+    #[cfg(unwind)]
     pub fn contains(&self, addr: u64) -> bool {
         addr >= self.addr && addr < (self.addr + self.size)
     }

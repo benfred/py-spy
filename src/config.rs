@@ -40,6 +40,8 @@ pub struct Config {
     pub gil_only: bool,
     #[doc(hidden)]
     pub hide_progess: bool,
+    #[doc(hidden)]
+    pub dump_json: bool,
 }
 
 arg_enum!{
@@ -67,7 +69,7 @@ impl Default for Config {
                non_blocking: false, show_line_numbers: false, sampling_rate: 100,
                duration: RecordDuration::Unlimited, native: false,
                gil_only: false, include_idle: false, include_thread_ids: false,
-               hide_progess: false}
+               hide_progess: false, dump_json: false}
     }
 }
 
@@ -93,10 +95,13 @@ impl Config {
                     .short("n")
                     .long("native")
                     .help("Collect stack traces from native extensions written in Cython, C or C++");
+
+        #[cfg(not(target_os="freebsd"))]
         let nonblocking = Arg::with_name("nonblocking")
                     .long("nonblocking")
                     .help("Don't pause the python process when collecting samples. Setting this option will reduce \
                           the perfomance impact of sampling, but may lead to inaccurate results");
+
         let rate = Arg::with_name("rate")
                     .short("r")
                     .long("rate")
@@ -165,7 +170,11 @@ impl Config {
 
         let dump = clap::SubCommand::with_name("dump")
             .about("Dumps stack traces for a target program to stdout")
-            .arg(pid.clone().required(true));
+            .arg(pid.clone().required(true))
+            .arg(Arg::with_name("json")
+                .short("j")
+                .long("json")
+                .help("Format output as JSON"));
 
         // add native unwinding if appropiate
         #[cfg(unwind)]
@@ -230,7 +239,8 @@ impl Config {
 
         config.non_blocking = matches.occurrences_of("nonblocking") > 0;
         config.native = matches.occurrences_of("native") > 0;
-        config.hide_progess  = matches.occurrences_of("hideprogress") > 0;
+        config.hide_progess = matches.occurrences_of("hideprogress") > 0;
+        config.dump_json = matches.occurrences_of("json") > 0;
 
         // disable native profiling if invalidly asked for
         if config.native && config.non_blocking {

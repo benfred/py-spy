@@ -55,7 +55,7 @@ use serde_json;
  * structure.
  */
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize)]
 struct SpeedscopeFile {
     #[serde(rename = "$schema")]
     schema: String,
@@ -70,7 +70,7 @@ struct SpeedscopeFile {
     name: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize)]
 struct Profile {
     #[serde(rename = "type")]
     profile_type: ProfileType,

@@ -41,6 +41,7 @@ impl ConsoleViewer {
                 if let Some(Ok(key)) = std::io::stdin().bytes().next() {
                     let mut options = input_options.lock().unwrap();
                     options.dirty = true;
+                    let previous_usage = options.usage;
                     match key as char {
                         'R' | 'r' => options.reset = true,
                         'L' | 'l' => options.show_linenumbers = !options.show_linenumbers,
@@ -52,6 +53,8 @@ impl ConsoleViewer {
                         '4' => options.sort_column = 4,
                         _ => {},
                     }
+
+                    options.reset_style = previous_usage != options.usage;
                 }
             }
         });
@@ -125,6 +128,13 @@ impl ConsoleViewer {
             () => (term.clear_line()?; term.write_line("")?);
             ($($arg:tt)*) => { term.clear_line()?; term.write_line(&format!($($arg)*))?; }
         }
+
+        if options.reset_style {
+            #[cfg(windows)]
+            self.console_config.reset_styles()?;
+            options.reset_style = false;
+        }
+
         self.console_config.reset_cursor()?;
         let mut header_lines = if options.usage { 18 } else { 8 };
 
@@ -305,6 +315,7 @@ fn update_function_statistics<K>(counts: &mut HashMap<String, FunctionStatistics
 struct Options {
     dirty: bool,
     usage: bool,
+    reset_style: bool,
     sort_column: i32,
     show_linenumbers: bool,
     reset: bool,
@@ -327,7 +338,7 @@ struct Stats {
 
 impl Options {
     fn new(show_linenumbers: bool) -> Options {
-        Options{dirty: false, usage: false, reset: false, sort_column: 1, show_linenumbers}
+        Options{dirty: false, usage: false, reset: false, sort_column: 3, show_linenumbers, reset_style: false}
     }
 }
 
@@ -437,7 +448,7 @@ mod os_impl {
     use winapi::um::handleapi::INVALID_HANDLE_VALUE;
     use winapi::um::consoleapi::{GetConsoleMode, SetConsoleMode};
     use winapi::um::wincon::{ENABLE_LINE_INPUT, ENABLE_ECHO_INPUT, CONSOLE_SCREEN_BUFFER_INFO, SetConsoleCursorPosition,
-                             GetConsoleScreenBufferInfo, COORD};
+                             GetConsoleScreenBufferInfo, COORD, FillConsoleOutputAttribute};
 
     pub struct ConsoleConfig {
         stdin: HANDLE,
@@ -494,7 +505,23 @@ mod os_impl {
                 if SetConsoleCursorPosition(stdout, self.top_left) == 0 {
                     return Err(io::Error::last_os_error());
                 }
+                Ok(())
+            }
+        }
 
+        pub fn reset_styles(&self) -> io::Result<()> {
+            unsafe {
+                let stdout = GetStdHandle(STD_OUTPUT_HANDLE);
+                let mut csbi = CONSOLE_SCREEN_BUFFER_INFO::default();
+                if GetConsoleScreenBufferInfo(stdout, &mut csbi) == 0 {
+                    return Err(io::Error::last_os_error());
+                }
+
+                let mut written: DWORD = 0;
+                let console_size = ((1 + csbi.srWindow.Bottom - csbi.srWindow.Top) * (csbi.srWindow.Right - csbi.srWindow.Left)) as DWORD;
+                if FillConsoleOutputAttribute(stdout, csbi.wAttributes, console_size, self.top_left, &mut written) == 0 {
+                    return Err(io::Error::last_os_error());
+                }
                 Ok(())
             }
         }

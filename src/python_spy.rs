@@ -203,6 +203,29 @@ impl PythonSpy {
             let python_thread_id = thread.thread_id();
             let os_thread_id = self._get_os_thread_id(python_thread_id, &interp)?;
 
+            trace.os_thread_id = os_thread_id.map(|id| id as u64);
+            trace.owns_gil = trace.thread_id == gil_thread_id;
+
+            // Figure out if the thread is sleeping from the OS if possible
+            trace.active = !self._heuristic_is_thread_idle(&trace);
+            if let Some(id) = os_thread_id {
+                if let Some(active) = thread_activity.get(&id) {
+                    trace.active = *active;
+                }
+            }
+
+            // fallback to using a heuristic if we think the thread is still active
+            // Note that on linux the  OS thread activity can only be gotten on x86_64
+            // processors and even then seems to be wrong occasionally in thinking 'select'
+            // calls are active (which seems related to the thread locking code,
+            // this problem doesn't seem to happen with the --nonblocking option)
+            // Note: this should be done before the native merging for correct results
+            if trace.active {
+                trace.active = !self._heuristic_is_thread_idle(&trace);
+            }
+
+
+            // Merge in the native stack frames if necessary
             #[cfg(unwind)]
             {
                 if self.config.native {
@@ -213,20 +236,13 @@ impl PythonSpy {
                 }
             }
 
-            trace.os_thread_id = os_thread_id.map(|id| id as u64);
-            trace.owns_gil = trace.thread_id == gil_thread_id;
-
-            trace.active = match os_thread_id.map(|id| thread_activity.get(&id)) {
-                Some(Some(active)) => *active,
-                _ => !self._heuristic_is_thread_idle(&trace)
-            };
-
             for frame in &mut trace.frames {
                 frame.short_filename = self.shorten_filename(&frame.filename);
             }
 
-            // This seems to happen occasionally when scanning BSS addresses for valid interpeters
             traces.push(trace);
+
+            // This seems to happen occasionally when scanning BSS addresses for valid interpeters
             if traces.len() > 4096 {
                 return Err(format_err!("Max thread recursion depth reached"));
             }
@@ -288,6 +304,12 @@ impl PythonSpy {
         // If we've already know this threadid, we're good
         if let Some(thread_id) = self.python_thread_ids.get(&python_thread_id) {
             return Ok(Some(*thread_id));
+        }
+
+        // in nonblocking mode, we can't get the threadid reliably (method here requires reading the RBX
+        // register which requires a ptrace attach). fallback to heuristic thread activity here
+        if self.config.non_blocking {
+            return Ok(None);
         }
 
         // Get a list of all the python thread ids
