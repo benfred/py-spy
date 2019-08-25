@@ -3,6 +3,7 @@ use winapi::um::winnt::{ACCESS_MASK, MAXIMUM_ALLOWED, PROCESS_QUERY_INFORMATION,
                         PROCESS_VM_READ, PROCESS_SUSPEND_RESUME, THREAD_QUERY_INFORMATION, THREAD_GET_CONTEXT, THREAD_ALL_ACCESS,
                         WCHAR, HANDLE};
 use winapi::shared::minwindef::{FALSE, DWORD, MAX_PATH, ULONG};
+use winapi::shared::ntdef::PUNICODE_STRING;
 use winapi::um::handleapi::{CloseHandle};
 use winapi::um::winbase::QueryFullProcessImageNameW;
 use winapi::um::winnt::OSVERSIONINFOEXW;
@@ -44,8 +45,8 @@ extern "system" {
     fn RtlGetVersion(lpVersionInformation: &mut OSVERSIONINFOEXW) -> NTSTATUS;
 
     fn NtQueryInformationThread(thread: HANDLE, info_class: u32, info: PVOID, info_len: ULONG, ret_len: * mut ULONG) -> NTSTATUS;
+    fn NtQueryInformationProcess(process: HANDLE, info_class: u32, info: PVOID, info_len: ULONG, ret_len: * mut ULONG) -> NTSTATUS;
 
-    // Use NtGetNextThread to get process threads. This limits us to Windows Vista and above,
     fn NtGetNextThread(process: HANDLE, thread: HANDLE, access: ACCESS_MASK, attritubes: ULONG, flags: ULONG, new_thread: *mut HANDLE) -> NTSTATUS;
 }
 
@@ -88,12 +89,38 @@ impl Process {
         //          is at some constant offset (+10 on 32 bit etc)
         //      2) ReadProcessMemory to get RTL_USER_PROCESS_PARAMETERS struct
         //      3) get CWD from the struct (has UNICODE_DATA object with ptr + length to CWD)
+        unimplemented!("cwd is unimplemented on windows")
+    }
 
-        let exe = self.exe()?;
-        if let Some(parent) =  std::path::Path::new(&exe).parent() {
-            return Ok(parent.to_string_lossy().into_owned());
+    pub fn cmdline(&self) -> Result<Vec<String>, Error> {
+        unsafe {
+            // figure how much storage we need to allocate for cmdline.
+            let mut size: ULONG = 0;
+            NtQueryInformationProcess(self.handle.0, 60, std::ptr::null_mut(), 0, &size as *const _ as *mut _);
+            if size == 0 {
+                // the above call always fails (with an error like 'The program issued a command but the
+                // command length is incorrect.'). It should set the size to how many chars we need to allocate
+                // . If the size is still 0 though, default to some decently sized number
+                size = 65536;
+            }
+
+            //  Get the commandline
+            let storage = vec![0_u16; size as usize];
+            let ret = NtQueryInformationProcess(self.handle.0, 60,
+               (&storage as &[u16]) as * const _ as * mut _,
+               size, &size as *const _ as *mut _);
+
+            if ret != 0 {
+                return Err(Error::from(std::io::Error::from_raw_os_error(RtlNtStatusToDosError(ret) as i32)));
+            }
+
+            let unicode: PUNICODE_STRING = (&storage as &[u16]) as * const _ as * mut _;
+            let chars = std::slice::from_raw_parts((*unicode).Buffer, (*unicode).Length as usize);
+
+            let mut ret = Vec::new();
+            ret.push(String::from_utf16_lossy(chars));
+            Ok(ret)
         }
-        Ok("/".to_owned())
     }
 
     pub fn threads(&self) -> Result<Vec<Thread>, Error> {
@@ -172,6 +199,9 @@ impl Thread {
             if RtlGetVersion(&mut os_info) != 0 {
                 return Err(Error::from(std::io::Error::from_raw_os_error(RtlNtStatusToDosError(ret) as i32)));
             }
+
+            // TODO: blocked IO comes up as active here too (like prompt_toolkit\eventloop\inputhook.py)
+            // should we also check the IO Pending flag? Or add NTReadFile as 'idle' ?
 
             // resolve the syscallnumber, and check if the thread is waiting
             let active = match lookup_syscall(os_info.dwMajorVersion,

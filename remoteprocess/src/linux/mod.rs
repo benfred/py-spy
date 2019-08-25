@@ -87,7 +87,6 @@ impl Process {
                 }
             }
         }
-
         Ok(Lock{locks})
     }
 
@@ -242,4 +241,6 @@ fn test_parse_stat() {
     assert_eq!(get_active_status(b")))"), None);
     assert_eq!(get_active_status(b"1234 (bash)S"), None);
     assert_eq!(get_active_status(b"1234)SSSS"), None);
+    assert_eq!(get_active_status(b"15379 (ipython) t 9898 15379 9898 34816", Some(b't')));
+
 }

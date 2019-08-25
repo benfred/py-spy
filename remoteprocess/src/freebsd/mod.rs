@@ -81,6 +81,32 @@ impl Process {
         process_lock(self.pid, &self.lock)
     }
 
+    pub fn cmdline(&self) -> Result<Vec<String>, Error> {
+        unsafe {
+            let mib: [i32; 4] = [libc::CTL_KERN, libc::KERN_PROC, libc::KERN_PROC_ARGS, self.pid];
+            let args: [u8; 65536] = std::mem::zeroed();
+            let size: usize = std::mem::size_of_val(&args);
+
+            let ret = libc::sysctl(&mib as * const _ as * mut _, 4,
+                &args as * const _ as * mut _,
+                &size as *const _ as * mut _,
+                std::ptr::null_mut(), 0);
+
+            if ret < 0 {
+                return Err(Error::IOError(std::io::Error::last_os_error()))
+            }
+
+            let mut ret = Vec::new();
+            for arg in args[..size].split(|b| *b == 0) {
+                let arg = String::from_utf8(arg.to_vec())
+                    .map_err(|e| Error::Other(format!("Failed to convert utf8 {}", e)))?;
+
+                ret.push(arg);
+            }
+            Ok(ret)
+        }
+    }
+
     pub fn unwinder(&self) -> Result<(), Error> {
         unimplemented!("No unwinding yet!")
     }

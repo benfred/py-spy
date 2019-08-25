@@ -40,7 +40,8 @@ extern crate lru;
 extern crate memmap;
 extern crate proc_maps;
 extern crate regex;
-
+#[macro_use]
+extern crate serde_derive;
 #[cfg(windows)]
 extern crate winapi;
 extern crate cpp_demangle;

@@ -61,24 +61,39 @@ use stack_trace::{StackTrace, Frame};
 use console_viewer::ConsoleViewer;
 use config::{Config, FileFormat, RecordDuration};
 
-fn print_traces(traces: &[StackTrace], show_idle: bool) {
+fn format_trace_threadid(trace: &StackTrace) -> String {
+    // native threadids in osx are kinda useless, use the pthread id instead
+    #[cfg(target_os="macos")]
+    return format!("{:#X}", trace.thread_id);
+
+    // otherwise use the native threadid if given
+    #[cfg(not(target_os="macos"))]
+    match trace.os_thread_id {
+        Some(tid) => format!("{}", tid),
+        None => format!("{:#X}", trace.thread_id)
+    }
+}
+
+fn print_traces(process: &mut PythonSpy, config: &Config) -> Result<(), Error> {
+    if config.dump_json {
+        let traces = process.get_stack_traces()?;
+        println!("{}", serde_json::to_string_pretty(&traces)?);
+        return Ok(())
+    }
+
     use console::style;
+    println!("Process {}: {}",
+        style(process.pid).bold().yellow(),
+        process.process.cmdline()?.join(" "));
+
+    println!("Python v{} ({})\n",
+        style(&process.version).bold(),
+        style(process.process.exe()?).dim());
+
+    let traces = process.get_stack_traces()?;
+
     for trace in traces.iter().rev() {
-        if !show_idle && !trace.active {
-            continue;
-        }
-
-        // native threadids in osx are kinda useless, use the pthread id instead
-        #[cfg(target_os="macos")]
-        let thread_id = format!("{:#X}", trace.thread_id);
-
-        #[cfg(not(target_os="macos"))]
-        let thread_id = if let Some(tid) = trace.os_thread_id {
-            format!("{}", tid)
-        } else {
-            format!("0x{:#X}", trace.thread_id)
-        };
-
+        let thread_id = format_trace_threadid(&trace);
         println!("Thread {} ({})", style(thread_id).bold().yellow(), trace.status_str());
         for frame in &trace.frames {
             let filename = match &frame.short_filename { Some(f) => &f, None => &frame.filename };
@@ -89,6 +104,7 @@ fn print_traces(traces: &[StackTrace], show_idle: bool) {
             }
         }
     }
+    Ok(())
 }
 
 fn process_exitted(process: &remoteprocess::Process) -> bool {
@@ -109,10 +125,14 @@ fn permission_denied(err: &Error) -> bool {
 }
 
 fn sample_console(process: &mut PythonSpy,
-                  display: &str,
                   config: &Config) -> Result<(), Error> {
     let rate = config.sampling_rate;
-    let mut console = ConsoleViewer::new(config.show_line_numbers, display,
+    let display = match process.process.cmdline() {
+        Ok(cmdline) => cmdline.join(" "),
+        Err(_) => format!("Pid {}", process.process.pid)
+    };
+
+    let mut console = ConsoleViewer::new(config.show_line_numbers, &display,
                                          &format!("{}", process.version),
                                          1.0 / rate as f64)?;
 
@@ -201,7 +221,13 @@ fn record_samples(process: &mut PythonSpy, config: &Config) -> Result<(), Error>
         (false, RecordDuration::Unlimited) => {
             println!("Sampling process {} times a second. Press Control-C to exit.",
                 config.sampling_rate);
-            ProgressBar::new_spinner()
+            let progress = ProgressBar::new_spinner();
+
+            // The spinner on windows doesn't look great: was replaced by a [?] character at least on
+            // my system. Replace unicode spinners with just how many seconds have elapsed
+            #[cfg(windows)]
+            progress.set_style(indicatif::ProgressStyle::default_spinner().template("[{elapsed}] {msg}"));
+            progress
         }
     };
 
@@ -244,7 +270,8 @@ fn record_samples(process: &mut PythonSpy, config: &Config) -> Result<(), Error>
                     }
 
                     if config.include_thread_ids {
-                        trace.frames.push(Frame{name: format!("thread {}", trace.thread_id),
+                        let threadid = format_trace_threadid(&trace);
+                        trace.frames.push(Frame{name: format!("thread {}", threadid),
                             filename: String::from(""),
                             module: None, short_filename: None, line: 0});
                     }
@@ -289,7 +316,6 @@ fn record_samples(process: &mut PythonSpy, config: &Config) -> Result<(), Error>
     {
     let mut out_file = std::fs::File::create(filename)?;
     output.write(&mut out_file)?;
-
     }
 
     match config.format.as_ref().unwrap() {
@@ -317,24 +343,13 @@ fn record_samples(process: &mut PythonSpy, config: &Config) -> Result<(), Error>
 fn run_spy_command(process: &mut PythonSpy, config: &config::Config) -> Result<(), Error> {
     match config.command.as_ref() {
         "dump" =>  {
-            #[cfg(any(target_os="linux", target_os="macos"))]
-            let process_info = process.process.cmdline()?.join(" ");
-            #[cfg(not(any(target_os="linux", target_os="macos")))]
-            let process_info = process.process.exe()?;
-
-            println!("Process {}: {}", console::style(process.pid).bold().yellow(), process_info);
-            println!("Python v{}\n", console::style(&process.version).bold());
-            print_traces(&process.get_stack_traces()?, true);
+            print_traces(process, config)?;
         },
         "record" => {
             record_samples(process, config)?;
         },
         "top" => {
-            let display = match config.python_program.as_ref() {
-                Some(subprocess) => subprocess.join(" "),
-                None => format!("pid: {}", config.pid.unwrap())
-            };
-            sample_console(process, &display, config)?;
+            sample_console(process, config)?;
         }
         _ => {
             // shouldn't happen

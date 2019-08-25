@@ -1,12 +1,13 @@
 use std;
 
 use failure::{Error, ResultExt};
+
 use remoteprocess::ProcessMemory;
 
 use crate::python_interpreters::{InterpreterState, ThreadState, FrameObject, CodeObject, StringObject, BytesObject};
 
 /// Call stack for a single python thread
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct StackTrace {
     /// The python thread id for this stack trace
     pub thread_id: u64,
@@ -21,7 +22,7 @@ pub struct StackTrace {
 }
 
 /// Information about a single function call in a stack trace
-#[derive(Debug, Hash, Eq, PartialEq, Ord, PartialOrd, Clone)]
+#[derive(Debug, Hash, Eq, PartialEq, Ord, PartialOrd, Clone, Serialize)]
 pub struct Frame {
     /// The function name
     pub name: String,
