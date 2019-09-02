@@ -9,7 +9,7 @@ struct TestRunner {
 
 impl TestRunner {
     fn new(config: Config, filename: &str) -> TestRunner {
-        let child = std::process::Command::new("python").arg(filename).spawn().unwrap();
+        let child = std::process::Command::new("python3").arg(filename).spawn().unwrap();
         std::thread::sleep(std::time::Duration::from_millis(400));
         let spy = PythonSpy::retry_new(child.id() as _, &config, 20).unwrap();
 
@@ -102,3 +102,61 @@ fn test_long_sleep() {
     #[cfg(any(target_os="macos", target_os="windows"))]
     assert!(!traces[0].active);
 }
+
+#[test]
+fn test_recursive() {
+    #[cfg(target_os="macos")]
+    {
+        // We need root permissions here to run this on OSX
+        if unsafe { libc::geteuid() } != 0 {
+            return;
+        }
+    }
+
+    // there used to be a problem where the top-level functions being returned
+    // weren't actually entry points: https://github.com/benfred/py-spy/issues/56
+    // This was fixed by locking the process while we are profling it. Test that
+    // the fix works by generating some samples from a program that would exhibit
+    // this behaviour
+    let mut runner = TestRunner::new(Config::default(), "./tests/scripts/recursive.py");
+
+    for _ in 0..100 {
+        let traces = runner.spy.get_stack_traces().unwrap();
+        assert_eq!(traces.len(), 1);
+        let trace = &traces[0];
+
+        assert!(trace.frames.len() <= 22);
+
+        let top_level_frame = &trace.frames[trace.frames.len()-1];
+        assert_eq!(top_level_frame.name, "<module>");
+        assert!((top_level_frame.line == 8) || (top_level_frame.line == 7));
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
+#[test]
+fn test_unicode() {
+    #[cfg(target_os="macos")]
+    {
+        if unsafe { libc::geteuid() } != 0 {
+            return;
+        }
+    }
+    let mut runner = TestRunner::new(Config::default(), "./tests/scripts/unicode💩.py");
+
+    let traces = runner.spy.get_stack_traces().unwrap();
+    assert_eq!(traces.len(), 1);
+    let trace = &traces[0];
+
+    assert_eq!(trace.frames[0].name, "sléép");
+    assert_eq!(trace.frames[0].filename, "./tests/scripts/unicode💩.py");
+    assert_eq!(trace.frames[0].line, 6);
+
+    assert_eq!(trace.frames[1].name, "<module>");
+    assert_eq!(trace.frames[1].line, 9);
+    assert_eq!(trace.frames[0].filename, "./tests/scripts/unicode💩.py");
+
+    assert!(!traces[0].owns_gil);
+}
+
