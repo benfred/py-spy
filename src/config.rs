@@ -247,6 +247,20 @@ impl Config {
             error!("Can't get native stack traces with the --nonblocking option. Disabling native.");
             config.native = false;
         }
+
+        #[cfg(target_os="freebsd")]
+        {
+           if config.pid.is_some() {
+               if std::env::var("PYSPY_ALLOW_FREEBSD_ATTACH").is_err() {
+                    eprintln!("On FreeBSD, running py-spy can cause an exception in the profiled process if the process \
+                        is calling 'socket.connect'.");
+                    eprintln!("While this is fixed in recent versions of python, you need to acknowledge the risk here by \
+                        setting an environment variable PYSPY_ALLOW_FREEBSD_ATTACH to run this command.");
+                    eprintln!("\nSee https://github.com/benfred/py-spy/issues/147 for more information");
+                    std::process::exit(-1);
+               }
+            }
+        }
         Ok(config)
     }
 }
@@ -254,34 +268,37 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn split(cmd: &str) -> Vec<String> {
-        cmd.split_whitespace().map(|x| x.to_owned()).collect()
+    fn get_config(cmd: &str) -> clap::Result<Config> {
+        #[cfg(target_os="freebsd")]
+        std::env::set_var("PYSPY_ALLOW_FREEBSD_ATTACH", "1");
+        let args: Vec<String> = cmd.split_whitespace().map(|x| x.to_owned()).collect();
+        Config::from_args(&args)
     }
 
     #[test]
     fn test_parse_record_args() {
         // basic use case
-        let config = Config::from_args(&split("py-spy record --pid 1234 --output foo")).unwrap();
+        let config = get_config("py-spy record --pid 1234 --output foo").unwrap();
         assert_eq!(config.pid, Some(1234));
         assert_eq!(config.filename, Some(String::from("foo")));
         assert_eq!(config.format, Some(FileFormat::flamegraph));
         assert_eq!(config.command, String::from("record"));
 
         // same command using short versions of everything
-        let short_config = Config::from_args(&split("py-spy r -p 1234 -o foo")).unwrap();
+        let short_config = get_config("py-spy r -p 1234 -o foo").unwrap();
         assert_eq!(config, short_config);
 
         // missing the --pid argument should fail
-        assert_eq!(Config::from_args(&split("py-spy record -o foo")).unwrap_err().kind,
+        assert_eq!(get_config("py-spy record -o foo").unwrap_err().kind,
                    clap::ErrorKind::MissingRequiredArgument);
 
         // but should work when passed a python program
-        let program_config = Config::from_args(&split("py-spy r -o foo -- python test.py")).unwrap();
+        let program_config = get_config("py-spy r -o foo -- python test.py").unwrap();
         assert_eq!(program_config.python_program, Some(vec![String::from("python"), String::from("test.py")]));
         assert_eq!(program_config.pid, None);
 
         // passing an invalid file format should fail
-        assert_eq!(Config::from_args(&split("py-spy r -p 1234 -o foo -f unknown")).unwrap_err().kind,
+        assert_eq!(get_config("py-spy r -p 1234 -o foo -f unknown").unwrap_err().kind,
                    clap::ErrorKind::InvalidValue);
 
         // test out overriding these params by setting flags
@@ -289,7 +306,7 @@ mod tests {
         assert_eq!(config.gil_only, false);
         assert_eq!(config.include_thread_ids, false);
 
-        let config_flags = Config::from_args(&split("py-spy r -p 1234 -o foo --idle --gil --threads")).unwrap();
+        let config_flags = get_config("py-spy r -p 1234 -o foo --idle --gil --threads").unwrap();
         assert_eq!(config_flags.include_idle, true);
         assert_eq!(config_flags.gil_only, true);
         assert_eq!(config_flags.include_thread_ids, true);
@@ -298,34 +315,34 @@ mod tests {
     #[test]
     fn test_parse_dump_args() {
         // basic use case
-        let config = Config::from_args(&split("py-spy dump --pid 1234")).unwrap();
+        let config = get_config("py-spy dump --pid 1234").unwrap();
         assert_eq!(config.pid, Some(1234));
         assert_eq!(config.command, String::from("dump"));
 
         // short version
-        let short_config = Config::from_args(&split("py-spy d -p 1234")).unwrap();
+        let short_config = get_config("py-spy d -p 1234").unwrap();
         assert_eq!(config, short_config);
 
         // missing the --pid argument should fail
-        assert_eq!(Config::from_args(&split("py-spy dump")).unwrap_err().kind,
+        assert_eq!(get_config("py-spy dump").unwrap_err().kind,
                    clap::ErrorKind::MissingRequiredArgument);
     }
 
     #[test]
     fn test_parse_top_args() {
         // basic use case
-        let config = Config::from_args(&split("py-spy top --pid 1234")).unwrap();
+        let config = get_config("py-spy top --pid 1234").unwrap();
         assert_eq!(config.pid, Some(1234));
         assert_eq!(config.command, String::from("top"));
 
         // short version
-        let short_config = Config::from_args(&split("py-spy t -p 1234")).unwrap();
+        let short_config = get_config("py-spy t -p 1234").unwrap();
         assert_eq!(config, short_config);
     }
 
     #[test]
     fn test_parse_args() {
-        assert_eq!(Config::from_args(&split("py-spy dude")).unwrap_err().kind,
+        assert_eq!(get_config("py-spy dude").unwrap_err().kind,
                    clap::ErrorKind::UnrecognizedSubcommand);
     }
 }
