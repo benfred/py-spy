@@ -853,7 +853,7 @@ mod tests {
         assert!(!is_python_lib("/lib/heapq.cpython-36m-darwin.dylib"));
     }
 
-    #[cfg(target_os="linux")]
+    #[cfg(any(target_os="linux", target_os="freebsd"))]
     #[test]
     fn test_is_python_lib() {
         // libpython bundled by pyinstaller https://github.com/benfred/py-spy/issues/42
