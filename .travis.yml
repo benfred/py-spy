@@ -84,7 +84,7 @@ notifications:
 addons:
   apt:
     packages:
-    - python
+    - python3
   homebrew:
     packages:
     - python
