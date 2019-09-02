@@ -16,10 +16,19 @@ use self::bindings::{unw_addr_space_t, unw_cursor, unw_accessors_t, unw_cursor_t
                      unw_frame_regnum_t_UNW_REG_IP, unw_frame_regnum_t_UNW_REG_SP,
                      unw_caching_policy_t, unw_caching_policy_t_UNW_CACHE_PER_THREAD};
 
+#[allow(non_camel_case_types)]
 #[derive(Debug)]
 pub enum Error {
-    /// libunwind call returned an error value
-    LibunwindError(i32),
+    UNW_EUNSPEC,
+    UNW_ENOMEM,
+    UNW_EBADREG,
+    UNW_EREADONLYREG,
+    UNW_ESTOPUNWIND,
+    UNW_EINVALIDIP,
+    UNW_EBADFRAME,
+    UNW_EINVAL,
+    UNW_EBADVERSION,
+    UNW_ENOINFO
 }
 
 type Result<T> = std::result::Result<T, Error>;
@@ -45,7 +54,7 @@ impl LibUnwind {
             let mut cursor = std::mem::uninitialized();
             let ret = init_remote(&mut cursor, self.addr_space, upt);
             if ret != 0 {
-                return Err(Error::LibunwindError(ret));
+                return Err(Error::from(-ret));
             }
             Ok(Cursor{cursor, upt, initial_frame: true})
         }
@@ -73,7 +82,7 @@ impl Cursor {
 
         match get_reg(cursor, register, &mut value) {
             0 => Ok(value),
-            err => Err(Error::LibunwindError(err))
+            err => Err(Error::from(-err))
         }
     }
 
@@ -105,7 +114,7 @@ impl Cursor {
                         continue;
                     },
                     err => {
-                        return Err(Error::LibunwindError(err));
+                        return Err(Error::from(-err));
                     }
                 }
             }
@@ -124,7 +133,7 @@ impl Iterator for Cursor {
             unsafe {
                 match step(&mut self.cursor) {
                     0 => return None,
-                    err if err < 0 => return Some(Err(Error::LibunwindError(err))),
+                    err if err < 0 => return Some(Err(Error::from(-err))),
                     _ => {}
                 }
             };
@@ -195,19 +204,45 @@ extern {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match *self {
-            Error::LibunwindError(e) => write!(f, "libunwind error {}", e)
+            Error::UNW_EUNSPEC => write!(f, "UNW_EUNSPEC: unspecified (general) error"),
+            Error::UNW_ENOMEM => write!(f, "UNW_ENOMEM: out of memoryr"),
+            Error::UNW_EBADREG => write!(f, "UNW_EBADREG: bad register number"),
+            Error::UNW_EREADONLYREG => write!(f, "UNW_EREADONLYREG: attempt to write read-only register "),
+            Error::UNW_ESTOPUNWIND => write!(f, "UNW_ESTOPUNWIND: stop unwinding"),
+            Error::UNW_EINVALIDIP => write!(f, "UNW_EINVALIDIP: invalid IP"),
+            Error::UNW_EBADFRAME => write!(f, "UNW_EBADFRAME: bad frame"),
+            Error::UNW_EINVAL => write!(f, "UNW_EINVAL: unsupported operation or bad value"),
+            Error::UNW_EBADVERSION => write!(f, "UNW_EBADVERSION: unwind info has unsupported version"),
+            Error::UNW_ENOINFO => write!(f, "UNW_ENOINFO: no unwind info found"),
         }
     }
 }
 
 impl std::error::Error for Error {
     fn description(&self) -> &str {
-        match *self {
-            Error::LibunwindError(_) => "LibunwindError"
-        }
+        "LibunwindErrror"
     }
 
     fn cause(&self) -> Option<&std::error::Error> {
         None
+    }
+}
+
+impl Error {
+    fn from(ret: i32) -> Error {
+        // let ret = ret unw_error_t
+        match ret as u32 {
+            bindings::unw_error_t_UNW_EUNSPEC => Error::UNW_EUNSPEC,
+            bindings::unw_error_t_UNW_ENOMEM => Error::UNW_ENOMEM,
+            bindings::unw_error_t_UNW_EBADREG => Error::UNW_EBADREG,
+            bindings::unw_error_t_UNW_EREADONLYREG => Error::UNW_EREADONLYREG,
+            bindings::unw_error_t_UNW_ESTOPUNWIND => Error::UNW_ESTOPUNWIND,
+            bindings::unw_error_t_UNW_EINVALIDIP => Error::UNW_EINVALIDIP,
+            bindings::unw_error_t_UNW_EBADFRAME => Error::UNW_EBADFRAME,
+            bindings::unw_error_t_UNW_EINVAL => Error::UNW_EINVAL,
+            bindings::unw_error_t_UNW_EBADVERSION => Error::UNW_EBADVERSION,
+            bindings::unw_error_t_UNW_ENOINFO => Error::UNW_ENOINFO,
+            _ => Error::UNW_EUNSPEC
+        }
     }
 }

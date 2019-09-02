@@ -201,13 +201,23 @@ impl PythonSpy {
 
             // Try getting the native thread id
             let python_thread_id = thread.thread_id();
-            let os_thread_id = self._get_os_thread_id(python_thread_id, &interp)?;
+            let mut os_thread_id = self._get_os_thread_id(python_thread_id, &interp)?;
+
+            // linux can see issues where pthread_ids get recycled for new OS threads,
+            // which totally breaks the caching we were doing here. Detect this and retry
+            if let Some(tid) = os_thread_id {
+                if thread_activity.len() > 0 && !thread_activity.contains_key(&tid) {
+                    info!("clearing away thread_id cache, thread {} has exitted", tid);
+                    self.python_thread_ids.clear();
+                    os_thread_id = self._get_os_thread_id(python_thread_id, &interp)?;
+                }
+            }
 
             trace.os_thread_id = os_thread_id.map(|id| id as u64);
             trace.owns_gil = trace.thread_id == gil_thread_id;
 
             // Figure out if the thread is sleeping from the OS if possible
-            trace.active = !self._heuristic_is_thread_idle(&trace);
+            trace.active = true;
             if let Some(id) = os_thread_id {
                 if let Some(active) = thread_activity.get(&id) {
                     trace.active = *active;
@@ -224,14 +234,13 @@ impl PythonSpy {
                 trace.active = !self._heuristic_is_thread_idle(&trace);
             }
 
-
             // Merge in the native stack frames if necessary
             #[cfg(unwind)]
             {
                 if self.config.native {
                     if let Some(native) = self.native.as_mut() {
                         let os_thread = remoteprocess::Thread::new(os_thread_id.unwrap())?;
-                        trace.frames = native.merge_native_thread(&trace.frames, &os_thread)?;
+                        trace.frames = native.merge_native_thread(&trace.frames, &os_thread)?
                     }
                 }
             }
@@ -257,7 +266,9 @@ impl PythonSpy {
     fn _heuristic_is_thread_idle(&self, trace: &StackTrace) -> bool {
         let frames = &trace.frames;
         if frames.is_empty() {
-            true
+            // we could have 0 python frames, but still be active running native
+            // code.
+            false
         } else {
             let frame = &frames[0];
             (frame.name == "wait" && frame.filename.ends_with("threading.py")) ||
