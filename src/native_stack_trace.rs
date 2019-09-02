@@ -1,4 +1,3 @@
-#[cfg(target_os="linux")]
 use std::collections::HashSet;
 use failure::Error;
 
@@ -59,9 +58,9 @@ impl NativeStack {
 
         // on linux, try again with libunwind if we fail with the gimli based unwinder
         #[cfg(target_os="linux")]
-        let native_stack = match self.get_thread(&thread) {
-            Ok(x) => x,
-            Err(_) =>  self.get_libunwind_thread(&thread)?
+        let (native_stack, from_libunwind) = match self.get_thread(&thread) {
+            Ok(x) => (x, false),
+            Err(_) => (self.get_libunwind_thread(&thread)?, true)
         };
 
         // TODO: merging the two stack together could happen outside of thread lock
@@ -71,7 +70,12 @@ impl NativeStack {
         #[cfg(target_os="linux")]
         match self.merge_native_stack(frames, native_stack) {
             Ok(merged) => return Ok(merged),
-            Err(_) => {
+            Err(e) => {
+                // if we got an error merging the stack traces, try again with libunwind
+                // (but only if we haven't used libunwind already)
+                if from_libunwind {
+                    return Err(e);
+                }
                 let native_stack = self.get_libunwind_thread(&thread)?;
                 return self.merge_native_stack(frames, native_stack);
             }
@@ -113,7 +117,7 @@ impl NativeStack {
                 continue;
             }
 
-            // Keep track of the first symbolicated frame for caching. We don't cache anything (yet) wheree
+            // Keep track of the first symbolicated frame for caching. We don't cache anything (yet) where
             // symoblicationg returns multiple frames for an address, like in the case of inlined function calls.
             // so track how many frames we get for the address, and only update cache in the happy case
             // of 1 frame
@@ -175,24 +179,44 @@ impl NativeStack {
     }
 
     fn get_merge_strategy(&self, check_python: bool, frame: &remoteprocess::StackFrame) -> MergeType {
-        if check_python || frame.module == self.python.filename {
+        if check_python {
             if let Some(ref function) = frame.function {
-                // ugh, probably could do a better job of figuring this out
-                // (also the symbols are different for each OS)
-                if function == "PyEval_EvalFrameDefault" ||
-                    function == "_PyEval_EvalFrameDefault" ||
-                    function == "__PyEval_EvalFrameDefault" ||
-                    function == "PyEval_EvalFrameEx" {
+                // We want to include some internal python functions. For example, calls like time.sleep
+                // or os.kill etc are implemented as builtins in the interpeter and filtering them out
+                // is misleading. Create a set of whitelisted python function prefixes to include
+                lazy_static! {
+                    static ref WHITELISTED_PREFIXES: HashSet<&'static str> = {
+                        let mut prefixes = HashSet::new();
+                        prefixes.insert("time");
+                        prefixes.insert("sys");
+                        prefixes.insert("gc");
+                        prefixes.insert("os");
+                        prefixes.insert("unicode");
+                        prefixes.insert("thread");
+                        prefixes.insert("stringio");
+                        prefixes.insert("sre");
+                        // likewise reasoning about lock contention inside python is also useful
+                        prefixes.insert("PyGilState");
+                        prefixes.insert("PyThread");
+                        prefixes.insert("lock");
+                        prefixes
+                    };
+                }
 
-                        MergeType::MergePythonFrame
-
-                // Certain python functions are worth calling out, for visualizing things
-                // like GIL contention etc
-                } else if function == "_time_sleep" || function == "time_sleep" ||
-                    function == "PyGILState_Ensure" || function == "_PyGILState_Ensure" {
-                        MergeType::MergeNativeFrame
-                } else {
-                    MergeType::Ignore
+                // Figure out the merge type by looking at the function name, frames that
+                // are used in evaluating python code are ignored, aside from PyEval_EvalFrame*
+                // which is replaced by the function from the python stack
+                let mut tokens = function.split("_").filter(|&x| x.len() > 0);
+                match tokens.next() {
+                    Some("PyEval") => {
+                        match tokens.next() {
+                            Some("EvalFrameDefault") => MergeType::MergePythonFrame,
+                            Some("EvalFrameEx") => MergeType::MergePythonFrame,
+                            _ => MergeType::Ignore
+                        }
+                    },
+                    Some(prefix) if WHITELISTED_PREFIXES.contains(prefix) => MergeType::MergeNativeFrame,
+                    _ => MergeType::Ignore
                 }
             } else {
                 // is this correct? if we don't have a function name and in python binary should ignore?
@@ -290,6 +314,7 @@ impl NativeStack {
     }
 }
 
+#[derive(Debug)]
 enum MergeType {
     Ignore,
     MergePythonFrame,

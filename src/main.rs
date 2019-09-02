@@ -291,7 +291,7 @@ fn record_samples(process: &mut PythonSpy, config: &Config) -> Result<(), Error>
                     exit_message = "Stopped sampling because the process ended";
                     break;
                 } else {
-                    warn!("Failed to get stack trace {:?}", e);
+                    warn!("Failed to get stack trace {}", e);
                     errors += 1;
                 }
             }
@@ -441,7 +441,7 @@ fn pyspy_main() -> Result<(), Error> {
 }
 
 fn main() {
-    env_logger::init();
+    env_logger::builder().default_format_timestamp_nanos(true).try_init().unwrap();
 
     if let Err(err) = pyspy_main() {
         #[cfg(unix)]
