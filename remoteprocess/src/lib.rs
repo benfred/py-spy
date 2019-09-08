@@ -54,7 +54,6 @@ extern crate proc_maps;
 extern crate goblin;
 extern crate benfred_read_process_memory as read_process_memory;
 extern crate memmap;
-extern crate gimli;
 extern crate libc;
 #[macro_use]
 extern crate log;
@@ -76,10 +75,6 @@ extern crate libproc;
 #[cfg(windows)]
 extern crate winapi;
 
-#[cfg(all(target_os="macos", unwind))]
-#[macro_use]
-mod dylib;
-
 #[cfg(target_os="macos")]
 mod osx;
 #[cfg(target_os="macos")]
@@ -100,13 +95,9 @@ mod windows;
 #[cfg(target_os="windows")]
 pub use windows::*;
 
-#[cfg(all(unix, unwind))]
-mod dwarf_unwind;
-
 #[derive(Debug)]
 pub enum Error {
     NoBinaryForAddress(u64),
-    GimliError(gimli::Error),
     GoblinError(::goblin::error::Error),
     IOError(std::io::Error),
     Other(String),
@@ -114,8 +105,6 @@ pub enum Error {
     LibunwindError(linux::libunwind::Error),
     #[cfg(target_os="linux")]
     NixError(nix::Error),
-    #[cfg(target_os="macos")]
-    CompactUnwindError(osx::compact_unwind::CompactUnwindError),
 }
 
 impl std::fmt::Display for Error {
@@ -124,7 +113,6 @@ impl std::fmt::Display for Error {
             Error::NoBinaryForAddress(addr) => {
                 write!(f, "No binary found for address 0x{:016x}. Try reloading.", addr)
             },
-            Error::GimliError(ref e) => e.fmt(f),
             Error::GoblinError(ref e) => e.fmt(f),
             Error::IOError(ref e) => e.fmt(f),
             Error::Other(ref e) => write!(f, "{}", e),
@@ -132,8 +120,6 @@ impl std::fmt::Display for Error {
             Error::LibunwindError(ref e) => e.fmt(f),
             #[cfg(target_os="linux")]
             Error::NixError(ref e) => e.fmt(f),
-            #[cfg(target_os="macos")]
-            Error::CompactUnwindError(ref e) => e.fmt(f),
         }
     }
 }
@@ -142,38 +128,26 @@ impl std::error::Error for Error {
     fn description(&self) -> &str {
         match *self {
             Error::NoBinaryForAddress(_) => "No binary found for address",
-            Error::GimliError(ref e) => e.description(),
             Error::GoblinError(ref e) => e.description(),
             Error::IOError(ref e) => e.description(),
             #[cfg(all(target_os="linux", unwind))]
             Error::LibunwindError(ref e) => e.description(),
             #[cfg(target_os="linux")]
             Error::NixError(ref e) => e.description(),
-            #[cfg(target_os="macos")]
-            Error::CompactUnwindError(ref e) => e.description(),
             Error::Other(ref e) => e,
         }
     }
 
     fn cause(&self) -> Option<&dyn std::error::Error> {
         match *self {
-            Error::GimliError(ref e) => Some(e),
             Error::GoblinError(ref e) => Some(e),
             Error::IOError(ref e) => Some(e),
             #[cfg(all(target_os="linux", unwind))]
             Error::LibunwindError(ref e) => Some(e),
             #[cfg(target_os="linux")]
             Error::NixError(ref e) => Some(e),
-            #[cfg(target_os="macos")]
-            Error::CompactUnwindError(ref e) => Some(e),
             _ => None,
         }
-    }
-}
-
-impl From<gimli::Error> for Error {
-    fn from(err: gimli::Error) -> Error {
-        Error::GimliError(err)
     }
 }
 
@@ -200,13 +174,6 @@ impl From<nix::Error> for Error {
 impl From<linux::libunwind::Error> for Error {
     fn from(err: linux::libunwind::Error) -> Error {
         Error::LibunwindError(err)
-    }
-}
-
-#[cfg(target_os="macos")]
-impl From<osx::compact_unwind::CompactUnwindError> for Error {
-    fn from(err: osx::compact_unwind::CompactUnwindError) -> Error {
-        Error::CompactUnwindError(err)
     }
 }
 

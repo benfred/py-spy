@@ -1,11 +1,155 @@
 use std::fs::File;
+use std::path::Path;
+use std::cell::RefCell;
+use std::collections::BTreeMap;
+
 use memmap;
+use memmap::Mmap;
 
 use object::{self, Object};
 use addr2line::Context;
-use gimli;
-use crate::{StackFrame, Error};
+use goblin;
+use goblin::elf::program_header::*;
+use crate::{StackFrame, Error, Process, Pid };
 
+use crate::ProcessMemory;
+
+
+pub struct Symbolicator {
+    binaries: BTreeMap<u64, BinaryInfo>,
+    process: Process,
+    pid: Pid
+}
+
+impl Symbolicator {
+    pub fn new(pid: Pid) -> Result<Symbolicator, Error> {
+        let process = Process::new(pid)?;
+        let mut ret = Symbolicator{binaries: BTreeMap::new(), process, pid};
+        ret.reload()?;
+        Ok(ret)
+    }
+
+    pub fn reload(&mut self) -> Result<(), Error> {
+        info!("reloading process binaries");
+
+        // Get shared libraries from virtual memory mapped files
+        let maps = &proc_maps::get_process_maps(self.pid)?;
+        let shared_maps = maps.iter().filter(|m| m.is_exec() && !m.is_write() && m.is_read());
+
+        // Open them up and parse etc
+        for m in shared_maps {
+            // Get the filename if it exists from the map
+            let filename = match m.filename() {
+                Some(f) => f,
+                None => continue
+            };
+
+            // TODO: probably also want to check if the filename/size is the same
+            let address_key = (m.start() + m.size()) as u64;
+            if self.binaries.contains_key(&address_key) {
+                debug!("skipping {}", filename);
+                continue;
+            }
+            info!("loading debug info from {}", filename);
+
+            // Memory-map the file, special casing [vdso] regions
+            let file;
+            let mmapped_file;
+            let vdso_data;
+
+            let buffer = if Path::new(filename).exists() {
+                file = File::open(Path::new(filename))?;
+                mmapped_file = unsafe { Mmap::map(&file)? };
+                &mmapped_file[..]
+            } else if filename != "[vsyscall]" {
+                // if the filename doesn't exist, its' almost certainly the vdso section
+                // read from the the target processses memory
+                vdso_data = self.process.copy(m.start(), m.size())?;
+                &vdso_data
+            } else {
+                // vsyscall region, can be ignored, but lets not keep on trying to do this
+                info!("skipping {} region", filename);
+
+                // insert a stub for [vsyscall] so that we don't continually try to load it etc
+                self.binaries.insert(address_key,
+                        BinaryInfo{offset: 0, address: m.start() as u64, size: m.size() as u64,
+                                   filename: filename.to_string(), symbols: RefCell::new(None)});
+                continue;
+            };
+
+            debug!("loading file {} 0x{:X} 0x{:X}", filename, m.start(), buffer.len());
+            match goblin::Object::parse(&buffer) {
+                Ok(goblin::Object::Elf(elf)) => {
+                    trace!("filename {} elf {:#?}", filename, elf);
+
+                    let program_header = elf.program_headers
+                        .iter()
+                        .find(|ref header| header.p_type == PT_LOAD && header.p_flags & PF_X != 0);
+
+                    let obj_base = match program_header {
+                        Some(hdr) => { m.start() as u64 - hdr.p_vaddr },
+                        None => {
+                            warn!("Failed to find exectuable PT_LOAD header in {}", filename);
+                            continue;
+                        }
+                    };
+
+                    // the map key is the end address of this filename, which lets us do a relatively efficent range
+                    // based lookup of the binary
+                    self.binaries.insert(address_key,
+                        BinaryInfo{offset: obj_base, address: m.start() as u64, size: m.size() as u64,
+                                   filename: filename.to_string(), symbols: RefCell::new(None)});
+                },
+                Ok(_) => {
+                    warn!("unknown binary type for {}", filename);
+                    continue;
+                }
+                Err(e) => {
+                    warn!("Failed to parse {}: {:?}", filename, e);
+                    continue;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn symbolicate(&self, addr: u64, line_info: bool, callback: &mut FnMut(&StackFrame)) -> Result<(), Error> {
+        let binary = match self.get_binary(addr) {
+            Some(binary) => binary,
+            None => {
+                return Err(Error::NoBinaryForAddress(addr));
+            }
+        };
+        if binary.filename != "[vdso]" {
+            let mut symbols = binary.symbols.borrow_mut();
+            if symbols.is_none() {
+                info!("loading symbols from {}", binary.filename);
+                *symbols = Some(SymbolData::new(&binary.filename, binary.offset));
+            }
+            match symbols.as_ref() {
+                Some(Ok(symbols)) => symbols.symbolicate(addr, line_info, callback),
+                _ => {
+                    // we probably failed to load the symbols (maybe goblin v0.15 dependency causing error
+                    // in gimli/object crate). Rather than fail add a stub
+                    callback(&StackFrame{line: None, addr, function: None, filename: None, module: binary.filename.clone()});
+                    Ok(())
+                }
+            }
+        } else {
+            // TODO: allow symbolication code to access vdso data
+            callback(&StackFrame{line: None, addr, function: None, filename: None, module: binary.filename.clone()});
+            Ok(())
+        }
+    }
+
+    fn get_binary(&self, addr: u64) -> Option<&BinaryInfo> {
+        match self.binaries.range(addr..).next() {
+            Some((_, binary)) if binary.contains(addr) => Some(&binary),
+            Some(_) => None,
+            _ => None
+        }
+    }
+}
 
 pub struct SymbolData {
     // Contains symbol info for a single binary
@@ -26,7 +170,8 @@ impl SymbolData {
             Ok(f) => f,
             Err(e) => {
                 error!("failed to parse file for symbolication {}: {:?}", filename, e);
-                return Err(gimli::Error::OffsetOutOfBounds.into());
+                // return Err(gimli::Error::OffsetOutOfBounds.into());
+                return Err(Error::Other("Failed to parse file for symbolication".to_string()));
             }
         };
 
@@ -110,5 +255,21 @@ impl SymbolData {
         }
         callback(&ret);
         Ok(())
+    }
+}
+
+
+// Contains info for a binary on how to unwind/symbolicate a stack trace
+struct BinaryInfo {
+    address: u64,
+    size: u64,
+    offset: u64,
+    filename: String,
+    symbols: RefCell<Option<Result<SymbolData, Error>>>
+}
+
+impl BinaryInfo {
+    pub fn contains(&self, addr: u64) -> bool {
+        addr >= self.address && addr < (self.address + self.size)
     }
 }

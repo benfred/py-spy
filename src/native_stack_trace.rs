@@ -16,9 +16,7 @@ pub struct NativeStack {
     libpython: Option<BinaryInfo>,
     cython_maps: cython::SourceMaps,
     unwinder: remoteprocess::Unwinder,
-    // on linux, we also fallback to using libunwind if the main gimli based unwinder fails
-    #[cfg(target_os="linux")]
-    libunwinder: remoteprocess::LibUnwind,
+    symbolicator: remoteprocess::Symbolicator,
     // TODO: right now on windows if we don't hold on the process handle unwinding will fail
     #[allow(dead_code)]
     process: remoteprocess::Process,
@@ -31,16 +29,11 @@ impl NativeStack {
 
         let process = remoteprocess::Process::new(pid)?;
         let unwinder = process.unwinder()?;
+        let symbolicator = process.symbolicator()?;
 
-        // Try to load up libunwind-ptrace on linux
-        #[cfg(target_os="linux")]
-        let libunwinder = remoteprocess::libunwind::LibUnwind::new()?;
-
-        return Ok(NativeStack{cython_maps, unwinder, should_reload: false,
+        return Ok(NativeStack{cython_maps, unwinder, symbolicator, should_reload: false,
                               python,
                               libpython,
-                              #[cfg(target_os="linux")]
-                              libunwinder,
                               process,
                               symbol_cache: LruCache::new(4096)
                               });
@@ -48,38 +41,15 @@ impl NativeStack {
 
     pub fn merge_native_thread(&mut self, frames: &Vec<Frame>, thread: &remoteprocess::Thread) -> Result<Vec<Frame>, Error> {
         if self.should_reload {
-            self.unwinder.reload()?;
+            self.symbolicator.reload()?;
             self.should_reload = false;
         }
 
         // get the native stack from the thread
-        #[cfg(not(target_os="linux"))]
         let native_stack = self.get_thread(thread)?;
 
-        // on linux, try again with libunwind if we fail with the gimli based unwinder
-        #[cfg(target_os="linux")]
-        let (native_stack, from_libunwind) = match self.get_thread(&thread) {
-            Ok(x) => (x, false),
-            Err(_) => (self.get_libunwind_thread(&thread)?, true)
-        };
-
         // TODO: merging the two stack together could happen outside of thread lock
-        #[cfg(not(target_os="linux"))]
         return self.merge_native_stack(frames, native_stack);
-
-        #[cfg(target_os="linux")]
-        match self.merge_native_stack(frames, native_stack) {
-            Ok(merged) => return Ok(merged),
-            Err(e) => {
-                // if we got an error merging the stack traces, try again with libunwind
-                // (but only if we haven't used libunwind already)
-                if from_libunwind {
-                    return Err(e);
-                }
-                let native_stack = self.get_libunwind_thread(&thread)?;
-                return self.merge_native_stack(frames, native_stack);
-            }
-        }
     }
     pub fn merge_native_stack(&mut self, frames: &Vec<Frame>, native_stack: Vec<u64>) -> Result<Vec<Frame>, Error> {
         let mut python_frame_index = 0;
@@ -124,7 +94,7 @@ impl NativeStack {
             let mut symbolicated_count = 0;
             let mut first_frame = None;
 
-            self.unwinder.symbolicate(addr, !is_python_addr, &mut |frame: &remoteprocess::StackFrame| {
+            self.symbolicator.symbolicate(addr, !is_python_addr, &mut |frame: &remoteprocess::StackFrame| {
                 symbolicated_count += 1;
                 if symbolicated_count == 1 {
                     first_frame = Some(frame.clone());
@@ -273,22 +243,7 @@ impl NativeStack {
 
     fn get_thread(&mut self, thread: &remoteprocess::Thread) -> Result<Vec<u64>, Error> {
         let mut stack = Vec::new();
-        let mut cursor = self.unwinder.cursor(thread)?;
-
-        while let Some(ip) = cursor.next() {
-            if let Err(remoteprocess::Error::NoBinaryForAddress(addr)) = ip {
-                debug!("don't have a binary for 0x{:x} - reloading", addr);
-                self.should_reload = true;
-            }
-            stack.push(ip?);
-        }
-        Ok(stack)
-    }
-
-    #[cfg(target_os="linux")]
-    fn get_libunwind_thread(&self, thread: &remoteprocess::Thread) -> Result<Vec<u64>, Error> {
-        let mut stack = Vec::new();
-        for ip in self.libunwinder.cursor(thread.id()? as i32)? {
+        for ip in self.unwinder.cursor(thread)? {
             stack.push(ip?);
         }
         Ok(stack)
@@ -298,7 +253,7 @@ impl NativeStack {
     pub fn get_pthread_id(&self, thread: &remoteprocess::Thread, threadids: &HashSet<u64>) -> Result<u64, Error> {
         let mut pthread_id = 0;
 
-        let mut cursor = self.libunwinder.cursor(thread.id()? as i32)?;
+        let mut cursor = self.unwinder.cursor(thread)?;
         while let Some(_) = cursor.next() {
             // the pthread_id is usually in the top-level frame of the thread, but on some configs
             // can be 2nd level. Handle this by taking the top-most rbx value that is one of the
