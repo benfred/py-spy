@@ -59,11 +59,5 @@ processors, or from FreeBSD.
 ## Credits
 
 This crate heavily relies on the [gimli](https://github.com/gimli-rs/gimli) project. Gimli is an
-amazing tool for parsing DWARF debugging information, and we are using it here for getting
-stack traces and looking up filename and line numbers given an instruction pointeer.
-
-This crate includes code that was originally written as part of
-[backtrace-rs](https://github.com/alexcrichton/backtrace-rs). In particular, we are using the OSX
-symbolication code from backtrace-rs, which was modified here to support working with remote processes. This also requires a utility module ([dylib.rs](https://github.com/alexcrichton/backtrace-rs/blob/master/src/dylib.rs)) from
-backtrace-rs to dynamically load the core symbolication framework on OSX, and which is also being
-used on linux to load libunwind-ptrace if it is installed for a fallback stack unwinder. backtrace-rs is licensed under the [MIT license](https://opensource.org/licenses/MIT), a copy of which is included in the relevant files here.
+amazing tool for parsing DWARF debugging information, and we are using it here for looking up filename
+and line numbers given an instruction pointeer.

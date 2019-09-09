@@ -18,10 +18,12 @@ pub type Tid = Pid;
 use super::Error;
 
 mod unwinder;
+mod symbolication;
 mod syscalls_x64;
 
 use self::syscalls_x64::{Syscall, lookup_syscall};
 pub use self::unwinder::Unwinder;
+pub use self::symbolication::Symbolicator;
 
 pub struct Process {
     pub pid: Pid,
@@ -137,6 +139,10 @@ impl Process {
 
     pub fn unwinder(&self) -> Result<unwinder::Unwinder, Error> {
         unwinder::Unwinder::new(self.handle.0)
+    }
+
+    pub fn symbolicator(&self) -> Result<Symbolicator, Error> {
+        Symbolicator::new(self.handle.0)
     }
 }
 

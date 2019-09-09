@@ -6,4 +6,4 @@ def sléép(seconds):
     time.sleep(seconds)
 
 if __name__ == "__main__":
-    sléép(1)
+    sléép(100)

@@ -1,12 +1,3 @@
-/// On linux, the most reliable way of unwinding a stack trace is going to be to use the libunwind-ptrace library
-/// However, this isn't guaranteed to be installed on each system - and it doesn't seem like static linking it
-/// is a viable solution.
-///
-/// Also the performance of libunwind-ptrace seems to be quite a bit worse than that of the gimli based unwinder
-/// we're using here. (around 10x slower when I was testing on my system)
-///
-/// So instead of linking directly to libunwind and adding a hard dependency, let's load up at runtime instead.
-/// (currently we're using libunwind mainly to validate the gimli unwider)
 use libc::{c_int, c_void, c_char, size_t, pid_t};
 use std;
 
@@ -31,37 +22,37 @@ pub enum Error {
     UNW_ENOINFO
 }
 
-type Result<T> = std::result::Result<T, Error>;
+type Result<T> = std::result::Result<T, crate::Error>;
 
-pub struct LibUnwind {
+pub struct Unwinder {
     pub addr_space: unw_addr_space_t
 }
 
-impl LibUnwind {
-    pub fn new() -> Result<LibUnwind> {
+impl Unwinder {
+    pub fn new() -> Result<Unwinder> {
         unsafe {
             let addr_space = create_addr_space(&_UPT_accessors as *const _ as *mut _, 0);
             // enabling caching provides a modest speedup - but is still much slower than the gimli unwinding
             set_caching_policy(addr_space, unw_caching_policy_t_UNW_CACHE_PER_THREAD);
-            Ok(LibUnwind{addr_space})
+            Ok(Unwinder{addr_space})
         }
     }
 
-    pub fn cursor(&self, pid: pid_t) -> Result<Cursor> {
+    pub fn cursor(&self, thread: &crate::Thread) -> Result<Cursor> {
         unsafe
         {
-            let upt = _UPT_create(pid as _);
+            let upt = _UPT_create(thread.id()? as _);
             let mut cursor = std::mem::uninitialized();
             let ret = init_remote(&mut cursor, self.addr_space, upt);
             if ret != 0 {
-                return Err(Error::from(-ret));
+                return Err(crate::Error::LibunwindError(Error::from(-ret)));
             }
             Ok(Cursor{cursor, upt, initial_frame: true})
         }
     }
 }
 
-impl Drop for LibUnwind {
+impl Drop for Unwinder {
     fn drop(&mut self) {
         unsafe {
             destroy_addr_space(self.addr_space);
@@ -82,7 +73,7 @@ impl Cursor {
 
         match get_reg(cursor, register, &mut value) {
             0 => Ok(value),
-            err => Err(Error::from(-err))
+            err => Err(crate::Error::LibunwindError(Error::from(-err)))
         }
     }
 
@@ -114,7 +105,7 @@ impl Cursor {
                         continue;
                     },
                     err => {
-                        return Err(Error::from(-err));
+                        return Err(crate::Error::LibunwindError(Error::from(-err)));
                     }
                 }
             }
@@ -133,7 +124,7 @@ impl Iterator for Cursor {
             unsafe {
                 match step(&mut self.cursor) {
                     0 => return None,
-                    err if err < 0 => return Some(Err(Error::from(-err))),
+                    err if err < 0 => return Some(Err(crate::Error::LibunwindError(Error::from(-err)))),
                     _ => {}
                 }
             };

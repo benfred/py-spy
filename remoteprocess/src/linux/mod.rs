@@ -1,12 +1,9 @@
 #[cfg(unwind)]
 pub mod libunwind;
 #[cfg(unwind)]
-mod gimli_unwinder;
-#[cfg(unwind)]
 mod symbolication;
+
 use libc::pid_t;
-#[cfg(unwind)]
-use libc::c_void;
 
 use nix::{self, sys::wait, sys::ptrace, {sched::{setns, CloneFlags}}};
 use std::convert::TryInto;
@@ -14,16 +11,13 @@ use std::io::Read;
 use std::os::unix::io::AsRawFd;
 use std::fs::File;
 
-#[cfg(unwind)]
-use crate::dwarf_unwind::Registers;
 use super::Error;
 
 #[cfg(unwind)]
-pub use self::gimli_unwinder::*;
-#[cfg(unwind)]
 pub use self::symbolication::*;
+
 #[cfg(unwind)]
-pub use self::libunwind::{LibUnwind};
+pub use self::libunwind::Unwinder;
 
 use read_process_memory::{CopyAddress, ProcessHandle};
 
@@ -111,7 +105,12 @@ impl Process {
 
     #[cfg(unwind)]
     pub fn unwinder(&self) -> Result<Unwinder, Error> {
-        Unwinder::new(self.pid)
+        Ok(Unwinder::new()?)
+    }
+
+    #[cfg(unwind)]
+    pub fn symbolicator(&self) -> Result<Symbolicator, Error> {
+        Ok(Symbolicator::new(self.pid)?)
     }
 }
 
@@ -129,20 +128,6 @@ impl Thread {
 
     pub fn lock(&self) -> Result<ThreadLock, Error> {
         Ok(ThreadLock::new(self.tid)?)
-    }
-
-    #[cfg(unwind)]
-    pub fn registers(&self) -> Result<Registers, Error> {
-        unsafe {
-            let mut data: Registers = std::mem::zeroed();
-            // nix has marked this as deprecated (in favour of specific functions like attach)
-            // but hasn't yet exposed PTRACE_GETREGS as it's own function
-            #[allow(deprecated)]
-            ptrace::ptrace(ptrace::Request::PTRACE_GETREGS, self.tid,
-                            std::ptr::null_mut(),
-                            &mut data as *mut _ as * mut c_void)?;
-            Ok(data)
-        }
     }
 
     pub fn id(&self) -> Result<Tid, Error> {

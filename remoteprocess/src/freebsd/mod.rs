@@ -3,8 +3,6 @@ mod procstat;
 mod ptrace;
 mod lock;
 
-mod registers;
-
 use libc::{pid_t, lwpid_t};
 use read_process_memory::{CopyAddress, ProcessHandle};
 
@@ -14,7 +12,6 @@ use std::rc::{Rc, Weak};
 
 use super::{ProcessMemory, Error};
 use freebsd::lock::ProcessLock;
-use freebsd::registers::Registers;
 
 pub type Pid = pid_t;
 pub type Tid = lwpid_t;
@@ -123,16 +120,6 @@ impl Thread {
 
     pub fn lock(&self) -> Result<Rc<ProcessLock>, Error> {
         process_lock(self.pid, &self.lock)
-    }
-
-    pub fn registers(&self) -> Result<Registers, Error> {
-        let data: Registers = Registers::default();
-
-        let _lock = self.lock()?;
-
-        ptrace::getregs(self.tid, &data as *const _ as _)?;
-
-        Ok(data)
     }
 }
 
