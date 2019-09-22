@@ -113,7 +113,7 @@ impl Symbolicator {
         Ok(())
     }
 
-    pub fn symbolicate(&self, addr: u64, line_info: bool, callback: &mut FnMut(&StackFrame)) -> Result<(), Error> {
+    pub fn symbolicate(&self, addr: u64, line_info: bool, callback: &mut dyn FnMut(&StackFrame)) -> Result<(), Error> {
         let binary = match self.get_binary(addr) {
             Some(binary) => binary,
             None => {
@@ -196,7 +196,7 @@ impl SymbolData {
         Ok(SymbolData{ctx, offset, dynamic_symbols, symbols, filename: filename.to_owned()})
     }
 
-    pub fn symbolicate(&self, addr: u64, line_info: bool, callback: &mut FnMut(&StackFrame)) -> Result<(), Error> {
+    pub fn symbolicate(&self, addr: u64, line_info: bool, callback: &mut dyn FnMut(&StackFrame)) -> Result<(), Error> {
         let mut ret = StackFrame{line:None, filename: None, function: None, addr, module: self.filename.clone()};
 
         // get the address before relocations

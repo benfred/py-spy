@@ -125,9 +125,9 @@ pub fn ignore_frame(name: &str) -> bool {
 }
 
 pub fn demangle(name: &str) -> &str {
-    // slice off any leading cython prefix
-    let prefixes = ["__pyx_fuse_1_0__pyx_pw",  "__pyx_pf", "__pyx_pw", "__pyx_f", "___pyx_f", "___pyx_pw",
-                    "use_0__pyx_f", "use_1__pyx_f"];
+    // slice off any leading cython prefix.
+    let prefixes = ["__pyx_fuse_1_0__pyx_pw", "__pyx_fuse_0__pyx_f", "__pyx_fuse_1__pyx_f",
+                    "__pyx_pf", "__pyx_pw", "__pyx_f", "___pyx_f", "___pyx_pw"];
     let mut current = match prefixes.iter().find(|&prefix| name.starts_with(prefix)) {
         Some(prefix) => &name[prefix.len()..],
         None => return name
@@ -181,7 +181,10 @@ mod tests {
         assert_eq!(demangle("__pyx_pw_8implicit_4_als_5least_squares_cg"), "least_squares_cg");
         assert_eq!(demangle("__pyx_fuse_1_0__pyx_pw_8implicit_4_als_31_least_squares_cg"), "_least_squares_cg");
         assert_eq!(demangle("__pyx_f_6mtrand_cont0_array"), "mtrand_cont0_array");
-        assert_eq!(demangle("use_1__pyx_f_8implicit_3bpr_has_non_zero"), "bpr_has_non_zero");
+        // in both of these cases we should ideally slice off the module (_als/bpr), but it gets tricky
+        // implementation wise
+        assert_eq!(demangle("__pyx_fuse_0__pyx_f_8implicit_4_als_axpy"), "_als_axpy");
+        assert_eq!(demangle("__pyx_fuse_1__pyx_f_8implicit_3bpr_has_non_zero"), "bpr_has_non_zero");
     }
 
     #[test]
