@@ -152,6 +152,7 @@ extern {
     // functions in libunwind-ptrace.so
     fn _UPT_create(pid: pid_t) -> *mut c_void;
     fn _UPT_destroy(p: *mut c_void) -> c_void;
+    #[allow(improper_ctypes)]
     static _UPT_accessors: unw_accessors_t;
 }
 
@@ -159,6 +160,7 @@ extern {
 extern {
     // functions in libunwind-x86_64.so (TODO: define similar for 32bit)
      #[link_name="_Ux86_64_create_addr_space"]
+    #[allow(improper_ctypes)]
     fn create_addr_space(acc: *mut unw_accessors_t, byteorder: c_int) -> unw_addr_space_t;
     #[link_name="_Ux86_64_destroy_addr_space"]
     fn destroy_addr_space(addr: unw_addr_space_t) -> c_void;
@@ -214,7 +216,7 @@ impl std::error::Error for Error {
         "LibunwindErrror"
     }
 
-    fn cause(&self) -> Option<&std::error::Error> {
+    fn cause(&self) -> Option<&dyn std::error::Error> {
         None
     }
 }

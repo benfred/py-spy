@@ -66,7 +66,19 @@ pub fn get_stack_trace<T, P >(thread: &T, process: &P) -> Result<StackTrace, Err
 
         let filename = copy_string(code.filename(), process).context("Failed to copy filename")?;
         let name = copy_string(code.name(), process).context("Failed to copy function name")?;
-        let line = get_line_number(&code, frame.lasti(), process).context("Failed to get line number")?;
+
+
+        let line = match get_line_number(&code, frame.lasti(), process) {
+            Ok(line) => line,
+            Err(e) => {
+                // Failling to get the line number really shouldn't be fatal here, but
+                // can happen in extreme cases (https://github.com/benfred/py-spy/issues/164)
+                // Rather than fail set the linenumber to 0. This is used by the native extensions
+                // to indicate that we can't load a line number and it should be handled gracefully
+                warn!("Failed to get line number from {}.{}: {}", filename, name, e);
+                0
+            }
+        };
 
         frames.push(Frame{name, filename, line, short_filename: None, module: None});
         if frames.len() > 4096 {
@@ -145,7 +157,7 @@ pub fn copy_string<T: StringObject, P: ProcessMemory>(ptr: * const T, process: &
 pub fn copy_bytes<T: BytesObject, P: ProcessMemory>(ptr: * const T, process: &P) -> Result<Vec<u8>, Error> {
     let obj = process.copy_pointer(ptr)?;
     let size = obj.size();
-    if size >= 8192 {
+    if size >= 65536 {
         return Err(format_err!("Refusing to copy {} bytes", size));
     }
     Ok(process.copy(obj.address(ptr as usize), size as usize)?)
