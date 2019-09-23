@@ -655,7 +655,7 @@ dependencies = [
  "proc-maps 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "regex 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "remoteprocess 0.1.0",
+ "remoteprocess 0.2.0",
  "serde 1.0.98 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_derive 1.0.98 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.40 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -856,7 +856,7 @@ dependencies = [
 
 [[package]]
 name = "remoteprocess"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "addr2line 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "benfred-read-process-memory 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",

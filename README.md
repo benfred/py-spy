@@ -10,7 +10,7 @@ py-spy is extremely low overhead: it is written in Rust for speed and doesn't ru
 in the same process as the profiled Python program. This means py-spy is safe to use against production Python code.
 
 py-spy works on Linux, OSX, Windows and FreeBSD, and supports profiling all recent versions of the CPython
-interpreter (versions 2.3-2.7 and 3.3-3.7).
+interpreter (versions 2.3-2.7 and 3.3-3.8).
 
 ## Installation
 
@@ -20,46 +20,70 @@ Prebuilt binary wheels can be installed from PyPI with:
 pip install py-spy
 ```
 
-If you're a Rust user, py-spy can also be installed with:
-
-```
-cargo install py-spy
-```
-
-On Arch Linux, [py-spy is in AUR](https://aur.archlinux.org/packages/py-spy/) and can be
-installed by using your favorite AUR helper, for example:
-
-```
-yay -S py-spy
-```
+You can also download prebuilt binaries from the [GitHub Releases
+Page](https://github.com/benfred/py-spy/releases). This includes binaries for ARM and FreeBSD,
+which can't be installed using pip. If you're a Rust user, py-spy can also be installed with: ```cargo install py-spy```. On Arch Linux, [py-spy is in AUR](https://aur.archlinux.org/packages/py-spy/) and can be
+installed with ```yay -S py-spy```.
 
 ## Usage
 
-py-spy works from the command line and takes either the PID of the program you want to sample from or the command line of the python program you want to run:
+py-spy works from the command line and takes either the PID of the program you want to sample from
+or the command line of the python program you want to run. py-spy has three subcommands
+```record```, ```top``` and ```dump```:
+
+### record
+
+py-spy supports recording profiles to a file using the ```record``` command. For example, you can
+generate a [flame graph](http://www.brendangregg.com/flamegraphs.html) of your python process by
+going:
 
 ``` bash
-py-spy --pid 12345
+py-spy record -o profile.svg --pid 12345
 # OR
-py-spy -- python myprogram.py
+py-spy record -o profile.svg -- python myprogram.py
 ```
 
-The default visualization is a [top-like](https://linux.die.net/man/1/top) live view of your python program:
-
-![console viewer demo](./images/console_viewer.gif)
-
-There is also support for generating [flame graphs](http://www.brendangregg.com/flamegraphs.html) from the running process:
-
-``` bash
-py-spy --flame profile.svg --pid 12345
-# OR
-py-spy --flame profile.svg -- python myprogram.py
-```
-
-Which will generate a SVG file looking like:
+Which will generate an interactive SVG file looking like:
 
 ![flame graph](./images/flamegraph.svg)
 
-It also possible to dump out the current call stack for each thread by passing ```--dump``` to the command line.
+You can change the file format to generate
+[speedscope](https://github.com/jlfwong/speedscope) profiles or raw data with the ```--format``` parameter.
+See ```py-spy record --help``` for information on other options including changing
+the sampling rate, filtering to only include threads that hold the GIL, profiling native C extensions,
+showing thread-ids and more.
+
+
+### top
+
+Top shows a live view of what functions are taking the most time in your python program, similar
+to the unix [top](https://linux.die.net/man/1/top) command. Running py-spy with:
+
+``` bash
+py-spy top --pid 12345
+# OR
+py-spy top -- python myprogram.py
+```
+
+will bring up a live updating high level view of your python program:
+
+![console viewer demo](./images/console_viewer.gif)
+
+### dump
+
+py-spy can also display the current call stack for each python thread with the ```dump``` command:
+
+```bash
+py-spy dump --pid 12345
+```
+
+This will dump out the call stacks for each thread, and some other basic process info to the
+console:
+
+![dump output](./images/dump.png)
+
+This is useful for the case where you just need a single call stack to figure out where your
+python program is hung on.
 
 ## Frequently Asked Questions
 
@@ -100,15 +124,12 @@ and check if the layout of that address is what we expect.
 
 ### Can py-spy profile native extensions?
 
-Since we're getting the call stacks of the python program by looking at the
-[PyInterpreterState](https://docs.python.org/3/c-api/init.html#c.PyInterpreterState) we don't yet
-get information about non-python threads and can't profile native extensions like those written in languages
-like Cython or C++. Native code will instead show up as spending time in the line of Python that calls the native function,
-rather than as its own entry in the current stable release.
-
-However, there is a pre-release at ```pip install py-spy==0.2.0.dev3``` that will let you profile
-native C/C++ or Cython extensions on 64-bit Linux and Windows machines. Any feedback on this feature is appreciated,
-and you can follow progress or leave comments [on this issue](https://github.com/benfred/py-spy/issues/2).
+Yes! py-spy supports profiling native python extensions written in languages like C/C++ or Cython,
+on x86_64 Linux and Windows. You can enable this mode by passing ```--native``` on the
+commandline. For best results, you should compile your Python extension with symbols. Also worth
+noting for Cython programs is that py-spy needs the generated C or C++ file in order to return line
+numbers of the original .pyx file.  Read the [blog post](https://www.benfrederickson.com/profiling-native-python-extensions-with-py-spy/)
+for more information.
 
 ### When do you need to run as sudo?
 
@@ -120,6 +141,44 @@ security settings.
 On Linux the default configuration is to require root permissions when attaching to a process that isn't a child.
 For py-spy this means you can profile without root access by getting py-spy to create the process (```py-spy -- python myprogram.py```) but attaching to an existing process by specifying a PID will usually require root (```sudo py-spy --pid 123456```).
 You can remove this restriction on linux by setting the [ptrace_scope sysctl variable](https://wiki.ubuntu.com/SecurityTeam/Roadmap/KernelHardening#ptrace_Protection).
+
+### How do you detect if a thread is idle or not?
+
+py-spy attempts to only include stack traces from threads that are actively running code, and exclude threads that
+are sleeping or otherwise idle. When possible, py-spy attempts to get this thread activity information
+from the OS: by reading in  ```/proc/PID/stat``` on Linux, by using the mach
+[thread_basic_info](https://opensource.apple.com/source/xnu/xnu-792/osfmk/mach/thread_info.h.auto.html)
+call on OSX, and by looking if the current SysCall is [known to be
+idle](https://github.com/benfred/py-spy/blob/8326c6dbc6241d60125dfd4c01b70fed8b8b8138/remoteprocess/src/windows/mod.rs#L212-L229)
+on Windows.
+
+There are some limitations with this approach though that may cause idle threads to still be
+marked as active. First off, we have to get this thread activity information before pausing the
+program, because getting this from a paused program will cause it to always return that this is
+idle. This means there is a potential race condition, where we get the thread activity and
+then the thread is in a different state when we get the stack trace. Querying the OS for thread
+activity also isn't implemented yet for FreeBSD and i686/ARM processors on linux. On windows,
+calls that are blocked on IO also won't be marked as idle yet, for instance when reading input
+from stdin. Finally, on some Linux calls the ptrace attach that we are using may cause idle threads
+to wake up momentarily, causing false positives when reading from procfs. For these reasons, 
+we also have a heuristic fallback that marks known certain known calls in
+python as being idle. 
+
+You can disable this functionality by setting the ```--idle``` flag, which
+will include frames that py-spy considers idle.  
+
+### How does GIL detection work?
+
+We get GIL activity by looking at the threadid value pointed to by the ```_PyThreadState_Current``` symbol
+for Python 3.6 and earlier and by figuring out the equivalent from the ```_PyRuntime``` struct in
+Python 3.7 and later. These symbols might not be included in your python distribution, which will
+cause resolving which thread holds on to the GIL to fail. Current GIL usage is also shown in the 
+```top``` view as %GIL.
+
+Passing the ```--gil``` flag will only include traces for threads that are holding on to the
+[Global Interpreter Lock](https://wiki.python.org/moin/GlobalInterpreterLock). In some cases this
+might be a more accurate view of how your python program is spending its time, though you should
+be aware that this will miss activity in extensions that release the GIL while still active.
 
 ### Why am I having issues profiling /usr/bin/python on OSX?
 
@@ -148,6 +207,9 @@ your_service:
 
 Note that you'll need to restart the docker container in order for this setting to take effect.
 
+You can also use py-spy from the Host OS to profile a running process running inside the docker
+container. 
+
 ### How do I run py-spy in Kubernetes?
 
 py-spy needs `SYS_PTRACE` to be able to read process memory. Kubernetes drops that capability by default, resulting in the error
@@ -171,6 +233,7 @@ You can override this behaviour to use pip to install py-spy on Alpine by going:
 
     echo 'manylinux1_compatible = True' > /usr/local/lib/python3.7/site-packages/_manylinux.py
 
+Alternatively you can download a musl binary from the [GitHub releases page](https://github.com/benfred/py-spy/releases).
 
 ### How can you avoid pausing the Python program?
 
@@ -202,6 +265,10 @@ this is being installed onto.
 
 Not yet =).
 
+If there are features you'd like to see in py-spy either thumb up the [appropiate
+issue](https://github.com/benfred/py-spy/issues?q=is%3Aissue+is%3Aopen+sort%3Areactions-%2B1-desc) or create a new one that describes what functionality is missing. 
+
+
 ## Credits
 
 py-spy is heavily inspired by [Julia Evans](https://github.com/jvns/) excellent work on [rbspy](http://github.com/rbspy/rbspy).
@@ -210,4 +277,4 @@ In particular, the code to generate flamegraph and speedscope files is taken dir
 
 ## License
 
-py-spy is released under the GNU General Public License v3.0, see the [LICENSE](https://github.com/benfred/py-spy/blob/master/LICENSE) file for the full text.
+py-spy is released under the MIT License, see the [LICENSE](https://github.com/benfred/py-spy/blob/master/LICENSE) file for the full text.
