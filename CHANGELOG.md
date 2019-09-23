@@ -1,7 +1,8 @@
-## v0.2.0 (pre-release)
+## v0.2.0
 
 * Add ability to profile native python extensions [#2](https://github.com/benfred/py-spy/issues/2)
 * Add FreeBSD support [#112](https://github.com/benfred/py-spy/issues/112)
+* Relicense to MIT [#163](https://github.com/benfred/py-spy/issues/163)
 * Add option to write out Speedscope files [#115](https://github.com/benfred/py-spy/issues/115)
 * Add option to output raw call stack data [#35](https://github.com/benfred/py-spy/issues/35)
 * Get thread idle status from OS [#92](https://github.com/benfred/py-spy/issues/92)
@@ -11,6 +12,7 @@
 * Drop root permissions when starting new process [#116](https://github.com/benfred/py-spy/issues/116)
 * Support building for ARM processors [#89](https://github.com/benfred/py-spy/issues/89)
 * Python 3.8 compatability
+* Fix issues profiling functions with more than 4000 lines [#164](https://github.com/benfred/py-spy/issues/164)
 
 ## v0.1.11
 
