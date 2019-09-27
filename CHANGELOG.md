@@ -1,3 +1,7 @@
+## v0.2.1
+
+* Fix issue with profiling dockerized process from the host os [#168](https://github.com/benfred/py-spy/issues/168)
+
 ## v0.2.0
 
 * Add ability to profile native python extensions [#2](https://github.com/benfred/py-spy/issues/2)

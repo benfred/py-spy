@@ -37,6 +37,8 @@ pub struct PythonSpy {
     pub native: Option<NativeStack>,
     pub short_filenames: HashMap<String, Option<String>>,
     pub python_thread_ids: HashMap<u64, Tid>,
+    #[cfg(target_os="linux")]
+    pub dockerized: bool
 }
 
 impl PythonSpy {
@@ -111,6 +113,8 @@ impl PythonSpy {
                      version_string,
                      #[cfg(unwind)]
                      native,
+                     #[cfg(target_os="linux")]
+                     dockerized: python_info.dockerized,
                      config: config.clone(),
                      short_filenames: HashMap::new(),
                      python_thread_ids: HashMap::new()})
@@ -312,15 +316,20 @@ impl PythonSpy {
 
     #[cfg(all(target_os="linux", unwind))]
     fn _get_os_thread_id<I: InterpreterState>(&mut self, python_thread_id: u64, interp: &I) -> Result<Option<Tid>, Error> {
-        // If we've already know this threadid, we're good
-        if let Some(thread_id) = self.python_thread_ids.get(&python_thread_id) {
-            return Ok(Some(*thread_id));
-        }
-
         // in nonblocking mode, we can't get the threadid reliably (method here requires reading the RBX
         // register which requires a ptrace attach). fallback to heuristic thread activity here
         if self.config.non_blocking {
             return Ok(None);
+        }
+
+        // likewise this doesn't yet work for profiling processes running inside docker containers from the host os
+        if self.dockerized {
+            return Ok(None);
+        }
+
+        // If we've already know this threadid, we're good
+        if let Some(thread_id) = self.python_thread_ids.get(&python_thread_id) {
+            return Ok(Some(*thread_id));
         }
 
         // Get a list of all the python thread ids
@@ -368,7 +377,7 @@ impl PythonSpy {
                 let python_thread_id = *unknown_python_threadids.iter().next().unwrap();
                 self.python_thread_ids.insert(python_thread_id, self.pid);
             } else {
-                error!("failed to get python threadid for main thread!");
+                warn!("failed to get python threadid for main thread!");
             }
         }
 
@@ -614,6 +623,8 @@ pub struct PythonProcessInfo {
     libpython_binary: Option<BinaryInfo>,
     maps: Vec<MapRange>,
     python_filename: String,
+    #[cfg(target_os="linux")]
+    dockerized: bool,
 }
 
 impl PythonProcessInfo {
@@ -641,7 +652,7 @@ impl PythonProcessInfo {
         // on linux, support profiling processes running in docker containers by setting
         // the namespace to match that of the target process when reading in binaries
         #[cfg(target_os="linux")]
-        let _namespace = match remoteprocess::Namespace::new(process.pid) {
+        let namespace = match remoteprocess::Namespace::new(process.pid) {
             Ok(ns) => Some(ns),
             Err(e) => {
                 warn!("Failed to set namespace: {}", e);
@@ -754,7 +765,10 @@ impl PythonProcessInfo {
             libpython_binary
         };
 
-        Ok(PythonProcessInfo{python_binary, libpython_binary, maps, python_filename})
+        Ok(PythonProcessInfo{python_binary, libpython_binary, maps, python_filename,
+                             #[cfg(target_os="linux")]
+                             dockerized: match namespace { Some(ns) => ns.is_set(), None => false },
+        })
     }
 
     pub fn get_symbol(&self, symbol: &str) -> Option<&u64> {
