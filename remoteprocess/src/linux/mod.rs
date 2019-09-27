@@ -196,6 +196,10 @@ impl Namespace {
             Ok(Namespace{ns_file: None})
         }
     }
+
+    pub fn is_set(self) -> bool {
+        self.ns_file.is_some()
+    }
 }
 
 impl Drop for Namespace {
