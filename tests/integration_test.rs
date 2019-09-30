@@ -9,7 +9,7 @@ struct TestRunner {
 
 impl TestRunner {
     fn new(config: Config, filename: &str) -> TestRunner {
-        let child = std::process::Command::new("python3").arg(filename).spawn().unwrap();
+        let child = std::process::Command::new(if cfg!(windows) { "python" } else { "python3" }).arg(filename).spawn().unwrap();
         std::thread::sleep(std::time::Duration::from_millis(400));
         let spy = PythonSpy::retry_new(child.id() as _, &config, 20).unwrap();
 
