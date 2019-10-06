@@ -33,6 +33,7 @@ extern crate serde_json;
 extern crate remoteprocess;
 
 mod config;
+mod dump;
 mod binary_parser;
 #[cfg(unwind)]
 mod cython;
@@ -41,6 +42,7 @@ mod native_stack_trace;
 mod python_bindings;
 mod python_interpreters;
 mod python_spy;
+mod python_data_access;
 mod stack_trace;
 mod console_viewer;
 mod flamegraph;
@@ -60,52 +62,6 @@ use python_spy::PythonSpy;
 use stack_trace::{StackTrace, Frame};
 use console_viewer::ConsoleViewer;
 use config::{Config, FileFormat, RecordDuration};
-
-fn format_trace_threadid(trace: &StackTrace) -> String {
-    // native threadids in osx are kinda useless, use the pthread id instead
-    #[cfg(target_os="macos")]
-    return format!("{:#X}", trace.thread_id);
-
-    // otherwise use the native threadid if given
-    #[cfg(not(target_os="macos"))]
-    match trace.os_thread_id {
-        Some(tid) => format!("{}", tid),
-        None => format!("{:#X}", trace.thread_id)
-    }
-}
-
-fn print_traces(process: &mut PythonSpy, config: &Config) -> Result<(), Error> {
-    if config.dump_json {
-        let traces = process.get_stack_traces()?;
-        println!("{}", serde_json::to_string_pretty(&traces)?);
-        return Ok(())
-    }
-
-    use console::style;
-    println!("Process {}: {}",
-        style(process.pid).bold().yellow(),
-        process.process.cmdline()?.join(" "));
-
-    println!("Python v{} ({})\n",
-        style(&process.version).bold(),
-        style(process.process.exe()?).dim());
-
-    let traces = process.get_stack_traces()?;
-
-    for trace in traces.iter().rev() {
-        let thread_id = format_trace_threadid(&trace);
-        println!("Thread {} ({})", style(thread_id).bold().yellow(), trace.status_str());
-        for frame in &trace.frames {
-            let filename = match &frame.short_filename { Some(f) => &f, None => &frame.filename };
-            if frame.line != 0 {
-                println!("\t {} ({}:{})", style(&frame.name).green(), style(&filename).cyan(), style(frame.line).dim());
-            } else {
-                println!("\t {} ({})", style(&frame.name).green(), style(&filename).cyan());
-            }
-        }
-    }
-    Ok(())
-}
 
 fn process_exitted(process: &remoteprocess::Process) -> bool {
     process.exe().is_err()
@@ -270,10 +226,10 @@ fn record_samples(process: &mut PythonSpy, config: &Config) -> Result<(), Error>
                     }
 
                     if config.include_thread_ids {
-                        let threadid = format_trace_threadid(&trace);
+                        let threadid = trace.format_threadid();
                         trace.frames.push(Frame{name: format!("thread {}", threadid),
                             filename: String::from(""),
-                            module: None, short_filename: None, line: 0});
+                            module: None, short_filename: None, line: 0, locals: None});
                     }
 
                     output.increment(&trace)?;
@@ -343,7 +299,7 @@ fn record_samples(process: &mut PythonSpy, config: &Config) -> Result<(), Error>
 fn run_spy_command(process: &mut PythonSpy, config: &config::Config) -> Result<(), Error> {
     match config.command.as_ref() {
         "dump" =>  {
-            print_traces(process, config)?;
+            dump::print_traces(process, config)?;
         },
         "record" => {
             record_samples(process, config)?;

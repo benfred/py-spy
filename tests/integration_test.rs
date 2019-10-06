@@ -160,3 +160,77 @@ fn test_unicode() {
     assert!(!traces[0].owns_gil);
 }
 
+#[test]
+fn test_local_vars() {
+    #[cfg(target_os="macos")]
+    {
+        // We need root permissions here to run this on OSX
+        if unsafe { libc::geteuid() } != 0 {
+            return;
+        }
+    }
+
+    let config = Config{dump_locals: true, ..Default::default()};
+    let mut runner = TestRunner::new(config, "./tests/scripts/local_vars.py");
+
+    let traces = runner.spy.get_stack_traces().unwrap();
+    assert_eq!(traces.len(), 1);
+    let trace = &traces[0];
+    assert_eq!(trace.frames.len(), 2);
+    let frame = &trace.frames[0];
+    let locals = frame.locals.as_ref().unwrap();
+
+    assert_eq!(locals.len(), 8);
+
+    let arg1 = &locals[0];
+    assert_eq!(arg1.name, "arg1");
+    assert!(arg1.arg);
+    let arg1_str = py_spy::stringify_pyobject(&runner.spy.process, &runner.spy.version, arg1.addr, 128).unwrap();
+    assert_eq!(arg1_str, "\"foo\"");
+
+    let arg2 = &locals[1];
+    assert_eq!(arg2.name, "arg2");
+    assert!(arg2.arg);
+    let arg2_str = py_spy::stringify_pyobject(&runner.spy.process, &runner.spy.version, arg2.addr, 128).unwrap();
+    assert_eq!(arg2_str, "None");
+
+    let arg3 = &locals[2];
+    assert_eq!(arg3.name, "arg3");
+    assert!(arg3.arg);
+    let arg3_str = py_spy::stringify_pyobject(&runner.spy.process, &runner.spy.version, arg3.addr, 128).unwrap();
+    assert_eq!(arg3_str, "True");
+
+    let local1 = &locals[3];
+    assert_eq!(local1.name, "local1");
+    assert!(!local1.arg);
+    let local1_str = py_spy::stringify_pyobject(&runner.spy.process, &runner.spy.version, local1.addr, 128).unwrap();
+    assert_eq!(local1_str, "[-1234, 5678]");
+
+    let local2 = &locals[4];
+    assert_eq!(local2.name, "local2");
+    assert!(!local2.arg);
+    let local2_str = py_spy::stringify_pyobject(&runner.spy.process, &runner.spy.version, local2.addr, 128).unwrap();
+    assert_eq!(local2_str, "(\"a\", \"b\", \"c\")");
+
+    let local3 = &locals[5];
+    assert_eq!(local3.name, "local3");
+    assert!(!local3.arg);
+    let local3_str = py_spy::stringify_pyobject(&runner.spy.process, &runner.spy.version, local3.addr, 128).unwrap();
+    assert_eq!(local3_str, "123456789123456789");
+
+    let local4 = &locals[6];
+    assert_eq!(local4.name, "local4");
+    assert!(!local4.arg);
+    let local4_str = py_spy::stringify_pyobject(&runner.spy.process, &runner.spy.version, local4.addr, 128).unwrap();
+    assert_eq!(local4_str, "3.1415");
+
+    let local5 = &locals[7];
+    assert_eq!(local5.name, "local5");
+    assert!(!local5.arg);
+    let local4_str = py_spy::stringify_pyobject(&runner.spy.process, &runner.spy.version, local5.addr, 128).unwrap();
+
+    // we only support dictionary lookup on python 3.6+ right now
+    if runner.spy.version.major == 3 && runner.spy.version.minor >= 6 {
+        assert_eq!(local4_str, "{\"a\": False, \"b\": (1, 2, 3)}");
+    }
+}

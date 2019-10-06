@@ -42,6 +42,8 @@ pub struct Config {
     pub hide_progess: bool,
     #[doc(hidden)]
     pub dump_json: bool,
+    #[doc(hidden)]
+    pub dump_locals: bool,
 }
 
 arg_enum!{
@@ -69,7 +71,7 @@ impl Default for Config {
                non_blocking: false, show_line_numbers: false, sampling_rate: 100,
                duration: RecordDuration::Unlimited, native: false,
                gil_only: false, include_idle: false, include_thread_ids: false,
-               hide_progess: false, dump_json: false}
+               hide_progess: false, dump_json: false, dump_locals: false}
     }
 }
 
@@ -171,6 +173,10 @@ impl Config {
         let dump = clap::SubCommand::with_name("dump")
             .about("Dumps stack traces for a target program to stdout")
             .arg(pid.clone().required(true))
+            .arg(Arg::with_name("locals")
+                .short("l")
+                .long("locals")
+                .help("Show local variables for each frame"))
             .arg(Arg::with_name("json")
                 .short("j")
                 .long("json")
@@ -241,6 +247,7 @@ impl Config {
         config.native = matches.occurrences_of("native") > 0;
         config.hide_progess = matches.occurrences_of("hideprogress") > 0;
         config.dump_json = matches.occurrences_of("json") > 0;
+        config.dump_locals = matches.occurrences_of("locals") > 0;
 
         // disable native profiling if invalidly asked for
         if config.native && config.non_blocking {

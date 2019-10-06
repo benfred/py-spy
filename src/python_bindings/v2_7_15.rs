@@ -111,15 +111,20 @@ pub type binaryfunc = ::std::option::Option<
     unsafe extern "C" fn(arg1: *mut PyObject, arg2: *mut PyObject) -> *mut PyObject,
 >;
 pub type ternaryfunc = ::std::option::Option<
-    unsafe extern "C" fn(arg1: *mut PyObject, arg2: *mut PyObject, arg3: *mut PyObject)
-        -> *mut PyObject,
+    unsafe extern "C" fn(
+        arg1: *mut PyObject,
+        arg2: *mut PyObject,
+        arg3: *mut PyObject,
+    ) -> *mut PyObject,
 >;
 pub type inquiry =
     ::std::option::Option<unsafe extern "C" fn(arg1: *mut PyObject) -> ::std::os::raw::c_int>;
 pub type lenfunc = ::std::option::Option<unsafe extern "C" fn(arg1: *mut PyObject) -> Py_ssize_t>;
 pub type coercion = ::std::option::Option<
-    unsafe extern "C" fn(arg1: *mut *mut PyObject, arg2: *mut *mut PyObject)
-        -> ::std::os::raw::c_int,
+    unsafe extern "C" fn(
+        arg1: *mut *mut PyObject,
+        arg2: *mut *mut PyObject,
+    ) -> ::std::os::raw::c_int,
 >;
 pub type ssizeargfunc = ::std::option::Option<
     unsafe extern "C" fn(arg1: *mut PyObject, arg2: Py_ssize_t) -> *mut PyObject,
@@ -128,8 +133,11 @@ pub type ssizessizeargfunc = ::std::option::Option<
     unsafe extern "C" fn(arg1: *mut PyObject, arg2: Py_ssize_t, arg3: Py_ssize_t) -> *mut PyObject,
 >;
 pub type ssizeobjargproc = ::std::option::Option<
-    unsafe extern "C" fn(arg1: *mut PyObject, arg2: Py_ssize_t, arg3: *mut PyObject)
-        -> ::std::os::raw::c_int,
+    unsafe extern "C" fn(
+        arg1: *mut PyObject,
+        arg2: Py_ssize_t,
+        arg3: *mut PyObject,
+    ) -> ::std::os::raw::c_int,
 >;
 pub type ssizessizeobjargproc = ::std::option::Option<
     unsafe extern "C" fn(
@@ -140,8 +148,11 @@ pub type ssizessizeobjargproc = ::std::option::Option<
     ) -> ::std::os::raw::c_int,
 >;
 pub type objobjargproc = ::std::option::Option<
-    unsafe extern "C" fn(arg1: *mut PyObject, arg2: *mut PyObject, arg3: *mut PyObject)
-        -> ::std::os::raw::c_int,
+    unsafe extern "C" fn(
+        arg1: *mut PyObject,
+        arg2: *mut PyObject,
+        arg3: *mut PyObject,
+    ) -> ::std::os::raw::c_int,
 >;
 pub type readbufferproc = ::std::option::Option<
     unsafe extern "C" fn(
@@ -190,8 +201,11 @@ impl Default for bufferinfo {
 }
 pub type Py_buffer = bufferinfo;
 pub type getbufferproc = ::std::option::Option<
-    unsafe extern "C" fn(arg1: *mut PyObject, arg2: *mut Py_buffer, arg3: ::std::os::raw::c_int)
-        -> ::std::os::raw::c_int,
+    unsafe extern "C" fn(
+        arg1: *mut PyObject,
+        arg2: *mut Py_buffer,
+        arg3: ::std::os::raw::c_int,
+    ) -> ::std::os::raw::c_int,
 >;
 pub type releasebufferproc =
     ::std::option::Option<unsafe extern "C" fn(arg1: *mut PyObject, arg2: *mut Py_buffer)>;
@@ -199,12 +213,17 @@ pub type objobjproc = ::std::option::Option<
     unsafe extern "C" fn(arg1: *mut PyObject, arg2: *mut PyObject) -> ::std::os::raw::c_int,
 >;
 pub type visitproc = ::std::option::Option<
-    unsafe extern "C" fn(arg1: *mut PyObject, arg2: *mut ::std::os::raw::c_void)
-        -> ::std::os::raw::c_int,
+    unsafe extern "C" fn(
+        arg1: *mut PyObject,
+        arg2: *mut ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int,
 >;
 pub type traverseproc = ::std::option::Option<
-    unsafe extern "C" fn(arg1: *mut PyObject, arg2: visitproc, arg3: *mut ::std::os::raw::c_void)
-        -> ::std::os::raw::c_int,
+    unsafe extern "C" fn(
+        arg1: *mut PyObject,
+        arg2: visitproc,
+        arg3: *mut ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int,
 >;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -303,8 +322,11 @@ impl Default for PyBufferProcs {
 pub type freefunc = ::std::option::Option<unsafe extern "C" fn(arg1: *mut ::std::os::raw::c_void)>;
 pub type destructor = ::std::option::Option<unsafe extern "C" fn(arg1: *mut PyObject)>;
 pub type printfunc = ::std::option::Option<
-    unsafe extern "C" fn(arg1: *mut PyObject, arg2: *mut FILE, arg3: ::std::os::raw::c_int)
-        -> ::std::os::raw::c_int,
+    unsafe extern "C" fn(
+        arg1: *mut PyObject,
+        arg2: *mut FILE,
+        arg3: ::std::os::raw::c_int,
+    ) -> ::std::os::raw::c_int,
 >;
 pub type getattrfunc = ::std::option::Option<
     unsafe extern "C" fn(arg1: *mut PyObject, arg2: *mut ::std::os::raw::c_char) -> *mut PyObject,
@@ -320,8 +342,11 @@ pub type setattrfunc = ::std::option::Option<
     ) -> ::std::os::raw::c_int,
 >;
 pub type setattrofunc = ::std::option::Option<
-    unsafe extern "C" fn(arg1: *mut PyObject, arg2: *mut PyObject, arg3: *mut PyObject)
-        -> ::std::os::raw::c_int,
+    unsafe extern "C" fn(
+        arg1: *mut PyObject,
+        arg2: *mut PyObject,
+        arg3: *mut PyObject,
+    ) -> ::std::os::raw::c_int,
 >;
 pub type cmpfunc = ::std::option::Option<
     unsafe extern "C" fn(arg1: *mut PyObject, arg2: *mut PyObject) -> ::std::os::raw::c_int,
@@ -331,28 +356,43 @@ pub type reprfunc =
 pub type hashfunc =
     ::std::option::Option<unsafe extern "C" fn(arg1: *mut PyObject) -> ::std::os::raw::c_long>;
 pub type richcmpfunc = ::std::option::Option<
-    unsafe extern "C" fn(arg1: *mut PyObject, arg2: *mut PyObject, arg3: ::std::os::raw::c_int)
-        -> *mut PyObject,
+    unsafe extern "C" fn(
+        arg1: *mut PyObject,
+        arg2: *mut PyObject,
+        arg3: ::std::os::raw::c_int,
+    ) -> *mut PyObject,
 >;
 pub type getiterfunc =
     ::std::option::Option<unsafe extern "C" fn(arg1: *mut PyObject) -> *mut PyObject>;
 pub type iternextfunc =
     ::std::option::Option<unsafe extern "C" fn(arg1: *mut PyObject) -> *mut PyObject>;
 pub type descrgetfunc = ::std::option::Option<
-    unsafe extern "C" fn(arg1: *mut PyObject, arg2: *mut PyObject, arg3: *mut PyObject)
-        -> *mut PyObject,
+    unsafe extern "C" fn(
+        arg1: *mut PyObject,
+        arg2: *mut PyObject,
+        arg3: *mut PyObject,
+    ) -> *mut PyObject,
 >;
 pub type descrsetfunc = ::std::option::Option<
-    unsafe extern "C" fn(arg1: *mut PyObject, arg2: *mut PyObject, arg3: *mut PyObject)
-        -> ::std::os::raw::c_int,
+    unsafe extern "C" fn(
+        arg1: *mut PyObject,
+        arg2: *mut PyObject,
+        arg3: *mut PyObject,
+    ) -> ::std::os::raw::c_int,
 >;
 pub type initproc = ::std::option::Option<
-    unsafe extern "C" fn(arg1: *mut PyObject, arg2: *mut PyObject, arg3: *mut PyObject)
-        -> ::std::os::raw::c_int,
+    unsafe extern "C" fn(
+        arg1: *mut PyObject,
+        arg2: *mut PyObject,
+        arg3: *mut PyObject,
+    ) -> ::std::os::raw::c_int,
 >;
 pub type newfunc = ::std::option::Option<
-    unsafe extern "C" fn(arg1: *mut _typeobject, arg2: *mut PyObject, arg3: *mut PyObject)
-        -> *mut PyObject,
+    unsafe extern "C" fn(
+        arg1: *mut _typeobject,
+        arg2: *mut PyObject,
+        arg3: *mut PyObject,
+    ) -> *mut PyObject,
 >;
 pub type allocfunc = ::std::option::Option<
     unsafe extern "C" fn(arg1: *mut _typeobject, arg2: Py_ssize_t) -> *mut PyObject,
@@ -415,6 +455,7 @@ impl Default for _typeobject {
         unsafe { ::std::mem::zeroed() }
     }
 }
+pub type PyTypeObject = _typeobject;
 pub type Py_UNICODE = ::std::os::raw::c_ushort;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -433,6 +474,24 @@ impl Default for PyUnicodeObject {
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
+pub struct _longobject {
+    _unused: [u8; 0],
+}
+pub type PyLongObject = _longobject;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct PyFloatObject {
+    pub ob_refcnt: Py_ssize_t,
+    pub ob_type: *mut _typeobject,
+    pub ob_fval: f64,
+}
+impl Default for PyFloatObject {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
 pub struct PyStringObject {
     pub ob_refcnt: Py_ssize_t,
     pub ob_type: *mut _typeobject,
@@ -442,6 +501,69 @@ pub struct PyStringObject {
     pub ob_sval: [::std::os::raw::c_char; 1usize],
 }
 impl Default for PyStringObject {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct PyTupleObject {
+    pub ob_refcnt: Py_ssize_t,
+    pub ob_type: *mut _typeobject,
+    pub ob_size: Py_ssize_t,
+    pub ob_item: [*mut PyObject; 1usize],
+}
+impl Default for PyTupleObject {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct PyListObject {
+    pub ob_refcnt: Py_ssize_t,
+    pub ob_type: *mut _typeobject,
+    pub ob_size: Py_ssize_t,
+    pub ob_item: *mut *mut PyObject,
+    pub allocated: Py_ssize_t,
+}
+impl Default for PyListObject {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct PyDictEntry {
+    pub me_hash: Py_ssize_t,
+    pub me_key: *mut PyObject,
+    pub me_value: *mut PyObject,
+}
+impl Default for PyDictEntry {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+pub type PyDictObject = _dictobject;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _dictobject {
+    pub ob_refcnt: Py_ssize_t,
+    pub ob_type: *mut _typeobject,
+    pub ma_fill: Py_ssize_t,
+    pub ma_used: Py_ssize_t,
+    pub ma_mask: Py_ssize_t,
+    pub ma_table: *mut PyDictEntry,
+    pub ma_lookup: ::std::option::Option<
+        unsafe extern "C" fn(
+            mp: *mut PyDictObject,
+            key: *mut PyObject,
+            hash: ::std::os::raw::c_long,
+        ) -> *mut PyDictEntry,
+    >,
+    pub ma_smalltable: [PyDictEntry; 8usize],
+}
+impl Default for _dictobject {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
