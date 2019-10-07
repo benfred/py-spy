@@ -456,18 +456,14 @@ impl Default for _typeobject {
     }
 }
 pub type PyTypeObject = _typeobject;
-pub type Py_UNICODE = ::std::os::raw::c_ushort;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct PyUnicodeObject {
+pub struct PyIntObject {
     pub ob_refcnt: Py_ssize_t,
     pub ob_type: *mut _typeobject,
-    pub length: Py_ssize_t,
-    pub str: *mut Py_UNICODE,
-    pub hash: ::std::os::raw::c_long,
-    pub defenc: *mut PyObject,
+    pub ob_ival: ::std::os::raw::c_long,
 }
-impl Default for PyUnicodeObject {
+impl Default for PyIntObject {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
