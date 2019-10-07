@@ -112,15 +112,16 @@ pub fn parse_binary(filename: &str, addr: u64, size: u64) -> Result<BinaryInfo, 
                 }
             }
 
-            let data_section = pe.sections
+            pe.sections
                 .iter()
                 .find(|ref section| section.name.starts_with(b".data"))
-                .expect("Failed to find .data section in PE binary");
+                .ok_or_else(|| format_err!("Failed to find .data section in PE binary of {}", filename))
+                .map(|data_section| {
+                    let bss_addr = u64::from(data_section.virtual_address) + offset;
+                    let bss_size = u64::from(data_section.virtual_size);
 
-            let bss_addr = u64::from(data_section.virtual_address) + offset;
-            let bss_size = u64::from(data_section.virtual_size);
-
-            Ok(BinaryInfo{filename: filename.to_owned(), symbols, bss_addr, bss_size, offset, addr, size})
+                    BinaryInfo{filename: filename.to_owned(), symbols, bss_addr, bss_size, offset, addr, size}
+                })
         },
         _ => {
             Err(format_err!("Unhandled binary type"))

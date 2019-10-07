@@ -12,7 +12,7 @@ use crate::cpp_demangle::{DemangleOptions, BorrowedSymbol};
 
 pub struct NativeStack {
     should_reload: bool,
-    python: BinaryInfo,
+    python: Option<BinaryInfo>,
     libpython: Option<BinaryInfo>,
     cython_maps: cython::SourceMaps,
     unwinder: remoteprocess::Unwinder,
@@ -24,7 +24,7 @@ pub struct NativeStack {
 }
 
 impl NativeStack {
-    pub fn new(pid: Pid, python: BinaryInfo, libpython: Option<BinaryInfo>) -> Result<NativeStack, Error> {
+    pub fn new(pid: Pid, python: Option<BinaryInfo>, libpython: Option<BinaryInfo>) -> Result<NativeStack, Error> {
         let cython_maps = cython::SourceMaps::new();
 
         let process = remoteprocess::Process::new(pid)?;
@@ -61,7 +61,8 @@ impl NativeStack {
             let cached_symbol = self.symbol_cache.get(&addr).map(|f| f.clone());
 
             // merges a remoteprocess::StackFrame into the current merged vec
-            let is_python_addr = self.python.contains(addr) || self.libpython.as_ref().map_or(false, |m| m.contains(addr));
+            let is_python_addr = self.python.as_ref().map_or(false, |m| m.contains(addr)) ||
+                    self.libpython.as_ref().map_or(false, |m| m.contains(addr));
             let merge_frame = &mut |frame: &remoteprocess::StackFrame| {
                 match self.get_merge_strategy(is_python_addr, frame) {
                     MergeType::Ignore => {},

@@ -8,6 +8,8 @@ use std::path::Path;
 #[cfg(all(target_os="linux", unwind))]
 use std::iter::FromIterator;
 use regex::Regex;
+#[cfg(windows)]
+use regex::RegexBuilder;
 
 use failure::{Error, ResultExt};
 use remoteprocess::{Process, ProcessMemory, Pid, Tid};
@@ -450,23 +452,24 @@ fn get_python_version(python_info: &PythonProcessInfo, process: &remoteprocess::
     }
 
     // otherwise get version info from scanning BSS section for sys.version string
-    info!("Getting version from python binary BSS");
-    let bss = process.copy(python_info.python_binary.bss_addr as usize,
-                           python_info.python_binary.bss_size as usize)?;
-    match Version::scan_bytes(&bss) {
-        Ok(version) => return Ok(version),
-        Err(err) => {
-            info!("Failed to get version from BSS section: {}", err);
-            // try again if there is a libpython.so
-            if let Some(ref libpython) = python_info.libpython_binary {
-                info!("Getting version from libpython BSS");
-                let bss = process.copy(libpython.bss_addr as usize,
-                                       libpython.bss_size as usize)?;
-                match Version::scan_bytes(&bss) {
-                    Ok(version) => return Ok(version),
-                    Err(err) => info!("Failed to get version from libpython BSS section: {}", err)
-                }
-            }
+    if let Some(ref pb) = python_info.python_binary {
+        info!("Getting version from python binary BSS");
+        let bss = process.copy(pb.bss_addr as usize,
+                               pb.bss_size as usize)?;
+        match Version::scan_bytes(&bss) {
+            Ok(version) => return Ok(version),
+            Err(err) => info!("Failed to get version from BSS section: {}", err)
+        }
+    }
+
+    // try again if there is a libpython.so
+    if let Some(ref libpython) = python_info.libpython_binary {
+        info!("Getting version from libpython BSS");
+        let bss = process.copy(libpython.bss_addr as usize,
+                               libpython.bss_size as usize)?;
+        match Version::scan_bytes(&bss) {
+            Ok(version) => return Ok(version),
+            Err(err) => info!("Failed to get version from libpython BSS section: {}", err)
         }
     }
 
@@ -519,18 +522,24 @@ fn get_interpreter_address(python_info: &PythonProcessInfo,
     info!("Failed to get interp_head from symbols, scanning BSS section from main binary");
 
     // try scanning the BSS section of the binary for things that might be the interpreterstate
-    match get_interpreter_address_from_binary(&python_info.python_binary, &python_info.maps, process, version) {
-        Ok(addr) => Ok(addr),
-        // Before giving up, try again if there is a libpython.so
-        Err(err) => {
-            match python_info.libpython_binary {
-                Some(ref libpython) => {
-                    info!("Failed to get interpreter from binary BSS, scanning libpython BSS");
-                    Ok(get_interpreter_address_from_binary(libpython, &python_info.maps, process, version)?)
-                },
-                None => Err(err)
+    let err =
+        if let Some(ref pb) = python_info.python_binary {
+            match get_interpreter_address_from_binary(pb, &python_info.maps, process, version) {
+                Ok(addr) => return Ok(addr),
+                err => Some(err)
             }
+        } else {
+            None
+        };
+    // Before giving up, try again if there is a libpython.so
+    if let Some(ref lpb) = python_info.libpython_binary {
+        info!("Failed to get interpreter from binary BSS, scanning libpython BSS");
+        match get_interpreter_address_from_binary(lpb, &python_info.maps, process, version) {
+            Ok(addr) => return Ok(addr),
+            lib_err => err.unwrap_or(lib_err)
         }
+    } else {
+        err.expect("Both python and libpython are invalid.")
     }
 }
 
@@ -617,7 +626,7 @@ fn check_interpreter_addresses(addrs: &[usize],
 /// Holds information about the python process: memory map layout, parsed binary info
 /// for python /libpython etc.
 pub struct PythonProcessInfo {
-    python_binary: BinaryInfo,
+    python_binary: Option<BinaryInfo>,
     // if python was compiled with './configure --enabled-shared', code/symbols will
     // be in a libpython.so file instead of the executable. support that.
     libpython_binary: Option<BinaryInfo>,
@@ -683,25 +692,34 @@ impl PythonProcessInfo {
 
             // TODO: consistent types? u64 -> usize? for map.start etc
             #[allow(unused_mut)]
-            let mut python_binary = parse_binary(&filename, map.start() as u64, map.size() as u64)?;
+            let python_binary = parse_binary(&filename, map.start() as u64, map.size() as u64)
+                .and_then(|mut pb| {
+                    // windows symbols are stored in separate files (.pdb), load
+                    #[cfg(windows)]
+                    {
+                        get_windows_python_symbols(process.pid, &filename, map.start() as u64)
+                            .map(|symbols| { pb.symbols.extend(symbols); pb })
+                            .map_err(|err| err.into())
+                    }
 
-            // windows symbols are stored in separate files (.pdb), load
-            #[cfg(windows)]
-            python_binary.symbols.extend(get_windows_python_symbols(process.pid, &filename, map.start() as u64)?);
+                    // For OSX, need to adjust main binary symbols by substracting _mh_execute_header
+                    // (which we've added to by map.start already, so undo that here)
+                    #[cfg(target_os = "macos")]
+                    {
+                        let offset = pb.symbols["_mh_execute_header"] - map.start() as u64;
+                        for address in pb.symbols.values_mut() {
+                            *address -= offset;
+                        }
 
-            // For OSX, need to adjust main binary symbols by substracting _mh_execute_header
-            // (which we've added to by map.start already, so undo that here)
-            #[cfg(target_os = "macos")]
-            {
-                let offset = python_binary.symbols["_mh_execute_header"] - map.start() as u64;
-                for address in python_binary.symbols.values_mut() {
-                    *address -= offset;
-                }
+                        if pb.bss_addr != 0 {
+                            pb.bss_addr -= offset;
+                        }
+                    }
 
-                if python_binary.bss_addr != 0 {
-                    python_binary.bss_addr -= offset;
-                }
-            }
+                    #[cfg(not(windows))]
+                    Ok(pb)
+                });
+
             (python_binary, filename.clone())
         };
 
@@ -765,6 +783,11 @@ impl PythonProcessInfo {
             libpython_binary
         };
 
+        let python_binary = match libpython_binary {
+            None => Some(python_binary?),
+            _ => python_binary.ok(),
+        };
+
         Ok(PythonProcessInfo{python_binary, libpython_binary, maps, python_filename,
                              #[cfg(target_os="linux")]
                              dockerized: match namespace { Some(ns) => ns.is_set(), None => false },
@@ -772,9 +795,11 @@ impl PythonProcessInfo {
     }
 
     pub fn get_symbol(&self, symbol: &str) -> Option<&u64> {
-        if let Some(addr) = self.python_binary.symbols.get(symbol) {
-            info!("got symbol {} (0x{:016x}) from python binary", symbol, addr);
-            return Some(addr);
+        if let Some(ref pb) = self.python_binary {
+            if let Some(addr) = pb.symbols.get(symbol) {
+                info!("got symbol {} (0x{:016x}) from python binary", symbol, addr);
+                return Some(addr);
+            }
         }
 
         if let Some(ref binary) = self.libpython_binary {
@@ -833,7 +858,7 @@ pub fn is_python_lib(pathname: &str) -> bool {
 #[cfg(windows)]
 pub fn is_python_lib(pathname: &str) -> bool {
     lazy_static! {
-        static ref RE: Regex = Regex::new(r"\\python\d\d(m|d|u)?.dll$").unwrap();
+        static ref RE: Regex = RegexBuilder::new(r"\\python\d\d(m|d|u)?.dll$").case_insensitive(true).build().unwrap();
     }
     RE.is_match(pathname)
 }
@@ -885,6 +910,15 @@ mod tests {
         assert!(!is_python_lib("/usr/lib/libboost_python-py35.so"));
 
     }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_is_python_lib() {
+        assert!(is_python_lib("C:\\Users\\test\\AppData\\Local\\Programs\\Python\\Python37\\python37.dll"));
+        // .NET host via https://github.com/pythonnet/pythonnet
+        assert!(is_python_lib("C:\\Users\\test\\AppData\\Local\\Programs\\Python\\Python37\\python37.DLL"));
+    }
+
 
     #[cfg(target_os="macos")]
     #[test]
