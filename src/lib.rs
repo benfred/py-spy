@@ -57,6 +57,7 @@ mod native_stack_trace;
 mod python_bindings;
 mod python_interpreters;
 mod python_spy;
+mod python_data_access;
 mod stack_trace;
 mod utils;
 mod version;
@@ -66,4 +67,4 @@ pub use config::Config;
 pub use stack_trace::StackTrace;
 pub use stack_trace::Frame;
 pub use remoteprocess::Pid;
-
+pub use python_data_access::stringify_pyobject;

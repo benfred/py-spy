@@ -203,7 +203,7 @@ impl PythonSpy {
         while !threads.is_null() {
             // Get the stack trace of the python thread
             let thread = self.process.copy_pointer(threads).context("Failed to copy PyThreadState")?;
-            let mut trace = get_stack_trace(&thread, &self.process)?;
+            let mut trace = get_stack_trace(&thread, &self.process, self.config.dump_locals)?;
 
             // Try getting the native thread id
             let python_thread_id = thread.thread_id();

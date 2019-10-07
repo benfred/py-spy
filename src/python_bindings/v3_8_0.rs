@@ -1,4 +1,4 @@
-// Generated bindings for python v3.8.0b3
+// Generated bindings for python v3.8.0b4
 #![allow(dead_code)]
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
@@ -89,6 +89,43 @@ where
         }
     }
 }
+#[repr(C)]
+#[derive(Default)]
+pub struct __IncompleteArrayField<T>(::std::marker::PhantomData<T>);
+impl<T> __IncompleteArrayField<T> {
+    #[inline]
+    pub fn new() -> Self {
+        __IncompleteArrayField(::std::marker::PhantomData)
+    }
+    #[inline]
+    pub unsafe fn as_ptr(&self) -> *const T {
+        ::std::mem::transmute(self)
+    }
+    #[inline]
+    pub unsafe fn as_mut_ptr(&mut self) -> *mut T {
+        ::std::mem::transmute(self)
+    }
+    #[inline]
+    pub unsafe fn as_slice(&self, len: usize) -> &[T] {
+        ::std::slice::from_raw_parts(self.as_ptr(), len)
+    }
+    #[inline]
+    pub unsafe fn as_mut_slice(&mut self, len: usize) -> &mut [T] {
+        ::std::slice::from_raw_parts_mut(self.as_mut_ptr(), len)
+    }
+}
+impl<T> ::std::fmt::Debug for __IncompleteArrayField<T> {
+    fn fmt(&self, fmt: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        fmt.write_str("__IncompleteArrayField")
+    }
+}
+impl<T> ::std::clone::Clone for __IncompleteArrayField<T> {
+    #[inline]
+    fn clone(&self) -> Self {
+        Self::new()
+    }
+}
+impl<T> ::std::marker::Copy for __IncompleteArrayField<T> {}
 pub type __int64_t = ::std::os::raw::c_longlong;
 pub type __darwin_size_t = ::std::os::raw::c_ulong;
 pub type __darwin_wchar_t = ::std::os::raw::c_int;
@@ -504,6 +541,7 @@ impl Default for PyBufferProcs {
         unsafe { ::std::mem::zeroed() }
     }
 }
+pub type PyTypeObject = _typeobject;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct PyBytesObject {
@@ -662,6 +700,68 @@ impl Default for PyUnicodeObject__bindgen_ty_1 {
     }
 }
 impl Default for PyUnicodeObject {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+pub type PyLongObject = _longobject;
+pub type digit = u32;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _longobject {
+    pub ob_base: PyVarObject,
+    pub ob_digit: [digit; 1usize],
+}
+impl Default for _longobject {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct PyFloatObject {
+    pub ob_base: PyObject,
+    pub ob_fval: f64,
+}
+impl Default for PyFloatObject {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct PyTupleObject {
+    pub ob_base: PyVarObject,
+    pub ob_item: [*mut PyObject; 1usize],
+}
+impl Default for PyTupleObject {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct PyListObject {
+    pub ob_base: PyVarObject,
+    pub ob_item: *mut *mut PyObject,
+    pub allocated: Py_ssize_t,
+}
+impl Default for PyListObject {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+pub type PyDictKeysObject = _dictkeysobject;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct PyDictObject {
+    pub ob_base: PyObject,
+    pub ma_used: Py_ssize_t,
+    pub ma_version_tag: u64,
+    pub ma_keys: *mut PyDictKeysObject,
+    pub ma_values: *mut *mut PyObject,
+}
+impl Default for PyDictObject {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
@@ -937,6 +1037,41 @@ impl Default for _frame {
     }
 }
 pub type PyFrameObject = _frame;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct PyDictKeyEntry {
+    pub me_hash: Py_hash_t,
+    pub me_key: *mut PyObject,
+    pub me_value: *mut PyObject,
+}
+impl Default for PyDictKeyEntry {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+pub type dict_lookup_func = ::std::option::Option<
+    unsafe extern "C" fn(
+        mp: *mut PyDictObject,
+        key: *mut PyObject,
+        hash: Py_hash_t,
+        value_addr: *mut *mut PyObject,
+    ) -> Py_ssize_t,
+>;
+#[repr(C)]
+#[derive(Debug)]
+pub struct _dictkeysobject {
+    pub dk_refcnt: Py_ssize_t,
+    pub dk_size: Py_ssize_t,
+    pub dk_lookup: dict_lookup_func,
+    pub dk_usable: Py_ssize_t,
+    pub dk_nentries: Py_ssize_t,
+    pub dk_indices: __IncompleteArrayField<::std::os::raw::c_char>,
+}
+impl Default for _dictkeysobject {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct _warnings_runtime_state {

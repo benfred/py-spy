@@ -99,6 +99,7 @@ def calculate_pyruntime_offsets(cpython_path, version, configure=False):
 
 def extract_bindings(cpython_path, version, configure=False):
     print("Generating bindings for python %s from repo at %s" % (version, cpython_path))
+
     ret = os.system(f"""
         cd {cpython_path}
         git checkout {version}
@@ -108,6 +109,7 @@ def extract_bindings(cpython_path, version, configure=False):
 
         cat Include/Python.h > bindgen_input.h
         cat Include/frameobject.h >> bindgen_input.h
+        cat Objects/dict-common.h >> bindgen_input.h
         echo '#define Py_BUILD_CORE 1\n' >> bindgen_input.h
         cat Include/internal/pycore_pystate.h >> bindgen_input.h
 
@@ -124,6 +126,15 @@ def extract_bindings(cpython_path, version, configure=False):
             --whitelist-type PyUnicodeObject \
             --whitelist-type PyCompactUnicodeObject \
             --whitelist-type PyStringObject \
+            --whitelist-type PyTupleObject \
+            --whitelist-type PyListObject \
+            --whitelist-type PyLongObject \
+            --whitelist-type PyFloatObject \
+            --whitelist-type PyDictObject \
+            --whitelist-type PyDictKeysObject \
+            --whitelist-type PyDictKeyEntry \
+            --whitelist-type PyObject \
+            --whitelist-type PyTypeObject \
              -- -I . -I ./Include -I ./Include/internal
     """)
     if ret:
@@ -177,7 +188,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     if args.all:
-        versions = ['v3.7.0', 'v3.6.6', 'v3.5.5', 'v3.4.8', 'v3.3.7', 'v3.2.6', 'v2.7.15']
+        versions = ['v3.8.0b4', 'v3.7.0', 'v3.6.6', 'v3.5.5', 'v3.4.8', 'v3.3.7', 'v3.2.6', 'v2.7.15']
     else:
         versions = args.versions
         if not versions:
