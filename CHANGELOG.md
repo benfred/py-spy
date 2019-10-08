@@ -1,3 +1,9 @@
+## v0.2.2
+
+* Add ability to show local variables when dumping out stack traces [#77](https://github.com/benfred/py-spy/issues/77)
+* Show python thread names in dump [#47](https://github.com/benfred/py-spy/issues/47)
+* Fix issues with profiling python hosted by .NET exe [#171](https://github.com/benfred/py-spy/issues/171)
+
 ## v0.2.1
 
 * Fix issue with profiling dockerized process from the host os [#168](https://github.com/benfred/py-spy/issues/168)

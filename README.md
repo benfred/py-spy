@@ -83,7 +83,8 @@ console:
 ![dump output](./images/dump.png)
 
 This is useful for the case where you just need a single call stack to figure out where your
-python program is hung on.
+python program is hung on. This command also has the ability to print out the local variables
+associated with each stack frame by setting the ```--locals``` flag.
 
 ## Frequently Asked Questions
 
