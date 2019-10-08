@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 import time
 
-def sléép(seconds):
+def function1(seconds):
     time.sleep(seconds)
 
 if __name__ == "__main__":
-    sléép(100)
+    function1(100)

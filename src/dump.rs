@@ -75,7 +75,8 @@ pub fn print_traces(process: &mut PythonSpy, config: &Config) -> Result<(), Erro
                         shown_locals = true;
                     }
 
-                    let value = stringify_pyobject(&process.process, &process.version, local.addr, 128)?;
+                    let value = stringify_pyobject(&process.process, &process.version, local.addr, 128)
+                        .unwrap_or("?".to_owned());
                     println!("            {}: {}", local.name, value);
                 }
             }

@@ -68,6 +68,12 @@ pub fn copy_long(process: &remoteprocess::Process, addr: usize) -> Result<(i64, 
     }
 }
 
+/// Copys a i64 from a python 2.7 PyIntObject
+pub fn copy_int(process: &remoteprocess::Process, addr: usize) -> Result<i64, Error> {
+    let value = process.copy_pointer(addr as *const crate::python_bindings::v2_7_15::PyIntObject)?;
+    Ok(value.ob_ival as i64)
+}
+
 /// Allows iteration of a python dictionary. Only supports python 3.6+ right now
 pub struct DictIterator<'a> {
     process: &'a remoteprocess::Process,
@@ -156,10 +162,12 @@ pub fn stringify_pyobject(process: &remoteprocess::Process,
     }
 }
 
+const PY_TPFLAGS_INT_SUBCLASS: usize =     1 << 23;
 const PY_TPFLAGS_LONG_SUBCLASS: usize =    1 << 24;
 const PY_TPFLAGS_LIST_SUBCLASS: usize =    1 << 25;
 const PY_TPFLAGS_TUPLE_SUBCLASS: usize =   1 << 26;
-const PY_TPFLAGS_UNICODE_SUBCLASS: usize = 1 << 28;
+const PY_TPFLAGS_BYTES_SUBCLASS: usize =   1 << 27;
+const PY_TPFLAGS_STRING_SUBCLASS: usize = 1 << 28;
 const PY_TPFLAGS_DICT_SUBCLASS: usize =    1 << 29;
 
 /// Converts a python variable in the other process to a human readable string
@@ -175,25 +183,33 @@ pub fn format_variable<I>(process: &remoteprocess::Process, version: &Version, a
     let length = value_type_name.iter().position(|&x| x == 0).unwrap_or(max_type_len);
     let value_type_name = std::str::from_utf8(&value_type_name[..length])?;
 
+    let format_int = |value: i64| {
+        if value_type_name == "bool" {
+            (if value > 0 { "True" } else { "False" }).to_owned()
+        } else {
+            format!("{}", value)
+        }
+    };
+
     // use the flags/typename to figure out how to stringify this object
     let flags = value_type.flags();
-    let formatted = if flags & PY_TPFLAGS_UNICODE_SUBCLASS != 0 {
-        let value = copy_string(addr as *const I::StringObject, process)?.replace("\"", "\\\"");
+    let formatted = if flags & PY_TPFLAGS_INT_SUBCLASS != 0 {
+        format_int(copy_int(process, addr)?)
+    } else if flags & PY_TPFLAGS_LONG_SUBCLASS != 0 {
+        // we don't handle arbitray sized integer values (max is 2**60)
+        let (value, overflowed) = copy_long(process, addr)?;
+         if overflowed {
+            if value > 0 { "+bigint".to_owned() } else { "-bigint".to_owned() }
+        } else {
+            format_int(value)
+        }
+    } else if flags & PY_TPFLAGS_STRING_SUBCLASS != 0 ||
+            (version.major ==  2 && (flags & PY_TPFLAGS_BYTES_SUBCLASS != 0)) {
+        let value = copy_string(addr as *const I::StringObject, process)?.replace("\"", "\\\"").replace("\n", "\\n");
         if value.len() as isize >= max_length - 5 {
             format!("\"{}...\"", &value[..(max_length - 5) as usize])
         } else {
             format!("\"{}\"", value)
-        }
-    } else if flags & PY_TPFLAGS_LONG_SUBCLASS != 0 {
-        let (value, overflowed) = copy_long(process, addr)?;
-        // bool objects are subclasses of longs, deal with as appropiate
-        if value_type_name == "bool" {
-            (if value > 0 { "True" } else { "False" }).to_owned()
-        } else if overflowed {
-            // we don't handle arbitray sized integer values (max is 2**60)
-            if value > 0 { "+bigint".to_owned() } else { "-bigint".to_owned() }
-        } else {
-            format!("{}", value)
         }
     } else if flags & PY_TPFLAGS_DICT_SUBCLASS != 0 {
         if version.major == 3 && version.minor >= 6 {

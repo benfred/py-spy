@@ -9,7 +9,7 @@ struct TestRunner {
 
 impl TestRunner {
     fn new(config: Config, filename: &str) -> TestRunner {
-        let child = std::process::Command::new("python3").arg(filename).spawn().unwrap();
+        let child = std::process::Command::new("python").arg(filename).spawn().unwrap();
         std::thread::sleep(std::time::Duration::from_millis(400));
         let spy = PythonSpy::retry_new(child.id() as _, &config, 20).unwrap();
 
@@ -149,7 +149,7 @@ fn test_unicode() {
     assert_eq!(traces.len(), 1);
     let trace = &traces[0];
 
-    assert_eq!(trace.frames[0].name, "sléép");
+    assert_eq!(trace.frames[0].name, "function1");
     assert_eq!(trace.frames[0].filename, "./tests/scripts/unicode💩.py");
     assert_eq!(trace.frames[0].line, 6);
 

@@ -128,6 +128,7 @@ def extract_bindings(cpython_path, version, configure=False):
             --whitelist-type PyStringObject \
             --whitelist-type PyTupleObject \
             --whitelist-type PyListObject \
+            --whitelist-type PyIntObject \
             --whitelist-type PyLongObject \
             --whitelist-type PyFloatObject \
             --whitelist-type PyDictObject \
