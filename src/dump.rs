@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use console::style;
-use failure::Error;
+use failure::{Error, ResultExt};
 
 use crate::config::Config;
 use crate::python_bindings::{v3_6_6, v3_7_0, v3_8_0};
@@ -19,6 +19,16 @@ pub fn print_traces(process: &mut PythonSpy, config: &Config) -> Result<(), Erro
         println!("{}", serde_json::to_string_pretty(&traces)?);
         return Ok(())
     }
+
+    // if we're printing out local variables, we need to lock the process for correct results.
+    let _lock = if !config.dump_locals || config.non_blocking {
+        None
+    } else {
+        // disable other locking inside python_spy: some OS process locks aren't
+        // re-entrant and we will fail to acquire the lock in get_stack_traces otherwise
+        process.config.non_blocking = true;
+        Some(process.process.lock().context("Failed to suspend process")?)
+    };
 
     // try getting the threadnames, but don't sweat it if we can't. Since this relies on dictionary
     // processing we only handle py3.6+ right now, and this doesn't work at all if the
