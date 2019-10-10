@@ -43,7 +43,8 @@ pub struct Frame {
 pub struct LocalVariable {
     pub name: String,
     pub addr: usize,
-    pub arg: bool
+    pub arg: bool,
+    pub repr: Option<String>,
 }
 
 /// Given an InterpreterState, this function returns a vector of stack traces for each thread
@@ -170,7 +171,7 @@ fn get_locals<C: CodeObject, F: FrameObject, P: ProcessMemory>(code: &C, framept
         if addr == 0 {
             continue;
         }
-        ret.push(LocalVariable{name, addr, arg: i < argcount });
+        ret.push(LocalVariable{name, addr, arg: i < argcount, repr: None});
     }
     Ok(ret)
 }

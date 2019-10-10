@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 
 use console::style;
-use failure::{Error, ResultExt};
+use failure::Error;
 
 use crate::config::Config;
 use crate::python_bindings::{v3_6_6, v3_7_0, v3_8_0};
 use crate::python_interpreters::{InterpreterState, Object, TypeObject};
 use crate::python_spy::PythonSpy;
-use crate::python_data_access::{copy_string, copy_long, stringify_pyobject, DictIterator};
+use crate::python_data_access::{copy_string, copy_long, DictIterator};
 
 use crate::version::Version;
 
@@ -19,16 +19,6 @@ pub fn print_traces(process: &mut PythonSpy, config: &Config) -> Result<(), Erro
         println!("{}", serde_json::to_string_pretty(&traces)?);
         return Ok(())
     }
-
-    // if we're printing out local variables, we need to lock the process for correct results.
-    let _lock = if !config.dump_locals || config.non_blocking {
-        None
-    } else {
-        // disable other locking inside python_spy: some OS process locks aren't
-        // re-entrant and we will fail to acquire the lock in get_stack_traces otherwise
-        process.config.non_blocking = true;
-        Some(process.process.lock().context("Failed to suspend process")?)
-    };
 
     // try getting the threadnames, but don't sweat it if we can't. Since this relies on dictionary
     // processing we only handle py3.6+ right now, and this doesn't work at all if the
@@ -85,9 +75,8 @@ pub fn print_traces(process: &mut PythonSpy, config: &Config) -> Result<(), Erro
                         shown_locals = true;
                     }
 
-                    let value = stringify_pyobject(&process.process, &process.version, local.addr, 128)
-                        .unwrap_or("?".to_owned());
-                    println!("            {}: {}", local.name, value);
+                    let repr = local.repr.as_ref().map(String::as_str).unwrap_or("?");
+                    println!("            {}: {}", local.name, repr);
                 }
             }
         }

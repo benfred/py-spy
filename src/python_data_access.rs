@@ -4,7 +4,6 @@ use failure::Error;
 
 use remoteprocess::ProcessMemory;
 use crate::python_interpreters::{StringObject, BytesObject, InterpreterState, Object, TypeObject, TupleObject, ListObject};
-use crate::python_bindings::{v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0};
 use crate::version::Version;
 
 /// Copies a string from a target process. Attempts to handle unicode differences, which mostly seems to be working
@@ -137,28 +136,6 @@ impl<'a> Iterator for DictIterator<'a> {
         }
 
         None
-    }
-}
-
-/// Converts a python object in the other process to a string representation
-pub fn stringify_pyobject(process: &remoteprocess::Process,
-                          version: &Version,
-                          addr: usize,
-                          max_length: isize) -> Result<String, Error> {
-    match version {
-        Version{major: 2, minor: 3..=7, ..} => format_variable::<v2_7_15::_is>(process, version, addr, max_length),
-        Version{major: 3, minor: 3, ..} => format_variable::<v3_3_7::_is>(process, version, addr, max_length),
-        Version{major: 3, minor: 4..=5, ..} => format_variable::<v3_5_5::_is>(process, version, addr, max_length),
-        Version{major: 3, minor: 6, ..} => format_variable::<v3_6_6::_is>(process, version, addr, max_length),
-        Version{major: 3, minor: 7, ..} => format_variable::<v3_7_0::_is>(process, version, addr, max_length),
-        Version{major: 3, minor: 8, patch: 0, ..} => {
-            match version.release_flags.as_ref() {
-                "a1" | "a2" | "a3" => format_variable::<v3_7_0::_is>(process, version, addr, max_length),
-                _ => format_variable::<v3_8_0::_is>(process, version, addr, max_length)
-            }
-        },
-        Version{major: 3, minor: 8..=9, ..} => format_variable::<v3_8_0::_is>(process, version, addr, max_length),
-        _ => Err(format_err!("Unsupported version of Python: {}", version))
     }
 }
 
