@@ -185,52 +185,44 @@ fn test_local_vars() {
     let arg1 = &locals[0];
     assert_eq!(arg1.name, "arg1");
     assert!(arg1.arg);
-    let arg1_str = py_spy::stringify_pyobject(&runner.spy.process, &runner.spy.version, arg1.addr, 128).unwrap();
-    assert_eq!(arg1_str, "\"foo\"");
+    assert_eq!(arg1.repr, Some("\"foo\"".to_owned()));
 
     let arg2 = &locals[1];
     assert_eq!(arg2.name, "arg2");
     assert!(arg2.arg);
-    let arg2_str = py_spy::stringify_pyobject(&runner.spy.process, &runner.spy.version, arg2.addr, 128).unwrap();
-    assert_eq!(arg2_str, "None");
+    assert_eq!(arg2.repr, Some("None".to_owned()));
 
     let arg3 = &locals[2];
     assert_eq!(arg3.name, "arg3");
     assert!(arg3.arg);
-    let arg3_str = py_spy::stringify_pyobject(&runner.spy.process, &runner.spy.version, arg3.addr, 128).unwrap();
-    assert_eq!(arg3_str, "True");
+    assert_eq!(arg3.repr, Some("True".to_owned()));
 
     let local1 = &locals[3];
     assert_eq!(local1.name, "local1");
     assert!(!local1.arg);
-    let local1_str = py_spy::stringify_pyobject(&runner.spy.process, &runner.spy.version, local1.addr, 128).unwrap();
-    assert_eq!(local1_str, "[-1234, 5678]");
+    assert_eq!(local1.repr, Some("[-1234, 5678]".to_owned()));
 
     let local2 = &locals[4];
     assert_eq!(local2.name, "local2");
     assert!(!local2.arg);
-    let local2_str = py_spy::stringify_pyobject(&runner.spy.process, &runner.spy.version, local2.addr, 128).unwrap();
-    assert_eq!(local2_str, "(\"a\", \"b\", \"c\")");
+    assert_eq!(local2.repr, Some("(\"a\", \"b\", \"c\")".to_owned()));
 
     let local3 = &locals[5];
     assert_eq!(local3.name, "local3");
     assert!(!local3.arg);
-    let local3_str = py_spy::stringify_pyobject(&runner.spy.process, &runner.spy.version, local3.addr, 128).unwrap();
-    assert_eq!(local3_str, "123456789123456789");
+    assert_eq!(local3.repr, Some("123456789123456789".to_owned()));
 
     let local4 = &locals[6];
     assert_eq!(local4.name, "local4");
     assert!(!local4.arg);
-    let local4_str = py_spy::stringify_pyobject(&runner.spy.process, &runner.spy.version, local4.addr, 128).unwrap();
-    assert_eq!(local4_str, "3.1415");
+    assert_eq!(local4.repr, Some("3.1415".to_owned()));
 
     let local5 = &locals[7];
     assert_eq!(local5.name, "local5");
     assert!(!local5.arg);
-    let local4_str = py_spy::stringify_pyobject(&runner.spy.process, &runner.spy.version, local5.addr, 128).unwrap();
 
     // we only support dictionary lookup on python 3.6+ right now
     if runner.spy.version.major == 3 && runner.spy.version.minor >= 6 {
-        assert_eq!(local4_str, "{\"a\": False, \"b\": (1, 2, 3)}");
+        assert_eq!(local5.repr, Some("{\"a\": False, \"b\": (1, 2, 3)}".to_owned()));
     }
 }

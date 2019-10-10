@@ -253,6 +253,13 @@ impl PythonSpy {
 
             for frame in &mut trace.frames {
                 frame.short_filename = self.shorten_filename(&frame.filename);
+                if let Some(locals) = frame.locals.as_mut() {
+                    use crate::python_data_access::format_variable;
+                    for local in locals {
+                        let repr = format_variable::<I>(&self.process, &self.version, local.addr, 128);
+                        local.repr = Some(repr.unwrap_or("?".to_owned()));
+                    }
+                }
             }
 
             traces.push(trace);
