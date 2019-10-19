@@ -51,10 +51,13 @@ mod timer;
 mod utils;
 mod version;
 
+use std::collections::HashSet;
 use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::mpsc::{channel, Sender};
 use std::time::Duration;
+use std::thread;
 
 use failure::Error;
 
@@ -74,7 +77,7 @@ fn permission_denied(err: &Error) -> bool {
             ioerror.kind() == std::io::ErrorKind::PermissionDenied
         } else if let Some(remoteprocess::Error::IOError(ioerror)) = cause.downcast_ref::<remoteprocess::Error>() {
             ioerror.kind() == std::io::ErrorKind::PermissionDenied
-        }else {
+        } else {
             false
         }
     })
@@ -92,27 +95,50 @@ fn sample_console(process: &mut PythonSpy,
                                          &format!("{}", process.version),
                                          1.0 / rate as f64)?;
 
-    for sleep in timer::Timer::new(rate as f64) {
-        if let Err(elapsed) = sleep {
-            console.increment_late_sample(elapsed);
-        }
+    let running = Arc::new(AtomicBool::new(true));
+    let (trace_sender, trace_receiver) = channel();
+    let (result_sender, result_receiver) = channel();
 
-        match process.get_stack_traces() {
-            Ok(traces) => {
+    // Spawn threads to profile process and its subprocesses in case
+    // if the --subprocesses config flag was supplied.
+    spawn_recorder_threads(
+        result_sender,
+        trace_sender,
+        process.process,
+        running.clone(),
+        &config.clone()
+    );
+
+    for event in trace_receiver.iter() {
+        match event {
+            TraceEvent::Trace((traces, _)) => {
                 console.increment(&traces)?;
             },
-            Err(err) => {
-                if process_exitted(&process.process) {
-                    println!("\nprocess {} ended", process.pid);
-                    break;
-                } else {
-                    console.increment_error(&err)?;
-                }
-            }
+            TraceEvent::TimingErr(delay) => {
+                console.increment_late_sample(delay);
+            },
+            TraceEvent::Err(error) => {
+                console.increment_error(&error)?;
+            },
+        }
+    }
+
+    // There is a variety of situtations when profiling subprocesses
+    // may fail. For instance, a child process may end up being not a
+    // python process.
+    //
+    // Nonetheless, if we were able to profile something, we're fine.
+    let mut last_err = Ok(());
+
+    for result in result_receiver {
+        if result.is_ok() {
+            return result;
         }
 
+        last_err = result;
     }
-    Ok(())
+
+    last_err
 }
 
 pub trait Recorder {
@@ -148,6 +174,122 @@ impl Recorder for RawFlamegraph {
     fn write(&self, w: &mut std::fs::File) -> Result<(), Error> {
         self.0.write_raw(w)
     }
+}
+
+#[derive(Debug)]
+pub enum TraceEvent {
+    Trace((Vec<StackTrace>, u64)),
+    Err(Error),
+    TimingErr(Duration),
+}
+
+/// Records traces, sends them over via an mpsc sender.
+///
+/// This function is meant to be used in both console and
+/// record reporters.
+fn do_record_samples(trace_event_sender: Sender<TraceEvent>,
+                     pid: remoteprocess::Pid,
+                     running: Arc<AtomicBool>,
+                     config: &Config,
+) -> Result<(), Error> {
+    // Each thread maintains its own samples counter.
+    let mut samples = 0;
+    let sampling_rate = config.sampling_rate as f64;
+    let mut process = PythonSpy::retry_new(pid, &config, 3)?;
+
+    for sleep in timer::Timer::new(sampling_rate) {
+        if let Err(delay) = sleep {
+            trace_event_sender.send(TraceEvent::TimingErr(delay))?;
+        }
+
+        if !running.load(Ordering::SeqCst) {
+            // We have been told to shut ourselves down.
+            break;
+        }
+
+        match process.get_stack_traces() {
+            Ok(traces) => {
+                samples = samples + 1;
+                trace_event_sender.send(TraceEvent::Trace((traces, samples)))?;
+            },
+            Err(e) => {
+                if process_exitted(&process.process) {
+                    // Process has exited, tell other threads to exit.
+                    running.store(false, Ordering::SeqCst);
+                    break;
+                } else {
+                    trace_event_sender.send(TraceEvent::Err(e))?;
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Spawn recorder threads
+///
+/// This function is meant to be used in both console and
+/// record reporters.
+///
+/// If --subprocesses configuration option is supplied, the function
+/// continuously monitors process' children and spawns new recorder
+/// threads, if needed
+fn spawn_recorder_threads(result_sender: Sender<Result<(), Error>>,
+                          trace_event_sender: Sender<TraceEvent>,
+                          remoteprocess: remoteprocess::Process,
+                          running: Arc<AtomicBool>,
+                          config: &Config,
+) {
+    let config_clone = config.clone();
+
+    thread::spawn(move || {
+        if !config_clone.subprocesses {
+            let result = do_record_samples(
+                trace_event_sender,
+                remoteprocess.pid,
+                running,
+                &config_clone,
+            );
+
+            result_sender.send(result)
+                .expect("Couldn't send result");
+
+            return;
+        }
+
+        let mut pids: HashSet<remoteprocess::Pid> = HashSet::new();
+
+        while running.load(Ordering::SeqCst) {
+            let children = remoteprocess.children()
+                .expect("Error retrieving children of process");
+
+            for pid in children {
+                if !pids.insert(pid) {
+                    continue;
+                }
+
+                let trace_event_sender = trace_event_sender.clone();
+                let running = running.clone();
+                let config_clone = config_clone.clone();
+                let result_sender = result_sender.clone();
+
+                thread::spawn(move || {
+                    let result = do_record_samples(
+                        trace_event_sender,
+                        pid,
+                        running,
+                        &config_clone,
+                    );
+
+                    result_sender.send(result)
+                        .expect("Couldn't send result");
+                });
+            }
+            thread::sleep(Duration::from_secs(1));
+        }
+    });
+
 }
 
 fn record_samples(process: &mut PythonSpy, config: &Config) -> Result<(), Error> {
@@ -187,35 +329,34 @@ fn record_samples(process: &mut PythonSpy, config: &Config) -> Result<(), Error>
         }
     };
 
-    let mut errors = 0;
-    let mut samples = 0;
-    println!();
-
     let running = Arc::new(AtomicBool::new(true));
-    let r = running.clone();
+    let interrupted = Arc::new(AtomicBool::new(false));
+
+    let interrupted_clone_ctrlc_handler = interrupted.clone();
+    let running_clone_ctrlc_handler = running.clone();
+
     ctrlc::set_handler(move || {
-        r.store(false, Ordering::SeqCst);
+        interrupted_clone_ctrlc_handler.store(true, Ordering::Relaxed);
+        running_clone_ctrlc_handler.store(false, Ordering::SeqCst);
     })?;
 
-    let mut exit_message = "";
+    let (trace_sender, trace_receiver) = channel();
+    let (result_sender, result_receiver) = channel();
 
-    for sleep in timer::Timer::new(config.sampling_rate as f64) {
-        if let Err(delay) = sleep {
-            if delay > Duration::from_secs(1) && !config.hide_progess {
-                let term = console::Term::stdout();
-                term.move_cursor_up(2)?;
-                println!("{:.2?} behind in sampling, results may be inaccurate. Try reducing the sampling rate.", delay);
-                term.move_cursor_down(1)?;
-            }
-        }
+    spawn_recorder_threads(
+        result_sender,
+        trace_sender,
+        process.process,
+        running.clone(),
+        &config.clone()
+    );
 
-        if !running.load(Ordering::SeqCst) {
-            exit_message = "Stopped sampling because Control-C pressed";
-            break;
-        }
+    let mut samples = 0;
+    let mut errors = 0;
 
-        match process.get_stack_traces() {
-            Ok(traces) => {
+    for event in trace_receiver.iter() {
+        match event {
+            TraceEvent::Trace((traces, count)) => {
                 for mut trace in traces {
                     if !(config.include_idle || trace.active) {
                         continue;
@@ -227,51 +368,61 @@ fn record_samples(process: &mut PythonSpy, config: &Config) -> Result<(), Error>
 
                     if config.include_thread_ids {
                         let threadid = trace.format_threadid();
-                        trace.frames.push(Frame{name: format!("thread {}", threadid),
-                            filename: String::from(""),
-                            module: None, short_filename: None, line: 0, locals: None});
+                        trace.frames.push(
+                            Frame{name: format!("thread {}", threadid),
+                                  filename: String::from(""),
+                                  module: None, short_filename: None,
+                                  line: 0, locals: None});
                     }
 
                     output.increment(&trace)?;
-                }
 
-                samples += 1;
-                if let Some(max_samples) = max_samples {
-                    if samples >= max_samples {
-                        break;
+                    samples += 1;
+
+                    if let Some(max_samples) = max_samples {
+                        if count >= max_samples {
+                            running.store(false, Ordering::SeqCst);
+                            break;
+                        }
                     }
                 }
             },
-            Err(e) => {
-                if process_exitted(&process.process) {
-                    exit_message = "Stopped sampling because the process ended";
-                    break;
-                } else {
-                    warn!("Failed to get stack trace {}", e);
-                    errors += 1;
+            TraceEvent::TimingErr(delay) => {
+                if delay > Duration::from_secs(1) && !config.hide_progess {
+                    let term = console::Term::stdout();
+                    term.move_cursor_up(2)?;
+                    println!("{:.2?} behind in sampling, results may be inaccurate. Try reducing the sampling rate.", delay);
+                    term.move_cursor_down(1)?;
                 }
-            }
+            },
+            TraceEvent::Err(error) => {
+                errors += 1;
+                warn!("Failed to get stack trace {}", error);
+            },
         }
+
         if config.duration == RecordDuration::Unlimited {
             let msg = if errors > 0 {
                 format!("Collected {} samples ({} errors)", samples, errors)
             } else {
                 format!("Collected {} samples", samples)
             };
+
             progress.set_message(&msg);
         }
 
         progress.inc(1);
     }
+
     progress.finish();
     // write out a message here (so as not to interfere with progress bar) if we ended earlier
-    if !exit_message.is_empty() {
-        println!("{}", exit_message);
+    if interrupted.load(Ordering::SeqCst) {
+        println!("{}", "Stopped sampling because Control-C pressed");
     }
 
     {
-    let mut out_file = std::fs::File::create(filename)?;
-    output.write(&mut out_file)?;
+        let mut out_file = std::fs::File::create(filename)?;
+        output.write(&mut out_file)?;
     }
 
     match config.format.as_ref().unwrap() {
@@ -293,7 +444,17 @@ fn record_samples(process: &mut PythonSpy, config: &Config) -> Result<(), Error>
         }
     };
 
-    Ok(())
+    let mut last_err = Ok(());
+
+    for result in result_receiver {
+        if result.is_ok() {
+            return result;
+        }
+
+        last_err = result;
+    }
+
+    last_err
 }
 
 fn run_spy_command(process: &mut PythonSpy, config: &config::Config) -> Result<(), Error> {

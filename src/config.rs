@@ -44,6 +44,8 @@ pub struct Config {
     pub dump_json: bool,
     #[doc(hidden)]
     pub dump_locals: bool,
+    #[doc(hidden)]
+    pub subprocesses: bool,
 }
 
 arg_enum!{
@@ -71,7 +73,8 @@ impl Default for Config {
                non_blocking: false, show_line_numbers: false, sampling_rate: 100,
                duration: RecordDuration::Unlimited, native: false,
                gil_only: false, include_idle: false, include_thread_ids: false,
-               hide_progess: false, dump_json: false, dump_locals: false}
+               hide_progess: false, dump_json: false, dump_locals: false,
+               subprocesses: false}
     }
 }
 
@@ -97,6 +100,10 @@ impl Config {
                     .short("n")
                     .long("native")
                     .help("Collect stack traces from native extensions written in Cython, C or C++");
+
+        let subprocesses = Arg::with_name("subprocesses")
+                           .long("subprocesses")
+                           .help("Profile subprocesses");
 
         #[cfg(not(target_os="freebsd"))]
         let nonblocking = Arg::with_name("nonblocking")
@@ -162,13 +169,15 @@ impl Config {
             .arg(Arg::with_name("hideprogress")
                 .long("hideprogress")
                 .hidden(true)
-                .help("Hides progress bar (useful for showing error output on record)"));
+                .help("Hides progress bar (useful for showing error output on record)"))
+            .arg(subprocesses.clone());
 
         let top = clap::SubCommand::with_name("top")
             .about("Displays a top like view of functions consuming CPU")
             .arg(program.clone())
             .arg(pid.clone())
-            .arg(rate.clone());
+            .arg(rate.clone())
+            .arg(subprocesses.clone());
 
         let dump = clap::SubCommand::with_name("dump")
             .about("Dumps stack traces for a target program to stdout")
@@ -248,6 +257,7 @@ impl Config {
         config.hide_progess = matches.occurrences_of("hideprogress") > 0;
         config.dump_json = matches.occurrences_of("json") > 0;
         config.dump_locals = matches.occurrences_of("locals") > 0;
+        config.subprocesses = matches.occurrences_of("subprocesses") > 0;
 
         // disable native profiling if invalidly asked for
         if config.native && config.non_blocking {
@@ -290,6 +300,7 @@ mod tests {
         assert_eq!(config.filename, Some(String::from("foo")));
         assert_eq!(config.format, Some(FileFormat::flamegraph));
         assert_eq!(config.command, String::from("record"));
+        assert_eq!(config.subprocesses, false);
 
         // same command using short versions of everything
         let short_config = get_config("py-spy r -p 1234 -o foo").unwrap();
@@ -313,10 +324,11 @@ mod tests {
         assert_eq!(config.gil_only, false);
         assert_eq!(config.include_thread_ids, false);
 
-        let config_flags = get_config("py-spy r -p 1234 -o foo --idle --gil --threads").unwrap();
+        let config_flags = get_config("py-spy r -p 1234 -o foo --idle --gil --threads --subprocesses").unwrap();
         assert_eq!(config_flags.include_idle, true);
         assert_eq!(config_flags.gil_only, true);
         assert_eq!(config_flags.include_thread_ids, true);
+        assert_eq!(config_flags.subprocesses, true);
     }
 
     #[test]

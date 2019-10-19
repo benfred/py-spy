@@ -3,6 +3,8 @@ pub mod libunwind;
 #[cfg(unwind)]
 mod symbolication;
 
+mod children;
+
 use libc::pid_t;
 
 use nix::{self, sys::wait, sys::ptrace, {sched::{setns, CloneFlags}}};
@@ -24,6 +26,7 @@ use read_process_memory::{CopyAddress, ProcessHandle};
 pub type Pid = pid_t;
 pub type Tid = pid_t;
 
+#[derive(Eq, PartialEq, Hash, Copy, Clone)]
 pub struct Process {
     pub pid: Pid,
 }
@@ -101,6 +104,10 @@ impl Process {
             }
         }
         Ok(ret)
+    }
+
+    pub fn children(&self) -> Result<Vec<Pid>, Error> {
+        children::children(self.pid)
     }
 
     #[cfg(unwind)]
@@ -230,6 +237,5 @@ fn test_parse_stat() {
     assert_eq!(get_active_status(b")))"), None);
     assert_eq!(get_active_status(b"1234 (bash)S"), None);
     assert_eq!(get_active_status(b"1234)SSSS"), None);
-    assert_eq!(get_active_status(b"15379 (ipython) t 9898 15379 9898 34816", Some(b't')));
-
+    assert_eq!(get_active_status(b"15379 (ipython) t 9898 15379 9898 34816"), Some(b't'));
 }
