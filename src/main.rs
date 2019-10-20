@@ -56,7 +56,7 @@ use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::sync::mpsc::{channel, Sender};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::thread;
 
 use failure::Error;
@@ -91,9 +91,11 @@ fn sample_console(process: &mut PythonSpy,
         Err(_) => format!("Pid {}", process.process.pid)
     };
 
+    let sampling_rate = 1.0 / rate as f64;
+
     let mut console = ConsoleViewer::new(config.show_line_numbers, &display,
                                          &format!("{}", process.version),
-                                         1.0 / rate as f64)?;
+                                         sampling_rate)?;
 
     let running = Arc::new(AtomicBool::new(true));
     let (trace_sender, trace_receiver) = channel();
@@ -109,10 +111,21 @@ fn sample_console(process: &mut PythonSpy,
         &config.clone()
     );
 
+    let mut now = Instant::now();
+    let mut pending_traces = vec![];
+
     for event in trace_receiver.iter() {
         match event {
             TraceEvent::Trace((traces, _)) => {
-                console.increment(&traces)?;
+                pending_traces.extend(traces);
+
+                // Throttle console update & aggregate traces
+                // from different processes
+                if now.elapsed().as_secs_f64() >= sampling_rate {
+                    now = Instant::now();
+                    console.increment(&pending_traces)?;
+                    pending_traces.clear();
+                }
             },
             TraceEvent::TimingErr(delay) => {
                 console.increment_late_sample(delay);
@@ -577,5 +590,70 @@ fn main() {
         }
         eprintln!("{}", err.backtrace());
         std::process::exit(1);
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    use std::sync::mpsc::channel;
+
+    use super::{Config, PythonSpy, TraceEvent, spawn_recorder_threads};
+
+    #[test]
+    fn test_spawn_recorder_threads() {
+        let config = Config {
+            subprocesses: true,
+            ..Config::default()
+        };
+
+        let running = Arc::new(AtomicBool::new(true));
+        let (trace_sender, trace_receiver) = channel();
+        let (result_sender, result_receiver) = channel();
+
+        let child = std::process::Command::new("python")
+            .arg("./tests/scripts/subprocesses.py")
+            .spawn()
+            .unwrap();
+
+        let process = PythonSpy::retry_new(child.id() as _, &config, 3).unwrap();
+
+        // Give python some time
+        std::thread::sleep(std::time::Duration::from_millis(200));
+
+        spawn_recorder_threads(
+            result_sender,
+            trace_sender,
+            process.process,
+            running.clone(),
+            &config.clone()
+        );
+
+        let mut pids = HashSet::new();
+
+        for event in trace_receiver.iter() {
+            match event {
+                TraceEvent::Trace((traces, count)) => {
+                    let parent_ids = traces.iter().map(|x| x.process_id);
+
+                    pids.extend(parent_ids);
+
+                    if count > 100 {
+                        running.store(false, Ordering::SeqCst);
+                        break;
+                    }
+                },
+                _ => {
+                    running.store(false, Ordering::SeqCst);
+                    break;
+                },
+            }
+        }
+
+        assert_eq!(pids.len(), 4);
+        assert!(result_receiver.iter().all(|x| x.is_ok()));
     }
 }

@@ -1,5 +1,5 @@
 use std;
-use std::collections::HashMap;
+use std::collections::{HashSet, HashMap};
 use std::vec::Vec;
 use std::io;
 use std::io::{Read, Write};
@@ -69,8 +69,19 @@ impl ConsoleViewer {
     pub fn increment(&mut self, traces: &[StackTrace]) -> Result<(), Error> {
         self.maybe_reset();
         self.stats.threads = 0;
+        self.stats.processes = 0;
+
+        let mut pids = HashSet::new();
+        let mut threads = HashSet::new();
+
         for trace in traces {
-            self.stats.threads += 1;
+            if pids.insert(trace.process_id) {
+                self.stats.processes += 1;
+            }
+
+            if threads.insert((trace.thread_id, trace.os_thread_id)) {
+                self.stats.threads += 1;
+            }
 
             if !(self.show_idle || trace.active) {
                 continue;
@@ -161,9 +172,10 @@ impl ConsoleViewer {
              out!("Total Samples {}", style(self.stats.overall_samples).bold());
         }
 
-        out!("GIL: {:.2}%, Active: {:>.2}%, Threads: {}",
+        out!("GIL: {:.2}%, Active: {:>.2}%, Processes: {}, Threads: {}",
             style(100.0 * self.stats.gil as f64 / self.stats.current_samples as f64).bold(),
             style(100.0 * self.stats.active as f64 / self.stats.current_samples as f64).bold(),
+            style(self.stats.processes).bold(),
             style(self.stats.threads).bold());
 
         out!();
@@ -328,6 +340,7 @@ struct Stats {
     errors: u64,
     late_samples: u64,
     threads: u64,
+    processes: u64,
     active: u64,
     gil: u64,
     function_counts: HashMap<String, FunctionStatistics>,
@@ -345,9 +358,10 @@ impl Options {
 impl Stats {
     fn new() -> Stats {
         Stats{current_samples: 0, overall_samples: 0, elapsed: 0.,
-              errors: 0, late_samples: 0, threads: 0, gil: 0, active: 0,
-              line_counts: HashMap::new(), function_counts: HashMap::new(),
-              last_error: None, last_delay: None}
+              errors: 0, late_samples: 0, threads: 0, processes: 0,
+              gil: 0, active: 0, line_counts: HashMap::new(),
+              function_counts: HashMap::new(), last_error: None,
+              last_delay: None}
     }
 
     pub fn reset_current(&mut self) {
