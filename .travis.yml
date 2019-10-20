@@ -1,5 +1,4 @@
 language: rust
-sudo: required
 dist: xenial
 
 matrix:
