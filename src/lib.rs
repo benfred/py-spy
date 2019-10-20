@@ -58,7 +58,9 @@ mod python_bindings;
 mod python_interpreters;
 mod python_spy;
 mod python_data_access;
+pub mod sampler;
 mod stack_trace;
+pub mod timer;
 mod utils;
 mod version;
 

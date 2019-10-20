@@ -6,6 +6,7 @@ mod symbolication;
 use libc::pid_t;
 
 use nix::{self, sys::wait, sys::ptrace, {sched::{setns, CloneFlags}}};
+use std::collections::HashMap;
 use std::convert::TryInto;
 use std::io::Read;
 use std::os::unix::io::AsRawFd;
@@ -103,6 +104,11 @@ impl Process {
         Ok(ret)
     }
 
+    pub fn child_processes(&self) -> Result<Vec<(Pid, Pid)>, Error> {
+        let processes = get_process_tree()?;
+        Ok(crate::filter_child_pids(self.pid, &processes))
+    }
+
     #[cfg(unwind)]
     pub fn unwinder(&self) -> Result<Unwinder, Error> {
         Ok(Unwinder::new()?)
@@ -136,7 +142,6 @@ impl Thread {
 
     pub fn active(&self) -> Result<bool, Error> {
         let mut file = File::open(format!("/proc/{}/stat", self.tid))?;
-
         let mut buf=[0u8; 512];
         file.read(&mut buf)?;
         match get_active_status(&buf) {
@@ -145,6 +150,26 @@ impl Thread {
         }
     }
 }
+
+fn get_process_tree() -> Result<HashMap<Pid, Pid>, Error> {
+    let mut ret = HashMap::new();
+    for entry in std::fs::read_dir("/proc")? {
+        let entry = entry?;
+        let filename = entry.file_name();
+        let pid = match filename.to_str() {
+            Some(pid) => pid,
+            None => continue
+        };
+        if let Ok(pid) = pid.parse::<Pid>() {
+            match get_parent_pid(pid) {
+                Ok(ppid) => { ret.insert(pid, ppid) },
+                Err(_) => continue
+            };
+        }
+    }
+    Ok(ret)
+}
+
 
 /// This locks a target process using ptrace, and prevents it from running while this
 /// struct is alive
@@ -221,8 +246,23 @@ fn get_active_status(stat: &[u8]) -> Option<u8> {
     }
 }
 
+fn get_parent_pid(pid: Pid) -> Result<Pid, Error> {
+    let mut file = File::open(format!("/proc/{}/stat", pid))?;
+    let mut buf=[0u8; 512];
+    file.read(&mut buf)?;
+    get_ppid_status(&buf).ok_or_else(|| Error::Other(format!("Failed to parse /proc/{}/stat", pid)))
+}
+
+fn get_ppid_status(stat: &[u8]) -> Option<Pid> {
+    lazy_static! {
+        static ref RE: regex::bytes::Regex = regex::bytes::Regex::new(r"^\d+ \(.+\) \w (\d+)").unwrap();
+    }
+    let caps = RE.captures(stat)?;
+    std::str::from_utf8(caps.get(1)?.as_bytes()).ok()?.parse::<Pid>().ok()
+}
+
 #[test]
-fn test_parse_stat() {
+fn test_parse_active_stat() {
     assert_eq!(get_active_status(b"1234 (bash) S 1233"), Some(b'S'));
     assert_eq!(get_active_status(b"1234 (with space) R 1233"), Some(b'R'));
     assert_eq!(get_active_status(b"1234"), None);
@@ -230,6 +270,18 @@ fn test_parse_stat() {
     assert_eq!(get_active_status(b")))"), None);
     assert_eq!(get_active_status(b"1234 (bash)S"), None);
     assert_eq!(get_active_status(b"1234)SSSS"), None);
-    assert_eq!(get_active_status(b"15379 (ipython) t 9898 15379 9898 34816", Some(b't')));
+    assert_eq!(get_active_status(b"15379 (ipython) t 9898 15379 9898 34816"), Some(b't'));
+}
 
+
+#[test]
+fn test_parse_ppid_stat() {
+    assert_eq!(get_ppid_status(b"1234 (bash) S 1233"), Some(1233));
+    assert_eq!(get_ppid_status(b"1234 (with space) R 1233"), Some(1233));
+    assert_eq!(get_ppid_status(b"1234"), None);
+    assert_eq!(get_ppid_status(b")"), None);
+    assert_eq!(get_ppid_status(b")))"), None);
+    assert_eq!(get_ppid_status(b"1234 (bash)S"), None);
+    assert_eq!(get_ppid_status(b"1234)SSSS"), None);
+    assert_eq!(get_ppid_status(b"15379 (ipython) t 9898 15379 9898 34816"), Some(9898));
 }

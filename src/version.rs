@@ -4,7 +4,7 @@ use std;
 use failure::{Error};
 
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Version {
     pub major: u64,
     pub minor: u64,

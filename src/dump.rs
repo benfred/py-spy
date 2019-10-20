@@ -11,9 +11,10 @@ use crate::python_data_access::{copy_string, copy_long, DictIterator};
 
 use crate::version::Version;
 
-use remoteprocess::ProcessMemory;
+use remoteprocess::{ProcessMemory, Pid};
 
-pub fn print_traces(process: &mut PythonSpy, config: &Config) -> Result<(), Error> {
+pub fn print_traces(pid: Pid, config: &Config) -> Result<(), Error> {
+    let mut process = PythonSpy::new(pid, config)?;
     if config.dump_json {
         let traces = process.get_stack_traces()?;
         println!("{}", serde_json::to_string_pretty(&traces)?);
@@ -24,9 +25,9 @@ pub fn print_traces(process: &mut PythonSpy, config: &Config) -> Result<(), Erro
     // processing we only handle py3.6+ right now, and this doesn't work at all if the
     // threading module isn't imported in the target program
     let thread_names = match process.version {
-        Version{major: 3, minor: 6, ..} => thread_name_lookup::<v3_6_6::_is>(process).ok(),
-        Version{major: 3, minor: 7, ..} => thread_name_lookup::<v3_7_0::_is>(process).ok(),
-        Version{major: 3, minor: 8, ..} => thread_name_lookup::<v3_8_0::_is>(process).ok(),
+        Version{major: 3, minor: 6, ..} => thread_name_lookup::<v3_6_6::_is>(&process).ok(),
+        Version{major: 3, minor: 7, ..} => thread_name_lookup::<v3_7_0::_is>(&process).ok(),
+        Version{major: 3, minor: 8, ..} => thread_name_lookup::<v3_8_0::_is>(&process).ok(),
         _ => None
     };
 

@@ -47,6 +47,7 @@ mod stack_trace;
 mod console_viewer;
 mod flamegraph;
 mod speedscope;
+mod sampler;
 mod timer;
 mod utils;
 mod version;
@@ -58,14 +59,9 @@ use std::time::Duration;
 
 use failure::Error;
 
-use python_spy::PythonSpy;
 use stack_trace::{StackTrace, Frame};
 use console_viewer::ConsoleViewer;
 use config::{Config, FileFormat, RecordDuration};
-
-fn process_exitted(process: &remoteprocess::Process) -> bool {
-    process.exe().is_err()
-}
 
 #[cfg(unix)]
 fn permission_denied(err: &Error) -> bool {
@@ -80,37 +76,33 @@ fn permission_denied(err: &Error) -> bool {
     })
 }
 
-fn sample_console(process: &mut PythonSpy,
+fn sample_console(pid: remoteprocess::Pid,
                   config: &Config) -> Result<(), Error> {
-    let rate = config.sampling_rate;
-    let display = match process.process.cmdline() {
+    let sampler = sampler::Sampler::new(pid, config)?;
+
+    let display = match remoteprocess::Process::new(pid)?.cmdline() {
         Ok(cmdline) => cmdline.join(" "),
-        Err(_) => format!("Pid {}", process.process.pid)
+        Err(_) => format!("Pid {}", pid)
     };
 
     let mut console = ConsoleViewer::new(config.show_line_numbers, &display,
-                                         &format!("{}", process.version),
-                                         1.0 / rate as f64)?;
-
-    for sleep in timer::Timer::new(rate as f64) {
-        if let Err(elapsed) = sleep {
+                                         &sampler.version,
+                                         config)?;
+    for sample in sampler {
+        if let Some(elapsed) = sample.late {
             console.increment_late_sample(elapsed);
         }
 
-        match process.get_stack_traces() {
-            Ok(traces) => {
-                console.increment(&traces)?;
-            },
-            Err(err) => {
-                if process_exitted(&process.process) {
-                    println!("\nprocess {} ended", process.pid);
-                    break;
-                } else {
-                    console.increment_error(&err)?;
-                }
+        if let Some(errors) = sample.sampling_errors {
+            for (_, error) in errors {
+                console.increment_error(&error)?
             }
         }
+        console.increment(&sample.traces)?;
+    }
 
+    if !config.subprocesses {
+        println!("\nprocess {} ended", pid);
     }
     Ok(())
 }
@@ -150,7 +142,7 @@ impl Recorder for RawFlamegraph {
     }
 }
 
-fn record_samples(process: &mut PythonSpy, config: &Config) -> Result<(), Error> {
+fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error> {
     let mut output: Box<dyn Recorder> = match config.format {
         Some(FileFormat::flamegraph) => Box::new(flamegraph::Flamegraph::new(config.show_line_numbers)),
         Some(FileFormat::speedscope) =>  Box::new(speedscope::Stats::new()),
@@ -165,7 +157,7 @@ fn record_samples(process: &mut PythonSpy, config: &Config) -> Result<(), Error>
 
     let mut max_samples = None;
     use indicatif::ProgressBar;
-
+    let sampler = sampler::Sampler::new(pid, config)?;
     let progress = match (config.hide_progess, &config.duration) {
         (true, _) => ProgressBar::hidden(),
         (false, RecordDuration::Seconds(sec)) => {
@@ -197,10 +189,10 @@ fn record_samples(process: &mut PythonSpy, config: &Config) -> Result<(), Error>
         r.store(false, Ordering::SeqCst);
     })?;
 
-    let mut exit_message = "";
+    let mut exit_message = "Stopped sampling because process exitted";
 
-    for sleep in timer::Timer::new(config.sampling_rate as f64) {
-        if let Err(delay) = sleep {
+    for mut sample in sampler {
+        if let Some(delay) = sample.late {
             if delay > Duration::from_secs(1) && !config.hide_progess {
                 let term = console::Term::stdout();
                 term.move_cursor_up(2)?;
@@ -214,44 +206,57 @@ fn record_samples(process: &mut PythonSpy, config: &Config) -> Result<(), Error>
             break;
         }
 
-        match process.get_stack_traces() {
-            Ok(traces) => {
-                for mut trace in traces {
-                    if !(config.include_idle || trace.active) {
-                        continue;
-                    }
-
-                    if config.gil_only && !trace.owns_gil {
-                        continue;
-                    }
-
-                    if config.include_thread_ids {
-                        let threadid = trace.format_threadid();
-                        trace.frames.push(Frame{name: format!("thread {}", threadid),
-                            filename: String::from(""),
-                            module: None, short_filename: None, line: 0, locals: None});
-                    }
-
-                    output.increment(&trace)?;
-                }
-
-                samples += 1;
-                if let Some(max_samples) = max_samples {
-                    if samples >= max_samples {
-                        break;
-                    }
-                }
-            },
-            Err(e) => {
-                if process_exitted(&process.process) {
-                    exit_message = "Stopped sampling because the process ended";
-                    break;
-                } else {
-                    warn!("Failed to get stack trace {}", e);
-                    errors += 1;
-                }
+        samples += 1;
+        if let Some(max_samples) = max_samples {
+            if samples >= max_samples {
+                exit_message = "";
+                break;
             }
         }
+
+        for trace in sample.traces.iter_mut() {
+            if !(config.include_idle || trace.active) {
+                continue;
+            }
+
+            if config.gil_only && !trace.owns_gil {
+                continue;
+            }
+
+            if config.include_thread_ids {
+                let threadid = trace.format_threadid();
+                trace.frames.push(Frame{name: format!("thread {}", threadid),
+                    filename: String::from(""),
+                    module: None, short_filename: None, line: 0, locals: None});
+            }
+
+            if let Some(process_info) = sample.process_info.as_ref() {
+                // walk process tree up to root, displaying pid + cmdline in output
+                let processes = process_info.lock().unwrap();
+                let mut pid = trace.pid;
+                loop {
+                    let p = processes.get(&pid);
+                    let process = p.as_ref().unwrap();
+                    trace.frames.push(Frame{name: format!("process {}:\"{}\"", pid, process.cmdline),
+                        filename: String::from(""),
+                        module: None, short_filename: None, line: 0, locals: None});
+
+                    match process.ppid {
+                        Some(ppid) => { pid = ppid; },
+                        None => { break; }
+                    }
+                }
+            }
+            output.increment(&trace)?;
+        }
+
+        if let Some(sampling_errors) = sample.sampling_errors {
+            for (pid, e) in sampling_errors {
+                warn!("Failed to get stack trace from {}: {}", pid, e);
+                errors += 1;
+            }
+        }
+
         if config.duration == RecordDuration::Unlimited {
             let msg = if errors > 0 {
                 format!("Collected {} samples ({} errors)", samples, errors)
@@ -260,7 +265,6 @@ fn record_samples(process: &mut PythonSpy, config: &Config) -> Result<(), Error>
             };
             progress.set_message(&msg);
         }
-
         progress.inc(1);
     }
     progress.finish();
@@ -296,16 +300,16 @@ fn record_samples(process: &mut PythonSpy, config: &Config) -> Result<(), Error>
     Ok(())
 }
 
-fn run_spy_command(process: &mut PythonSpy, config: &config::Config) -> Result<(), Error> {
+fn run_spy_command(pid: remoteprocess::Pid, config: &config::Config) -> Result<(), Error> {
     match config.command.as_ref() {
         "dump" =>  {
-            dump::print_traces(process, config)?;
+            dump::print_traces(pid, config)?;
         },
         "record" => {
-            record_samples(process, config)?;
+            record_samples(pid, config)?;
         },
         "top" => {
-            sample_console(process, config)?;
+            sample_console(pid, config)?;
         }
         _ => {
             // shouldn't happen
@@ -328,8 +332,7 @@ fn pyspy_main() -> Result<(), Error> {
     }
 
     if let Some(pid) = config.pid {
-        let mut process = PythonSpy::retry_new(pid, &config, 3)?;
-        run_spy_command(&mut process, &config)?;
+        run_spy_command(pid, &config)?;
     }
 
     else if let Some(ref subprocess) = config.python_program {
@@ -361,12 +364,7 @@ fn pyspy_main() -> Result<(), Error> {
             // sleep just in case: https://jvns.ca/blog/2018/01/28/mac-freeze/
             std::thread::sleep(Duration::from_millis(50));
         }
-        let result = match PythonSpy::retry_new(command.id() as remoteprocess::Pid, &config, 8) {
-            Ok(mut process) => {
-                run_spy_command(&mut process, &config)
-            },
-            Err(e) => Err(e)
-        };
+        let result = run_spy_command(command.id() as _, &config);
 
         // check exit code of subprocess
         std::thread::sleep(Duration::from_millis(1));

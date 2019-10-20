@@ -50,6 +50,8 @@ extern "system" {
     fn NtQueryInformationProcess(process: HANDLE, info_class: u32, info: PVOID, info_len: ULONG, ret_len: * mut ULONG) -> NTSTATUS;
 
     fn NtGetNextThread(process: HANDLE, thread: HANDLE, access: ACCESS_MASK, attritubes: ULONG, flags: ULONG, new_thread: *mut HANDLE) -> NTSTATUS;
+    fn NtGetNextProcess(process: HANDLE, access: ACCESS_MASK, attritubes: ULONG, flags: ULONG, new_process: *mut HANDLE) -> NTSTATUS;
+
 }
 
 impl Process {
@@ -117,8 +119,7 @@ impl Process {
             }
 
             let unicode: PUNICODE_STRING = (&storage as &[u16]) as * const _ as * mut _;
-            let chars = std::slice::from_raw_parts((*unicode).Buffer, (*unicode).Length as usize);
-
+            let chars = std::slice::from_raw_parts((*unicode).Buffer, (*unicode).Length  as usize / 2);
             let mut ret = Vec::new();
             ret.push(String::from_utf16_lossy(chars));
             Ok(ret)
@@ -135,6 +136,34 @@ impl Process {
             }
         }
         Ok(ret)
+    }
+
+    pub fn child_processes(&self) -> Result<Vec<(Pid, Pid)>, Error> {
+        let mut processes = std::collections::HashMap::new();
+        unsafe {
+            // we're using NtGetNextProcess - mainly because the TLHelp32 code
+            // seemed crazy slow when I was first using it for getting the threads.
+            // This does have a downside, in that this will include processes that
+            // aren't the child of the current one and doesn't include the ppid.
+            // SO we're also using NtQueryInformationProcess to get the PROCESS_BASIC_INFORMATION
+            // to get the ppid and then later filter down to the correct list
+            // This might be worth coming back to a later date and benchmarking
+            // against tlhelp32 Process32First/Process32Next code - but seems to work
+            // well enough for now
+            let mut process: HANDLE = self.handle.0;
+            while NtGetNextProcess(process, MAXIMUM_ALLOWED, 0, 0,
+                                  &mut process as *mut HANDLE) == 0 {
+
+                let mut basic_info = std::mem::zeroed::<PROCESS_BASIC_INFORMATION>();
+                let size: ULONG = 0;
+                let retcode = NtQueryInformationProcess(process, 0, &mut basic_info as * const _ as * mut _,
+                                                        std::mem::size_of_val(&basic_info) as ULONG, &size as *const _ as *mut _);
+                if retcode == 0 {
+                    processes.insert(basic_info.unique_process_id as Pid, basic_info.inherited_from_unique_process_id as Pid);
+                }
+            }
+        }
+        Ok(crate::filter_child_pids(self.pid, &processes))
     }
 
     pub fn unwinder(&self) -> Result<unwinder::Unwinder, Error> {
@@ -298,3 +327,17 @@ struct THREAD_LAST_SYSCALL_INFORMATION {
     arg1: PVOID,
     syscall_number: USHORT
 }
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+struct PROCESS_BASIC_INFORMATION {
+    exit_status: NTSTATUS,
+    peb_base_address: * mut libc::c_void,
+    affinity_mask: * mut ULONG,
+    base_priority: ULONG,
+    unique_process_id: HANDLE,
+    inherited_from_unique_process_id: HANDLE
+}
+
+
+unsafe impl Send for Process {}

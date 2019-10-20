@@ -1,27 +1,41 @@
 extern crate py_spy;
 
-use py_spy::{Config, PythonSpy};
+use py_spy::{Config, PythonSpy, Pid};
+
+struct ScriptRunner {
+    #[allow(dead_code)]
+    child: std::process::Child,
+}
+
+impl ScriptRunner {
+    fn new(filename: &str) -> ScriptRunner {
+        let child = std::process::Command::new("python").arg(filename).spawn().unwrap();
+        ScriptRunner{child}
+    }
+
+    fn id(&self) -> Pid { self.child.id() as _ }
+}
+
+impl Drop for ScriptRunner {
+    fn drop(&mut self) {
+        if let Err(err) = self.child.kill() {
+            eprintln!("Failed to kill child process {}", err);
+        }
+    }
+}
 
 struct TestRunner {
-    child: std::process::Child,
+    #[allow(dead_code)]
+    child: ScriptRunner,
     spy: PythonSpy
 }
 
 impl TestRunner {
     fn new(config: Config, filename: &str) -> TestRunner {
-        let child = std::process::Command::new("python").arg(filename).spawn().unwrap();
+        let child = ScriptRunner::new(filename);
         std::thread::sleep(std::time::Duration::from_millis(400));
-        let spy = PythonSpy::retry_new(child.id() as _, &config, 20).unwrap();
-
+        let spy = PythonSpy::retry_new(child.id(), &config, 20).unwrap();
         TestRunner{child, spy}
-    }
-}
-
-impl Drop for TestRunner {
-    fn drop(&mut self) {
-        if let Err(err) = self.child.kill() {
-            eprintln!("Failed to kill child process {}", err);
-        }
     }
 }
 
@@ -225,4 +239,50 @@ fn test_local_vars() {
     if runner.spy.version.major == 3 && runner.spy.version.minor >= 6 {
         assert_eq!(local5.repr, Some("{\"a\": False, \"b\": (1, 2, 3)}".to_owned()));
     }
+}
+
+#[test]
+fn test_subprocesses() {
+    #[cfg(target_os="macos")]
+    {
+        // We need root permissions here to run this on OSX
+        if unsafe { libc::geteuid() } != 0 {
+            return;
+        }
+    }
+
+    // We used to not be able to create a sampler object if one of the child processes
+    // was in a zombie state. Verify that this works now
+    let process = ScriptRunner::new("./tests/scripts/subprocesses.py");
+    std::thread::sleep(std::time::Duration::from_millis(400));
+    let config = Config{subprocesses: true, ..Default::default()};
+    let sampler = py_spy::sampler::Sampler::new(process.id(), &config).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(1000));
+
+    // Get samples from all the subprocesses, verify that we got from all 3 processes
+    for sample in sampler {
+        let traces = sample.traces;
+        assert_eq!(traces.len(), 3);
+        assert!(traces[0].pid != traces[1].pid);
+        assert!(traces[1].pid != traces[2].pid);
+        break;
+    }
+}
+
+#[test]
+fn test_subprocesses_zombiechild() {
+    #[cfg(target_os="macos")]
+    {
+        // We need root permissions here to run this on OSX
+        if unsafe { libc::geteuid() } != 0 {
+            return;
+        }
+    }
+
+    // We used to not be able to create a sampler object if one of the child processes
+    // was in a zombie state. Verify that this works now
+    let process = ScriptRunner::new("./tests/scripts/subprocesses_zombie_child.py");
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    let config = Config{subprocesses: true, ..Default::default()};
+    let _sampler = py_spy::sampler::Sampler::new(process.id(), &config).unwrap();
 }
