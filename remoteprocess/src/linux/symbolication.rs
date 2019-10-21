@@ -87,7 +87,16 @@ impl Symbolicator {
                         .find(|ref header| header.p_type == PT_LOAD && header.p_flags & PF_X != 0);
 
                     let obj_base = match program_header {
-                        Some(hdr) => { m.start() as u64 - hdr.p_vaddr },
+                        Some(hdr) => {
+                            // Don't panic if v_addr/start is messed up
+                            // (https://github.com/benfred/py-spy/issues/183)
+                            if hdr.p_vaddr > m.start() as u64 {
+                                warn!("Failed to load {} for symbols: v_addr {} is past start {}",
+                                    filename, hdr.p_vaddr, m.start());
+                                continue;
+                            }
+                            m.start() as u64 - hdr.p_vaddr
+                        },
                         None => {
                             warn!("Failed to find exectuable PT_LOAD header in {}", filename);
                             continue;

@@ -249,25 +249,6 @@ impl NativeStack {
         }
         Ok(stack)
     }
-
-    #[cfg(target_os="linux")]
-    pub fn get_pthread_id(&self, thread: &remoteprocess::Thread, threadids: &HashSet<u64>) -> Result<u64, Error> {
-        let mut pthread_id = 0;
-
-        let mut cursor = self.unwinder.cursor(thread)?;
-        while let Some(_) = cursor.next() {
-            // the pthread_id is usually in the top-level frame of the thread, but on some configs
-            // can be 2nd level. Handle this by taking the top-most rbx value that is one of the
-            // pthread_ids we're looking for
-            if let Ok(bx) = cursor.bx() {
-                if bx != 0 && threadids.contains(&bx) {
-                    pthread_id = bx;
-                }
-            }
-        }
-
-        Ok(pthread_id)
-    }
 }
 
 #[derive(Debug)]
