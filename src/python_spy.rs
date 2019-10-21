@@ -100,15 +100,12 @@ impl PythonSpy {
 
         let version_string = format!("python{}.{}", version.major, version.minor);
 
-        #[cfg(all(unwind, not(target_os="linux")))]
+        #[cfg(unwind)]
         let native = if config.native {
             Some(NativeStack::new(pid, python_info.python_binary, python_info.libpython_binary)?)
         } else {
             None
         };
-
-        #[cfg(all(unwind, target_os="linux"))]
-        let native = Some(NativeStack::new(pid, python_info.python_binary, python_info.libpython_binary)?);
 
         Ok(PythonSpy{pid, process, version, interpreter_address, threadstate_address,
                      python_filename: python_info.python_filename,
@@ -353,7 +350,7 @@ impl PythonSpy {
 
         let processed_os_threads: HashSet<Tid> = HashSet::from_iter(self.python_thread_ids.values().map(|x| *x));
 
-        let native = self.native.as_ref().unwrap();
+        let unwinder = self.process.unwinder()?;
 
         // Try getting the pthread_id from the native stack registers for threads we haven't looked up yet
         for thread in self.process.threads()?.iter() {
@@ -362,7 +359,7 @@ impl PythonSpy {
                 continue;
             }
 
-            match native.get_pthread_id(&thread, &all_python_threads) {
+            match self._get_pthread_id(&unwinder, &thread, &all_python_threads) {
                 Ok(pthread_id) => {
                     if pthread_id != 0 {
                         self.python_thread_ids.insert(pthread_id, threadid);
@@ -396,6 +393,26 @@ impl PythonSpy {
         info!("failed looking up python threadid for {}. known python_thread_ids {:?}. all_python_threads {:?}",
             python_thread_id, self.python_thread_ids, all_python_threads);
         Ok(None)
+    }
+
+
+    #[cfg(all(target_os="linux", unwind))]
+    pub fn _get_pthread_id(&self, unwinder: &remoteprocess::Unwinder, thread: &remoteprocess::Thread, threadids: &HashSet<u64>) -> Result<u64, Error> {
+        let mut pthread_id = 0;
+
+        let mut cursor = unwinder.cursor(thread)?;
+        while let Some(_) = cursor.next() {
+            // the pthread_id is usually in the top-level frame of the thread, but on some configs
+            // can be 2nd level. Handle this by taking the top-most rbx value that is one of the
+            // pthread_ids we're looking for
+            if let Ok(bx) = cursor.bx() {
+                if bx != 0 && threadids.contains(&bx) {
+                    pthread_id = bx;
+                }
+            }
+        }
+
+        Ok(pthread_id)
     }
 
     #[cfg(target_os="freebsd")]
