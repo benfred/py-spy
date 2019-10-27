@@ -8,6 +8,8 @@ extern crate nix;
 fn get_backtrace(pid: remoteprocess::Pid) -> Result<(), remoteprocess::Error> {
     // Create a new handle to the process
     let process = remoteprocess::Process::new(pid)?;
+    println!("children {:#?}", process.child_processes()?);
+
     // Create a stack unwind object, and use it to get the stack for each thread
     let unwinder = process.unwinder()?;
     let symbolicator = process.symbolicator()?;

@@ -52,11 +52,12 @@ impl Flamegraph {
             let filename = match &frame.short_filename { Some(f) => &f, None => &frame.filename };
             if self.show_linenumbers && frame.line != 0 {
                 format!("{} ({}:{})", frame.name, filename, frame.line)
-            } else {
+            } else if filename.len() > 0 {
                 format!("{} ({})", frame.name, filename)
+            } else {
+                frame.name.clone()
             }
         }).collect::<Vec<String>>().join(";");
-
         // update counts for that frame
         *self.counts.entry(frame).or_insert(0) += 1;
         Ok(())

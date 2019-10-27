@@ -11,7 +11,7 @@ use mach::port::{mach_port_name_t, MACH_PORT_NULL};
 use mach::traps::{task_for_pid, mach_task_self};
 use read_process_memory::{CopyAddress, ProcessHandle};
 
-use libc::{c_int, pid_t};
+use libc::{c_int, pid_t, c_void};
 
 use mach::kern_return::{kern_return_t};
 use mach::mach_types::{thread_act_t};
@@ -115,7 +115,35 @@ impl Process {
         }
         Ok(ret)
     }
+
+    pub fn child_processes(&self) -> Result<Vec<(Pid, Pid)>, Error> {
+        fn recurse(pid:Pid, ret: &mut Vec<(Pid, Pid)>) -> Result<(), Error> {
+            for child in childpids(pid)? {
+                ret.push((child, pid));
+                recurse(child, ret)?;
+            }
+            Ok(())
+        }
+        let mut ret = Vec::new();
+        recurse(self.pid, &mut ret)?;
+        Ok(ret)
+    }
 }
+
+fn childpids(pid: Pid) -> Result<Vec<Pid>, Error> {
+    let size = unsafe { proc_listchildpids(pid, std::ptr::null_mut(), 0) };
+    if size < 0 {
+        return Err(Error::IOError(std::io::Error::last_os_error()));
+    }
+    let mut ret: Vec<pid_t> = Vec::with_capacity(size as usize);
+    let size = unsafe { proc_listchildpids(pid, ret.as_mut_ptr() as * mut _, size) };
+    if size < 0 {
+        return Err(Error::IOError(std::io::Error::last_os_error()));
+    }
+    unsafe { ret.set_len(size as usize); }
+    Ok(ret)
+}
+
 
 impl super::ProcessMemory for Process {
     fn read(&self, addr: usize, buf: &mut [u8]) -> Result<(), Error> {
@@ -217,4 +245,10 @@ impl Default for proc_vnodepathinfo {
 }
 impl PIDInfo for proc_vnodepathinfo {
     fn flavor() -> PidInfoFlavor { PidInfoFlavor::VNodePathInfo }
+}
+
+#[cfg(target_os = "macos")]
+#[link(name = "proc", kind = "dylib")]
+extern {
+    fn proc_listchildpids(pid: pid_t, buffer: *mut c_void, buffersize: c_int) -> c_int;
 }

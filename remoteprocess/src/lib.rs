@@ -59,6 +59,11 @@ extern crate libc;
 extern crate log;
 
 #[cfg(target_os="linux")]
+#[macro_use]
+extern crate lazy_static;
+#[cfg(target_os="linux")]
+extern crate regex;
+#[cfg(target_os="linux")]
 extern crate nix;
 #[cfg(target_os="linux")]
 extern crate object;
@@ -235,6 +240,31 @@ impl ProcessMemory for LocalProcess {
     }
 }
 
+#[cfg(any(target_os="linux", target_os="windows", target_os="freebsd"))]
+#[doc(hidden)]
+/// Filters pids to own include descendations of target_pid
+fn filter_child_pids(target_pid: Pid, processes: &std::collections::HashMap<Pid, Pid>) -> Vec<(Pid, Pid)> {
+    let mut ret = Vec::new();
+    for (child, parent) in processes.iter() {
+        let mut current = *parent;
+        loop {
+            if current == target_pid {
+                ret.push((*child, *parent));
+                break;
+            }
+            current = match processes.get(&current) {
+                Some(pid) => {
+                    if current == *pid {
+                        break;
+                    }
+                    *pid
+                }
+                None => break
+            };
+        }
+    }
+    ret
+}
 
 #[cfg(test)]
 pub mod tests {

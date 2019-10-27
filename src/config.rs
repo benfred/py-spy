@@ -37,6 +37,8 @@ pub struct Config {
     #[doc(hidden)]
     pub include_thread_ids: bool,
     #[doc(hidden)]
+    pub subprocesses: bool,
+    #[doc(hidden)]
     pub gil_only: bool,
     #[doc(hidden)]
     pub hide_progess: bool,
@@ -71,7 +73,7 @@ impl Default for Config {
                non_blocking: false, show_line_numbers: false, sampling_rate: 100,
                duration: RecordDuration::Unlimited, native: false,
                gil_only: false, include_idle: false, include_thread_ids: false,
-               hide_progess: false, dump_json: false, dump_locals: false}
+               hide_progess: false, dump_json: false, dump_locals: false, subprocesses: false}
     }
 }
 
@@ -111,6 +113,12 @@ impl Config {
                     .help("The number of samples to collect per second")
                     .default_value("100")
                     .takes_value(true);
+
+    let subprocesses = Arg::with_name("subprocesses")
+        .short("s")
+        .long("subprocesses")
+        .help("Profile subprocesses of the original process");
+
         let program = Arg::with_name("python_program")
                     .help("commandline of a python program to run")
                     .multiple(true);
@@ -143,6 +151,7 @@ impl Config {
                 .default_value("unlimited")
                 .takes_value(true))
             .arg(rate.clone())
+            .arg(subprocesses.clone())
             .arg(Arg::with_name("function")
                 .short("F")
                 .long("function")
@@ -168,7 +177,8 @@ impl Config {
             .about("Displays a top like view of functions consuming CPU")
             .arg(program.clone())
             .arg(pid.clone())
-            .arg(rate.clone());
+            .arg(rate.clone())
+            .arg(subprocesses.clone());
 
         let dump = clap::SubCommand::with_name("dump")
             .about("Dumps stack traces for a target program to stdout")
@@ -248,11 +258,22 @@ impl Config {
         config.hide_progess = matches.occurrences_of("hideprogress") > 0;
         config.dump_json = matches.occurrences_of("json") > 0;
         config.dump_locals = matches.occurrences_of("locals") > 0;
+        config.subprocesses = matches.occurrences_of("subprocesses") > 0;
 
         // disable native profiling if invalidly asked for
         if config.native && config.non_blocking {
-            error!("Can't get native stack traces with the --nonblocking option. Disabling native.");
-            config.native = false;
+            eprintln!("Can't get native stack traces with the --nonblocking option.");
+            std::process::exit(1);
+        }
+
+        #[cfg(windows)]
+        {
+            if config.native && config.subprocesses {
+                // the native extension profiling code relies on dbghelp library, which doesn't
+                // seem to work when connecting to multiple processes. disallow
+                eprintln!("Can't get native stack traces with the ---subprocesses option on windows.");
+                std::process::exit(1);
+            }
         }
 
         #[cfg(target_os="freebsd")]

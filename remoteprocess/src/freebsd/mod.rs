@@ -6,9 +6,8 @@ mod lock;
 use libc::{pid_t, lwpid_t};
 use read_process_memory::{CopyAddress, ProcessHandle};
 
-use std::cell::RefCell;
 use std::convert::TryInto;
-use std::rc::{Rc, Weak};
+use std::sync::{Arc, Weak, Mutex};
 
 use super::{ProcessMemory, Error};
 use freebsd::lock::ProcessLock;
@@ -18,32 +17,32 @@ pub type Tid = lwpid_t;
 
 pub struct Process {
     pub pid: Pid,
-    lock: Rc<RefCell<Weak<ProcessLock>>>,
+    lock: Arc<Mutex<Weak<ProcessLock>>>,
 }
 
 pub struct Thread {
     pub tid: lwpid_t,
     pid: pid_t,
     active: bool,
-    lock: Rc<RefCell<Weak<ProcessLock>>>,
+    lock: Arc<Mutex<Weak<ProcessLock>>>,
 }
 
-fn process_lock(pid: Pid, container: &RefCell<Weak<ProcessLock>>)
-                -> Result<Rc<ProcessLock>, Error> {
-    if let Some(ref lock) = Weak::upgrade(&container.borrow_mut()) {
-        return Ok(Rc::clone(lock))
+fn process_lock(pid: Pid, container: &Mutex<Weak<ProcessLock>>)
+                -> Result<Arc<ProcessLock>, Error> {
+    let mut mutex_lock = container.lock().unwrap();
+    if let Some(ref lock) = Weak::upgrade(&mutex_lock) {
+        return Ok(Arc::clone(lock))
     }
 
-    let lock = Rc::new(ProcessLock::new(pid)?);
-
-    container.replace(Rc::downgrade(&lock));
+    let lock = Arc::new(ProcessLock::new(pid)?);
+    *mutex_lock = Arc::downgrade(&lock);
 
     Ok(lock)
 }
 
 impl Process {
     pub fn new(pid: Pid) -> Result<Process, Error> {
-        Ok(Process { pid, lock: Rc::new(RefCell::new(Weak::new())) })
+        Ok(Process { pid, lock: Arc::new(Mutex::new(Weak::new())) })
     }
 
     pub fn exe(&self) -> Result<String, Error> {
@@ -67,14 +66,14 @@ impl Process {
                 tid: th.ki_tid,
                 active: th.ki_stat == 2,
                 pid: self.pid,
-                lock: Rc::clone(&self.lock),
+                lock: Arc::clone(&self.lock),
             }
         });
 
         Ok(result.collect())
     }
 
-    pub fn lock(&self) -> Result<Rc<ProcessLock>, Error> {
+    pub fn lock(&self) -> Result<Arc<ProcessLock>, Error> {
         process_lock(self.pid, &self.lock)
     }
 
@@ -104,6 +103,11 @@ impl Process {
         }
     }
 
+    pub fn child_processes(&self) -> Result<Vec<(Pid, Pid)>, Error> {
+        let processes = procstat::processes()?;
+        Ok(crate::filter_child_pids(self.pid, &processes))
+    }
+
     pub fn unwinder(&self) -> Result<(), Error> {
         unimplemented!("No unwinding yet!")
     }
@@ -118,7 +122,7 @@ impl Thread {
         Ok(self.active)
     }
 
-    pub fn lock(&self) -> Result<Rc<ProcessLock>, Error> {
+    pub fn lock(&self) -> Result<Arc<ProcessLock>, Error> {
         process_lock(self.pid, &self.lock)
     }
 }
@@ -291,7 +295,6 @@ mod tests {
             })
             .expect("test failed!");
     }
-
 
     /// Since threads and their process use the same locking mechanics, it's
     /// crucial to ensure that double-locking doesn't occur. In case of

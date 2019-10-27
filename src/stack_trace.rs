@@ -2,7 +2,7 @@ use std;
 
 use failure::{Error, ResultExt};
 
-use remoteprocess::ProcessMemory;
+use remoteprocess::{ProcessMemory, Pid, Process};
 
 use crate::python_interpreters::{InterpreterState, ThreadState, FrameObject, CodeObject, TupleObject};
 use crate::python_data_access::{copy_string, copy_bytes};
@@ -10,6 +10,8 @@ use crate::python_data_access::{copy_string, copy_bytes};
 /// Call stack for a single python thread
 #[derive(Debug, Clone, Serialize)]
 pub struct StackTrace {
+    /// The process id than generated this stack trace
+    pub pid: Pid,
     /// The python thread id for this stack trace
     pub thread_id: u64,
     /// The OS thread id for this stack tracee
@@ -48,8 +50,8 @@ pub struct LocalVariable {
 }
 
 /// Given an InterpreterState, this function returns a vector of stack traces for each thread
-pub fn get_stack_traces<I, P>(interpreter: &I, process: &P) -> Result<(Vec<StackTrace>), Error>
-        where I: InterpreterState, P: ProcessMemory {
+pub fn get_stack_traces<I>(interpreter: &I, process: &Process) -> Result<(Vec<StackTrace>), Error>
+        where I: InterpreterState {
     // TODO: deprecate this method
     let mut ret = Vec::new();
     let mut threads = interpreter.head();
@@ -66,8 +68,8 @@ pub fn get_stack_traces<I, P>(interpreter: &I, process: &P) -> Result<(Vec<Stack
 }
 
 /// Gets a stack trace for an individual thread
-pub fn get_stack_trace<T, P >(thread: &T, process: &P, copy_locals: bool) -> Result<StackTrace, Error>
-        where T: ThreadState, P: ProcessMemory {
+pub fn get_stack_trace<T>(thread: &T, process: &Process, copy_locals: bool) -> Result<StackTrace, Error>
+        where T: ThreadState {
     // TODO: just return frames here? everything else probably should be returned out of scope
     let mut frames = Vec::new();
     let mut frame_ptr = thread.frame();
@@ -104,7 +106,7 @@ pub fn get_stack_trace<T, P >(thread: &T, process: &P, copy_locals: bool) -> Res
         frame_ptr = frame.back();
     }
 
-    Ok(StackTrace{frames, thread_id: thread.thread_id(), owns_gil: false, active: true, os_thread_id: None})
+    Ok(StackTrace{pid: process.pid, frames, thread_id: thread.thread_id(), owns_gil: false, active: true, os_thread_id: None})
 }
 
 impl StackTrace {
