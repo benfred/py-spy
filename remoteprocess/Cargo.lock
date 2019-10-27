@@ -421,7 +421,7 @@ dependencies = [
 
 [[package]]
 name = "remoteprocess"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "addr2line 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "benfred-read-process-memory 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
