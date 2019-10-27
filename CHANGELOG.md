@@ -1,3 +1,9 @@
+## v0.3.0
+
+* Add ability to profile subprocesses [#124](https://github.com/benfred/py-spy/issues/124)
+* Fix overflow issue with linux symbolication [#183](https://github.com/benfred/py-spy/issues/183)
+* Fixes for printing local variables [#180](https://github.com/benfred/py-spy/pull/180)
+
 ## v0.2.2
 
 * Add ability to show local variables when dumping out stack traces [#77](https://github.com/benfred/py-spy/issues/77)

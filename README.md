@@ -51,8 +51,7 @@ You can change the file format to generate
 [speedscope](https://github.com/jlfwong/speedscope) profiles or raw data with the ```--format``` parameter.
 See ```py-spy record --help``` for information on other options including changing
 the sampling rate, filtering to only include threads that hold the GIL, profiling native C extensions,
-showing thread-ids and more.
-
+showing thread-ids, profiling subprocesses and more.
 
 ### top
 
@@ -131,6 +130,15 @@ commandline. For best results, you should compile your Python extension with sym
 noting for Cython programs is that py-spy needs the generated C or C++ file in order to return line
 numbers of the original .pyx file.  Read the [blog post](https://www.benfrederickson.com/profiling-native-python-extensions-with-py-spy/)
 for more information.
+
+### How can I profile subprocesses?
+
+By passing in the ```--subprocesses``` flag to either the record or top view, py-spy will also include
+the output from any python process that is a child process of the target program. This is useful
+for profiling applications that use multiprocessing or gunicorn worker pools. py-spy will monitor
+for new processes being created, and automatically attach to them and include samples from them in
+the output. The record view will include the PID and cmdline of each program in the callstack,
+with subprocesses appearing as children of their parent processes.
 
 ### When do you need to run as sudo?
 
