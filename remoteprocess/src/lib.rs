@@ -226,6 +226,18 @@ pub trait ProcessMemory {
     fn copy_pointer<T>(&self, ptr: *const T) -> Result<T, Error> {
         self.copy_struct(ptr as usize)
     }
+
+    /// Copies a series of bytes from another process into a vector of
+    /// structures of type T.
+    fn copy_vec<T>(&self, addr: usize, length: usize)
+                       -> Result<Vec<T>, Error>
+    {
+        let mut vec = self.copy(addr, length * std::mem::size_of::<T>())?;
+        let capacity = vec.capacity() as usize / std::mem::size_of::<T>() as usize;
+        let ptr = vec.as_mut_ptr() as *mut T;
+        std::mem::forget(vec);
+        unsafe { Ok(Vec::from_raw_parts(ptr, capacity, capacity)) }
+    }
 }
 
 #[doc(hidden)]
