@@ -97,6 +97,10 @@ pub fn parse_binary(filename: &str, addr: u64, size: u64) -> Result<BinaryInfo, 
                 let name = elf.strtab[sym.st_name].to_string();
                 symbols.insert(name, sym.st_value + offset);
             }
+            for dynsym in elf.dynsyms.iter() {
+                let name = elf.dynstrtab[dynsym.st_name].to_string();
+                symbols.insert(name, dynsym.st_value + offset);
+            }
             Ok(BinaryInfo{filename: filename.to_owned(),
                           symbols,
                           bss_addr: bss_header.sh_addr + offset,
