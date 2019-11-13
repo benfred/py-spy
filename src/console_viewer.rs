@@ -8,6 +8,8 @@ use std::thread;
 
 use console::{Term, style};
 use failure::Error;
+use unicode_truncate::UnicodeTruncateStr;
+use unicode_width::UnicodeWidthStr;
 
 use crate::config::Config;
 use crate::stack_trace::{StackTrace, Frame};
@@ -159,9 +161,22 @@ impl ConsoleViewer {
         }
 
         if self.subprocesses {
-             out!("Collecting samples from '{}' and subprocesses", style(&self.command).green());
+            let available_width = width - "Collecting samples from '{}' and subprocesses".len() + 2;
+            if self.command.width() > available_width {
+              let trimmed_command = self.command.unicode_truncate(available_width-3).0;
+              out!("Collecting samples from '{}...' and subprocesses", style(trimmed_command).green());
+            } else {
+              out!("Collecting samples from '{}' and subprocesses", style(&self.command).green());
+            }
         } else {
-            out!("Collecting samples from '{}' (python v{})", style(&self.command).green(), self.version.as_ref().unwrap());
+            let version_str = format!("{}", self.version.as_ref().unwrap());
+            let available_width = width - "Collecting samples from '{}' (python v{})".len() - version_str.len() + 4;
+            if self.command.width() > available_width {
+              let trimmed_command = self.command.unicode_truncate(available_width-3).0;
+              out!("Collecting samples from '{}...' (python v{})", style(trimmed_command).green(), version_str);
+            } else {
+              out!("Collecting samples from '{}' (python v{})", style(&self.command).green(), version_str);
+            }
         }
 
         let error_rate = self.stats.errors as f64 / self.stats.overall_samples as f64;
