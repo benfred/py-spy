@@ -53,11 +53,14 @@ impl Process {
         let mut f = std::fs::File::open(format!("/proc/{}/cmdline", self.pid))?;
         let mut buffer = Vec::new();
         f.read_to_end(&mut buffer)?;
+        if buffer[buffer.len()-1] == 0 {
+          buffer.pop();
+        }
 
         let mut ret = Vec::new();
         for arg in buffer.split(|b| *b == 0) {
             ret.push(String::from_utf8(arg.to_vec())
-                .map_err(|e| Error::Other(format!("Failed to convert ut8 {}", e)))?)
+                .map_err(|e| Error::Other(format!("Failed to convert utf8 {}", e)))?)
         }
         Ok(ret)
     }
