@@ -34,3 +34,7 @@ winapi = {version = "0.3", features = ["winbase", "consoleapi", "wincon", "handl
 
 [dev-dependencies]
 env_logger = "0.6.1"
+
+[features]
+default = []
+unwind = []

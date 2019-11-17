@@ -17,16 +17,16 @@ pub type Tid = Pid;
 
 use super::Error;
 
-#[cfg(unwind)]
+#[cfg(feature="unwind")]
 mod unwinder;
-#[cfg(unwind)]
+#[cfg(feature="unwind")]
 mod symbolication;
 mod syscalls_x64;
 
 use self::syscalls_x64::{Syscall, lookup_syscall};
-#[cfg(unwind)]
+#[cfg(feature="unwind")]
 pub use self::unwinder::Unwinder;
-#[cfg(unwind)]
+#[cfg(feature="unwind")]
 pub use self::symbolication::Symbolicator;
 
 pub struct Process {
@@ -169,13 +169,11 @@ impl Process {
         }
         Ok(crate::filter_child_pids(self.pid, &processes))
     }
-
-    #[cfg(unwind)]
+    #[cfg(feature="unwind")]
     pub fn unwinder(&self) -> Result<unwinder::Unwinder, Error> {
         unwinder::Unwinder::new(self.handle.0)
     }
-
-    #[cfg(unwind)]
+    #[cfg(feature="unwind")]
     pub fn symbolicator(&self) -> Result<Symbolicator, Error> {
         Symbolicator::new(self.handle.0)
     }

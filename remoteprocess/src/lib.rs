@@ -21,7 +21,7 @@
 //! # Example
 //!
 //! ```rust,no_run
-//! #[cfg(unwind)]
+//! #[cfg(feature="unwind")]
 //! fn get_backtrace(pid: remoteprocess::Pid) -> Result<(), remoteprocess::Error> {
 //!     // Create a new handle to the process
 //!     let process = remoteprocess::Process::new(pid)?;
@@ -106,7 +106,7 @@ pub enum Error {
     GoblinError(::goblin::error::Error),
     IOError(std::io::Error),
     Other(String),
-    #[cfg(all(target_os="linux", unwind))]
+    #[cfg(all(target_os="linux", feature="unwind", target_arch="x86_64"))]
     LibunwindError(linux::libunwind::Error),
     #[cfg(target_os="linux")]
     NixError(nix::Error),
@@ -121,7 +121,7 @@ impl std::fmt::Display for Error {
             Error::GoblinError(ref e) => e.fmt(f),
             Error::IOError(ref e) => e.fmt(f),
             Error::Other(ref e) => write!(f, "{}", e),
-            #[cfg(all(target_os="linux", unwind))]
+            #[cfg(all(target_os="linux", feature="unwind", target_arch="x86_64"))]
             Error::LibunwindError(ref e) => e.fmt(f),
             #[cfg(target_os="linux")]
             Error::NixError(ref e) => e.fmt(f),
@@ -135,7 +135,7 @@ impl std::error::Error for Error {
             Error::NoBinaryForAddress(_) => "No binary found for address",
             Error::GoblinError(ref e) => e.description(),
             Error::IOError(ref e) => e.description(),
-            #[cfg(all(target_os="linux", unwind))]
+            #[cfg(all(target_os="linux", feature="unwind", target_arch="x86_64"))]
             Error::LibunwindError(ref e) => e.description(),
             #[cfg(target_os="linux")]
             Error::NixError(ref e) => e.description(),
@@ -147,7 +147,7 @@ impl std::error::Error for Error {
         match *self {
             Error::GoblinError(ref e) => Some(e),
             Error::IOError(ref e) => Some(e),
-            #[cfg(all(target_os="linux", unwind))]
+            #[cfg(all(target_os="linux", feature="unwind", target_arch="x86_64"))]
             Error::LibunwindError(ref e) => Some(e),
             #[cfg(target_os="linux")]
             Error::NixError(ref e) => Some(e),
@@ -175,7 +175,7 @@ impl From<nix::Error> for Error {
     }
 }
 
-#[cfg(all(target_os="linux", unwind))]
+#[cfg(all(target_os="linux", feature="unwind", target_arch="x86_64"))]
 impl From<linux::libunwind::Error> for Error {
     fn from(err: linux::libunwind::Error) -> Error {
         Error::LibunwindError(err)
