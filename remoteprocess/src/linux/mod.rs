@@ -1,6 +1,6 @@
-#[cfg(unwind)]
+#[cfg(all(feature="unwind", target_arch="x86_64"))]
 pub mod libunwind;
-#[cfg(unwind)]
+#[cfg(all(feature="unwind", target_arch="x86_64"))]
 mod symbolication;
 
 use libc::pid_t;
@@ -14,10 +14,10 @@ use std::fs::File;
 
 use super::Error;
 
-#[cfg(unwind)]
+#[cfg(all(feature="unwind", target_arch="x86_64"))]
 pub use self::symbolication::*;
 
-#[cfg(unwind)]
+#[cfg(all(feature="unwind", target_arch="x86_64"))]
 pub use self::libunwind::Unwinder;
 
 use read_process_memory::{CopyAddress, ProcessHandle};
@@ -109,12 +109,12 @@ impl Process {
         Ok(crate::filter_child_pids(self.pid, &processes))
     }
 
-    #[cfg(unwind)]
+    #[cfg(all(feature="unwind", target_arch="x86_64"))]
     pub fn unwinder(&self) -> Result<Unwinder, Error> {
         Ok(Unwinder::new()?)
     }
 
-    #[cfg(unwind)]
+    #[cfg(all(feature="unwind", target_arch="x86_64"))]
     pub fn symbolicator(&self) -> Result<Symbolicator, Error> {
         Ok(Symbolicator::new(self.pid)?)
     }
