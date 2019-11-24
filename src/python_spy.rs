@@ -682,17 +682,6 @@ impl PythonProcessInfo {
                 map.filename().as_ref().unwrap_or(&"".to_owned()));
         }
 
-        // on linux, support profiling processes running in docker containers by setting
-        // the namespace to match that of the target process when reading in binaries
-        #[cfg(target_os="linux")]
-        let namespace = match remoteprocess::Namespace::new(process.pid) {
-            Ok(ns) => Some(ns),
-            Err(e) => {
-                warn!("Failed to set namespace: {}", e);
-                None
-            }
-        };
-
         // parse the main python binary
         let (python_binary, python_filename) = {
             // Get the memory address for the executable by matching against virtual memory maps
@@ -716,7 +705,7 @@ impl PythonProcessInfo {
 
             // TODO: consistent types? u64 -> usize? for map.start etc
             #[allow(unused_mut)]
-            let python_binary = parse_binary(&filename, map.start() as u64, map.size() as u64)
+            let python_binary = parse_binary(process.pid, &filename, map.start() as u64, map.size() as u64)
                 .and_then(|mut pb| {
                     // windows symbols are stored in separate files (.pdb), load
                     #[cfg(windows)]
@@ -748,7 +737,7 @@ impl PythonProcessInfo {
         };
 
         // likewise handle libpython for python versions compiled with --enabled-shared
-         let libpython_binary = {
+        let libpython_binary = {
             let libmap = maps.iter()
                 .find(|m| if let Some(ref pathname) = &m.filename() {
                     is_python_lib(pathname) && m.is_exec()
@@ -761,7 +750,7 @@ impl PythonProcessInfo {
                 if let Some(filename) = &libpython.filename() {
                     info!("Found libpython binary @ {}", filename);
                     #[allow(unused_mut)]
-                    let mut parsed = parse_binary(filename, libpython.start() as u64, libpython.size() as u64)?;
+                    let mut parsed = parse_binary(process.pid, filename, libpython.start() as u64, libpython.size() as u64)?;
                     #[cfg(windows)]
                     parsed.symbols.extend(get_windows_python_symbols(process.pid, filename, libpython.start() as u64)?);
                     libpython_binary = Some(parsed);
@@ -791,7 +780,7 @@ impl PythonProcessInfo {
                     if let Some(libpython) = python_dyld_data {
                         info!("Found libpython binary from dyld @ {}", libpython.filename);
 
-                        let mut binary = parse_binary(&libpython.filename, libpython.segment.vmaddr, libpython.segment.vmsize)?;
+                        let mut binary = parse_binary(process.pid, &libpython.filename, libpython.segment.vmaddr, libpython.segment.vmsize)?;
 
                         // TODO: bss addr offsets returned from parsing binary are wrong
                         // (assumes data section isn't split from text section like done here).
@@ -807,14 +796,22 @@ impl PythonProcessInfo {
             libpython_binary
         };
 
+        // If we have a libpython binary - we can tolerate failures on parsing the main python binary.
         let python_binary = match libpython_binary {
-            None => Some(python_binary?),
+            None => Some(python_binary.context("Failed to parse python binary")?),
             _ => python_binary.ok(),
         };
 
+        #[cfg(target_os="linux")]
+        let dockerized = {
+            let target_ns_filename = format!("/proc/{}/ns/mnt", process.pid);
+            let self_mnt = std::fs::read_link("/proc/self/ns/mnt")?;
+            let target_mnt = std::fs::read_link(&target_ns_filename)?;
+            self_mnt != target_mnt
+        };
         Ok(PythonProcessInfo{python_binary, libpython_binary, maps, python_filename,
                              #[cfg(target_os="linux")]
-                             dockerized: match namespace { Some(ns) => ns.is_set(), None => false },
+                             dockerized
         })
     }
 

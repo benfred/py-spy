@@ -26,7 +26,11 @@ impl BinaryInfo {
 }
 
 /// Uses goblin to parse a binary file, returns information on symbols/bss/adjusted offset etc
-pub fn parse_binary(filename: &str, addr: u64, size: u64) -> Result<BinaryInfo, Error> {
+pub fn parse_binary(pid: remoteprocess::Pid, filename: &str, addr: u64, size: u64) -> Result<BinaryInfo, Error> {
+    // on linux the process could be running in docker, access the filename through procfs
+    #[cfg(target_os="linux")]
+    let filename = &format!("/proc/{}/root{}", pid, filename);
+
     let offset = addr;
 
     let mut symbols = HashMap::new();
