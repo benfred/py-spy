@@ -161,12 +161,12 @@ impl SpeedscopeFile {
 }
 
 impl Frame {
-    pub fn new(stack_frame: &stack_trace::Frame) -> Frame {
+    pub fn new(stack_frame: &stack_trace::Frame, show_line_numbers: bool) -> Frame {
         Frame {
             name: stack_frame.name.clone(),
             // TODO: filename?
             file: Some(stack_frame.filename.clone()),
-            line: Some(stack_frame.line as u32),
+            line: if show_line_numbers { Some(stack_frame.line as u32) } else { None },
             col: None
         }
     }
@@ -175,24 +175,31 @@ impl Frame {
 pub struct Stats {
     samples: HashMap<Tid, Vec<Vec<usize>>>,
     frames: Vec<Frame>,
-    frame_to_index: HashMap<stack_trace::Frame, usize>
+    frame_to_index: HashMap<stack_trace::Frame, usize>,
+    show_line_numbers: bool
 }
 
 impl Stats {
-    pub fn new() -> Stats {
+    pub fn new(show_line_numbers: bool) -> Stats {
         Stats {
             samples: HashMap::new(),
             frames: vec![],
-            frame_to_index: HashMap::new()
+            frame_to_index: HashMap::new(),
+            show_line_numbers
         }
     }
 
     pub fn record(&mut self, stack: &stack_trace::StackTrace) -> Result<(), io::Error> {
+        let show_line_numbers = self.show_line_numbers;
         let mut frame_indices: Vec<usize> = stack.frames.iter().map(|frame| {
             let frames = &mut self.frames;
-            *self.frame_to_index.entry(frame.clone()).or_insert_with(|| {
+            let mut key = frame.clone();
+            if !show_line_numbers {
+                key.line = 0;
+            }
+            *self.frame_to_index.entry(key).or_insert_with(|| {
                 let len = frames.len();
-                frames.push(Frame::new(&frame));
+                frames.push(Frame::new(&frame, show_line_numbers));
                 len
             })
         }).collect();
