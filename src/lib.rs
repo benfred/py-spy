@@ -46,6 +46,7 @@ extern crate serde_derive;
 extern crate winapi;
 extern crate cpp_demangle;
 extern crate rand;
+extern crate rand_distr;
 extern crate remoteprocess;
 
 mod config;

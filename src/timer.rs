@@ -2,7 +2,8 @@ use std::time::{Instant, Duration};
 #[cfg(windows)]
 use winapi::um::timeapi;
 
-use rand::{self, distributions::{Exp, Distribution}};
+use rand;
+use rand_distr::{Exp, Distribution};
 
 /// Timer is an iterator that sleeps an appropiate amount of time between iterations
 /// so that we can sample the process a certain number of times a second.
@@ -12,7 +13,7 @@ use rand::{self, distributions::{Exp, Distribution}};
 pub struct Timer {
     start: Instant,
     desired: Duration,
-    exp: Exp,
+    exp: Exp<f64>,
 }
 
 impl Timer {
@@ -27,7 +28,7 @@ impl Timer {
         unsafe { timeapi::timeBeginPeriod(1); }
 
         let start = Instant::now();
-        Timer{start, desired: Duration::from_secs(0), exp: Exp::new(rate)}
+        Timer{start, desired: Duration::from_secs(0), exp: Exp::new(rate).unwrap()}
     }
 }
 

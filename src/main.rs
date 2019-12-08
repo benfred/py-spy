@@ -25,6 +25,7 @@ extern crate termios;
 extern crate winapi;
 extern crate cpp_demangle;
 extern crate rand;
+extern crate rand_distr;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
@@ -395,7 +396,7 @@ fn pyspy_main() -> Result<(), Error> {
 }
 
 fn main() {
-    env_logger::builder().default_format_timestamp_nanos(true).try_init().unwrap();
+    env_logger::builder().format_timestamp_nanos().try_init().unwrap();
 
     if let Err(err) = pyspy_main() {
         #[cfg(unix)]
