@@ -1,3 +1,10 @@
+## v0.3.1
+
+* Fix ptrace errors on linux kernel older than v4.7 [#83](https://github.com/benfred/py-spy/issues/83)
+* Fix for profiling docker containers from host os [#199](https://github.com/benfred/py-spy/issues/199)
+* Fix for speedscope profiles aggregated by function name [#201](https://github.com/benfred/py-spy/issues/201)
+* Use symbols from dynsym table of ELF binaries [#191](https://github.com/benfred/py-spy/pull/191)
+
 ## v0.3.0
 
 * Add ability to profile subprocesses [#124](https://github.com/benfred/py-spy/issues/124)
