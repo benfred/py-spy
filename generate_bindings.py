@@ -1,4 +1,4 @@
-""" Scripts to generate bindings of different python interperator versions
+""" Scripts to generate bindings of different python interpreter versions
 
 Requires bindgen to be installed (cargo install bindgen), and probably needs a nightly
 compiler with rustfmt-nightly.
@@ -198,7 +198,7 @@ if __name__ == "__main__":
 
     for version in versions:
         if args.build:
-            # todo: this probably shoudl be a separate script
+            # todo: this probably should be a separate script
             if build_python(args.cpython, version):
                 print("Failed to build python")
         elif args.pyruntime:
