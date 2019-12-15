@@ -886,8 +886,7 @@ pub fn is_python_lib(pathname: &str) -> bool {
 
 #[cfg(target_os="macos")]
 pub fn is_python_framework(pathname: &str) -> bool {
-    pathname.ends_with("/Python") &&
-    pathname.contains("/Python.framework/") &&
+    pathname.ends_with("/Python")  &&
     !pathname.contains("Python.app")
 }
 
@@ -956,5 +955,8 @@ mod tests {
         // env PYTHON_CONFIGURE_OPTS="--enable-framework" pyenv install 3.6.6
         assert!(is_python_framework("/Users/ben/.pyenv/versions/3.6.6/Python.framework/Versions/3.6/Python"));
         assert!(!is_python_framework("/Users/ben/.pyenv/versions/3.6.6/Python.framework/Versions/3.6/Resources/Python.app/Contents/MacOS/Python"));
+
+        // single file pyinstaller
+        assert!(is_python_framework("/private/var/folders/3x/qy479lpd1fb2q88lc9g4d3kr0000gn/T/_MEI2Akvi8/Python"));
     }
 }
