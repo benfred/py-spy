@@ -152,7 +152,7 @@ fn get_line_number<C: CodeObject, P: ProcessMemory>(code: &C, lasti: i32, proces
         // Handle negative line increments in the line number table - as shown here:
         // https://github.com/python/cpython/blob/143a97f6/Objects/lnotab_notes.txt#L48-L49
         if increment >= 0x80 {
-            increment -= -0x100;
+            increment -= 0x100;
         }
         line_number += increment;
         i += 2;
