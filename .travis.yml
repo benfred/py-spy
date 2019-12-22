@@ -41,7 +41,7 @@ script:
     # then using to profile a 64bit pythhon issus?). Just test we can compile
     cargo build --verbose --target $TARGET
   else
-    cargo test --verbose --target $TARGET
+    travis_retry cargo test --verbose --target $TARGET
   fi
 
 # Adapted from rust-everwhere:
