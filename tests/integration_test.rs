@@ -254,7 +254,7 @@ fn test_subprocesses() {
     // We used to not be able to create a sampler object if one of the child processes
     // was in a zombie state. Verify that this works now
     let process = ScriptRunner::new("./tests/scripts/subprocesses.py");
-    std::thread::sleep(std::time::Duration::from_millis(400));
+    std::thread::sleep(std::time::Duration::from_millis(1000));
     let config = Config{subprocesses: true, ..Default::default()};
     let sampler = py_spy::sampler::Sampler::new(process.id(), &config).unwrap();
     std::thread::sleep(std::time::Duration::from_millis(1000));
@@ -285,4 +285,38 @@ fn test_subprocesses_zombiechild() {
     std::thread::sleep(std::time::Duration::from_millis(200));
     let config = Config{subprocesses: true, ..Default::default()};
     let _sampler = py_spy::sampler::Sampler::new(process.id(), &config).unwrap();
+}
+
+#[test]
+fn test_negative_linenumber_increment() {
+    #[cfg(target_os="macos")]
+    {
+        // We need root permissions here to run this on OSX
+        if unsafe { libc::geteuid() } != 0 {
+            return;
+        }
+    }
+        let mut runner = TestRunner::new(Config::default(), "./tests/scripts/negative_linenumber_offsets.py");
+
+    let traces = runner.spy.get_stack_traces().unwrap();
+    assert_eq!(traces.len(), 1);
+    let trace = &traces[0];
+
+    match runner.spy.version.major {
+        3 => {
+            assert_eq!(trace.frames[0].name, "<listcomp>");
+            assert!(trace.frames[0].line >= 5 && trace.frames[0].line <= 10);
+            assert_eq!(trace.frames[1].name, "f");
+            assert!(trace.frames[1].line >= 5 && trace.frames[0].line <= 10);
+            assert_eq!(trace.frames[2].name, "<module>");
+            assert_eq!(trace.frames[2].line, 13)
+        },
+        2 => {
+            assert_eq!(trace.frames[0].name, "f");
+            assert!(trace.frames[0].line >= 5 && trace.frames[0].line <= 10);
+            assert_eq!(trace.frames[1].name, "<module>");
+            assert_eq!(trace.frames[1].line, 13);
+        },
+        _ => panic!("Unknown python major version")
+    }
 }
