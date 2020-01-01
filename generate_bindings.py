@@ -86,7 +86,7 @@ def calculate_pyruntime_offsets(cpython_path, version, configure=False):
         elif sys.platform.startswith("freebsd"):
             ret = os.system(f"""cc {source_filename} -I {cpython_path} -I {cpython_path}/Include -o {exe}""")
         else:
-            ret = os.system(f"""gcc {source_filename} -I {cpython_path} -I {cpython_path}/include -o {exe}""")
+            ret = os.system(f"""gcc {source_filename} -I {cpython_path} -I {cpython_path}/Include -o {exe}""")
         if ret:
             print("Failed to compile""")
             return ret
