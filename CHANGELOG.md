@@ -1,3 +1,9 @@
+## v0.3.2
+
+* Fix line numbers on python 3.8+ [#190](https://github.com/benfred/py-spy/issues/190)
+* Fix profiling pyinstaller binaries on OSX [#207](https://github.com/benfred/py-spy/issues/207)
+* Support getting GIL from Python 3.8.1/3.7.6/3.7.5 [#211](https://github.com/benfred/py-spy/issues/211)
+
 ## v0.3.1
 
 * Fix ptrace errors on linux kernel older than v4.7 [#83](https://github.com/benfred/py-spy/issues/83)
