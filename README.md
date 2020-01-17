@@ -194,7 +194,7 @@ be aware that this will miss activity in extensions that release the GIL while s
 OSX has a feature called [System Integrity Protection](https://en.wikipedia.org/wiki/System_Integrity_Protection) that prevents even the root user from reading memory from any binary located in /usr/bin. Unfortunately, this includes the python interpreter that ships with OSX.
 
 There are a couple of different ways to deal with this:
- * You can install a different Python distribution (you probably want to migrate away from python2 anyways =)
+ * You can install a different Python distribution. The built-in Python [will be removed](https://developer.apple.com/documentation/macos_release_notes/macos_catalina_10_15_release_notes) in a future OSX, and you probably want to migrate away from Python 2 anyways =).
  * You can use [virtualenv](https://virtualenv.pypa.io/en/stable/) to run the system python in an environment where SIP doesn't apply.
  * You can [disable System Integrity Protection](https://www.macworld.co.uk/how-to/mac/how-turn-off-mac-os-x-system-integrity-protection-rootless-3638975/).
 
