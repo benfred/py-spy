@@ -443,6 +443,22 @@ impl PythonSpy {
             return short.clone();
         }
 
+        // on linux the process could be running in docker, access the filename through procfs
+        #[cfg(target_os="linux")]
+        let filename_storage;
+
+        #[cfg(target_os="linux")]
+        let filename = if self.dockerized {
+            filename_storage = format!("/proc/{}/root{}", self.pid, filename);
+            if Path::new(&filename_storage).exists() {
+                &filename_storage
+            } else {
+                filename
+            }
+        } else {
+            filename
+        };
+
         // only include paths that include an __init__.py
         let mut path = Path::new(filename);
         while let Some(parent) = path.parent() {
