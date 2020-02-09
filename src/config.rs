@@ -41,7 +41,9 @@ pub struct Config {
     #[doc(hidden)]
     pub gil_only: bool,
     #[doc(hidden)]
-    pub hide_progess: bool,
+    pub hide_progress: bool,
+    #[doc(hidden)]
+    pub capture_output: bool,
     #[doc(hidden)]
     pub dump_json: bool,
     #[doc(hidden)]
@@ -73,7 +75,7 @@ impl Default for Config {
                non_blocking: false, show_line_numbers: false, sampling_rate: 100,
                duration: RecordDuration::Unlimited, native: false,
                gil_only: false, include_idle: false, include_thread_ids: false,
-               hide_progess: false, dump_json: false, dump_locals: false, subprocesses: false}
+               hide_progress: false, capture_output: true, dump_json: false, dump_locals: false, subprocesses: false}
     }
 }
 
@@ -168,6 +170,10 @@ impl Config {
                 .short("i")
                 .long("idle")
                 .help("Include stack traces for idle threads"))
+            .arg(Arg::with_name("capture")
+                .long("capture")
+                .hidden(true)
+                .help("Captures output from child process"))
             .arg(Arg::with_name("hideprogress")
                 .long("hideprogress")
                 .hidden(true)
@@ -255,10 +261,15 @@ impl Config {
 
         config.non_blocking = matches.occurrences_of("nonblocking") > 0;
         config.native = matches.occurrences_of("native") > 0;
-        config.hide_progess = matches.occurrences_of("hideprogress") > 0;
+        config.hide_progress = matches.occurrences_of("hideprogress") > 0;
         config.dump_json = matches.occurrences_of("json") > 0;
         config.dump_locals = matches.occurrences_of("locals") > 0;
         config.subprocesses = matches.occurrences_of("subprocesses") > 0;
+
+        config.capture_output = config.command != "record" || matches.occurrences_of("capture") > 0;
+        if !config.capture_output {
+            config.hide_progress = true;
+        }
 
         // disable native profiling if invalidly asked for
         if config.native && config.non_blocking {

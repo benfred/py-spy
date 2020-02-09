@@ -159,14 +159,18 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
     let mut max_samples = None;
     use indicatif::ProgressBar;
     let sampler = sampler::Sampler::new(pid, config)?;
-    let progress = match (config.hide_progess, &config.duration) {
-        (true, _) => ProgressBar::hidden(),
+    let progress = match (config.hide_progress, &config.duration) {
+        (true, _) => {
+            println!("Sampling process {} times a second. Press Control-C to exit.",
+                config.sampling_rate);
+            ProgressBar::hidden()
+        },
         (false, RecordDuration::Seconds(sec)) => {
             max_samples = Some(sec * config.sampling_rate);
             println!("Sampling process {} times a second for {} seconds. Press Control-C to exit.",
                 config.sampling_rate, sec);
             ProgressBar::new(max_samples.unwrap())
-        }
+        },
         (false, RecordDuration::Unlimited) => {
             println!("Sampling process {} times a second. Press Control-C to exit.",
                 config.sampling_rate);
@@ -194,7 +198,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
 
     for mut sample in sampler {
         if let Some(delay) = sample.late {
-            if delay > Duration::from_secs(1) && !config.hide_progess {
+            if delay > Duration::from_secs(1) && !config.hide_progress {
                 let term = console::Term::stdout();
                 term.move_cursor_up(2)?;
                 println!("{:.2?} behind in sampling, results may be inaccurate. Try reducing the sampling rate.", delay);
@@ -353,11 +357,15 @@ fn pyspy_main() -> Result<(), Error> {
             }
         }
 
-        let mut command = command.args(&subprocess[1..])
-            .stdin(std::process::Stdio::null())
-            .stdout(process_output.reopen()?)
-            .stderr(process_output.reopen()?)
-            .spawn()
+        let mut command = command.args(&subprocess[1..]);
+
+        if config.capture_output {
+            command = command.stdin(std::process::Stdio::null())
+                .stdout(process_output.reopen()?)
+                .stderr(process_output.reopen()?)
+        }
+
+        let mut command = command.spawn()
             .map_err(|e| format_err!("Failed to create process '{}': {}", subprocess[0], e))?;
 
         #[cfg(target_os="macos")]
@@ -377,7 +385,7 @@ fn pyspy_main() -> Result<(), Error> {
 
         // if we failed for any reason, dump out stderr from child process here
         // (could have useful error message)
-        if !success || result.is_err() {
+        if config.capture_output && (!success || result.is_err()) {
             let mut buffer = String::new();
             if process_output.read_to_string(&mut buffer).is_ok() {
                 eprintln!("{}", buffer);
