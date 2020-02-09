@@ -265,7 +265,7 @@ for most Python programmers to get installed on their system. Unfortunately, [in
 scripts isn't something that setuptools supports](https://github.com/pypa/setuptools/issues/210).
 
 To get around this I'm using setuptools_rust package to build the py-spy
-binary, and then overriding the [distutils install command](https://github.com/benfred/py-spy/blob/master/setup.py#L20)
+binary, and then overriding the [distutils install command](https://github.com/benfred/py-spy/blob/772f24086c30521b4d4af5065aa09da4f9d559ae/setup.py#L44-L83)
 to copy the built binary into the python scripts folder. By doing this with prebuilt wheels for supported
 platforms means that we can install py-spy with pip, and not require a Rust compiler on the machine that
 this is being installed onto.
