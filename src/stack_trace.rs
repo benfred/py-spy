@@ -50,7 +50,7 @@ pub struct LocalVariable {
 }
 
 /// Given an InterpreterState, this function returns a vector of stack traces for each thread
-pub fn get_stack_traces<I>(interpreter: &I, process: &Process) -> Result<(Vec<StackTrace>), Error>
+pub fn get_stack_traces<I>(interpreter: &I, process: &Process) -> Result<Vec<StackTrace>, Error>
         where I: InterpreterState {
     // TODO: deprecate this method
     let mut ret = Vec::new();
