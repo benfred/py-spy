@@ -194,7 +194,7 @@ fn test_local_vars() {
     let frame = &trace.frames[0];
     let locals = frame.locals.as_ref().unwrap();
 
-    assert_eq!(locals.len(), 8);
+    assert_eq!(locals.len(), 9);
 
     let arg1 = &locals[0];
     assert_eq!(arg1.name, "arg1");
@@ -234,6 +234,10 @@ fn test_local_vars() {
     let local5 = &locals[7];
     assert_eq!(local5.name, "local5");
     assert!(!local5.arg);
+
+    let local6 = &locals[8];
+    assert_eq!(local6.name, "local6");
+    assert!(!local6.arg);
 
     // we only support dictionary lookup on python 3.6+ right now
     if runner.spy.version.major == 3 && runner.spy.version.minor >= 6 {

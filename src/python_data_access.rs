@@ -148,9 +148,14 @@ const PY_TPFLAGS_STRING_SUBCLASS: usize = 1 << 28;
 const PY_TPFLAGS_DICT_SUBCLASS: usize =    1 << 29;
 
 /// Converts a python variable in the other process to a human readable string
-/// similar to stringify_pyobject - but has knows the type of the python interpreter
 pub fn format_variable<I>(process: &remoteprocess::Process, version: &Version, addr: usize, max_length: isize)
         -> Result<String, Error> where I: InterpreterState {
+    // We need at least 5 characters remaining for all this code to work, replace with an ellipsis if
+    // we're out of space
+    if max_length <= 5 {
+        return Ok("...".to_owned());
+    }
+
     let value: I::Object = process.copy_struct(addr)?;
     let value_type = process.copy_pointer(value.ob_type())?;
 
@@ -229,13 +234,13 @@ pub fn format_variable<I>(process: &remoteprocess::Process, version: &Version, a
         let mut values = Vec::new();
         let mut remaining = max_length - 2;
         for i in 0..object.size() {
+            let value_addr: *mut I::Object = process.copy_struct(object.address(addr, i))?;
+            let value = format_variable::<I>(process, version, value_addr as usize, remaining)?;
+            remaining -= value.len() as isize + 2;
             if remaining <= 5 {
                 values.push("...".to_owned());
                 break;
             }
-            let value_addr: *mut I::Object = process.copy_struct(object.address(addr, i))?;
-            let value = format_variable::<I>(process, version, value_addr as usize, remaining)?;
-            remaining -= value.len() as isize + 2;
             values.push(value);
         }
         format!("({})", values.join(", "))
