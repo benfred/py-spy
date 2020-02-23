@@ -58,6 +58,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+use console::style;
 use failure::Error;
 
 use stack_trace::{StackTrace, Frame};
@@ -156,24 +157,33 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
         None => return Err(format_err!("A filename is required to record samples"))
     };
 
-    let mut max_samples = None;
-    use indicatif::ProgressBar;
     let sampler = sampler::Sampler::new(pid, config)?;
+
+    // if we're not showing a progress bar, it's probably because we've spawned the process and
+    // are displaying its stderr/stdout. In that case add a prefix to our println messages so
+    // that we can distinguish
+    let lede = if config.hide_progress {
+        format!("{}{} ", style("py-spy").bold().green(), style(">").dim())
+    } else {
+        "".to_owned()
+    };
+
+    let max_samples = match &config.duration {
+        RecordDuration::Unlimited => {
+            println!("{}Sampling process {} times a second. Press Control-C to exit.", lede, config.sampling_rate);
+            None
+        },
+        RecordDuration::Seconds(sec) => {
+            println!("{}Sampling process {} times a second for {} seconds. Press Control-C to exit.", lede, config.sampling_rate, sec);
+            Some(sec * config.sampling_rate)
+        }
+    };
+
+    use indicatif::ProgressBar;
     let progress = match (config.hide_progress, &config.duration) {
-        (true, _) => {
-            println!("Sampling process {} times a second. Press Control-C to exit.",
-                config.sampling_rate);
-            ProgressBar::hidden()
-        },
-        (false, RecordDuration::Seconds(sec)) => {
-            max_samples = Some(sec * config.sampling_rate);
-            println!("Sampling process {} times a second for {} seconds. Press Control-C to exit.",
-                config.sampling_rate, sec);
-            ProgressBar::new(max_samples.unwrap())
-        },
+        (true, _) => ProgressBar::hidden(),
+        (false, RecordDuration::Seconds(_)) => ProgressBar::new(max_samples.unwrap()),
         (false, RecordDuration::Unlimited) => {
-            println!("Sampling process {} times a second. Press Control-C to exit.",
-                config.sampling_rate);
             let progress = ProgressBar::new_spinner();
 
             // The spinner on windows doesn't look great: was replaced by a [?] character at least on
@@ -195,14 +205,24 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
     })?;
 
     let mut exit_message = "Stopped sampling because process exitted";
+    let mut last_late_message = std::time::Instant::now();
 
     for mut sample in sampler {
         if let Some(delay) = sample.late {
-            if delay > Duration::from_secs(1) && !config.hide_progress {
-                let term = console::Term::stdout();
-                term.move_cursor_up(2)?;
-                println!("{:.2?} behind in sampling, results may be inaccurate. Try reducing the sampling rate.", delay);
-                term.move_cursor_down(1)?;
+            if delay > Duration::from_secs(1) {
+                if config.hide_progress {
+                    // display a message if we're late, but don't spam the log
+                    let now = std::time::Instant::now();
+                    if now - last_late_message > Duration::from_secs(1) {
+                        last_late_message = now;
+                        println!("{}{:.2?} behind in sampling, results may be inaccurate. Try reducing the sampling rate", lede, delay)
+                    }
+                } else {
+                    let term = console::Term::stdout();
+                    term.move_cursor_up(2)?;
+                    println!("{:.2?} behind in sampling, results may be inaccurate. Try reducing the sampling rate.", delay);
+                    term.move_cursor_down(1)?;
+                }
             }
         }
 
@@ -275,7 +295,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
     progress.finish();
     // write out a message here (so as not to interfere with progress bar) if we ended earlier
     if !exit_message.is_empty() {
-        println!("{}", exit_message);
+        println!("\n{}{}", lede, exit_message);
     }
 
     {
@@ -285,7 +305,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
 
     match config.format.as_ref().unwrap() {
         FileFormat::flamegraph => {
-            println!("Wrote flamegraph data to '{}'. Samples: {} Errors: {}", filename, samples, errors);
+            println!("{}Wrote flamegraph data to '{}'. Samples: {} Errors: {}", lede, filename, samples, errors);
             // open generated flame graph in the browser on OSX (theory being that on linux
             // you might be SSH'ed into a server somewhere and this isn't desired, but on
             // that is pretty unlikely for osx) (note to self: xdg-open will open on linux)
@@ -293,12 +313,12 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
             std::process::Command::new("open").arg(filename).spawn()?;
         },
         FileFormat::speedscope =>  {
-            println!("Wrote speedscope file to '{}'. Samples: {} Errors: {}", filename, samples, errors);
-            println!("Visit https://www.speedscope.app/ to view");
+            println!("{}Wrote speedscope file to '{}'. Samples: {} Errors: {}", lede, filename, samples, errors);
+            println!("{}Visit https://www.speedscope.app/ to view", lede);
         },
         FileFormat::raw => {
-            println!("Wrote raw flamegraph data to '{}'. Samples: {} Errors: {}", filename, samples, errors);
-            println!("You can use the flamegraph.pl script from https://github.com/brendangregg/flamegraph to generate a SVG");
+            println!("{}Wrote raw flamegraph data to '{}'. Samples: {} Errors: {}", lede, filename, samples, errors);
+            println!("{}You can use the flamegraph.pl script from https://github.com/brendangregg/flamegraph to generate a SVG", lede);
         }
     };
 

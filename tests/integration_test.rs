@@ -245,6 +245,7 @@ fn test_local_vars() {
     }
 }
 
+#[cfg(not(target_os="freebsd"))]
 #[test]
 fn test_subprocesses() {
     #[cfg(target_os="macos")]
@@ -273,6 +274,7 @@ fn test_subprocesses() {
     }
 }
 
+#[cfg(not(target_os="freebsd"))]
 #[test]
 fn test_subprocesses_zombiechild() {
     #[cfg(target_os="macos")]

@@ -244,7 +244,7 @@ You can override this behaviour to use pip to install py-spy on Alpine by going:
 
 Alternatively you can download a musl binary from the [GitHub releases page](https://github.com/benfred/py-spy/releases).
 
-### How can you avoid pausing the Python program?
+### How can I avoid pausing the Python program?
 
 By setting the ```--nonblocking``` option, py-spy won't pause the target python you are profiling from. While
 the performance impact of sampling from a process with py-spy is usually extremely low, setting this option
