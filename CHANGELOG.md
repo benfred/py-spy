@@ -1,3 +1,10 @@
+## v0.3.3
+
+* Change to display stdout/stderr from profiled child process [#217](https://github.com/benfred/py-spy/issues/217)
+* Fix memory leak on OSX [#227](https://github.com/benfred/py-spy/issues/227)
+* Fix panic on dump --locals [#224](https://github.com/benfred/py-spy/issues/224)
+* Fix cross container short filename generation [#220](https://github.com/benfred/py-spy/issues/220)
+
 ## v0.3.2
 
 * Fix line numbers on python 3.8+ [#190](https://github.com/benfred/py-spy/issues/190)
