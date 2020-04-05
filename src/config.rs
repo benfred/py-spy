@@ -1,4 +1,5 @@
-use clap::{App, Arg};
+use clap::{App, Arg, arg_enum, crate_name, crate_version, crate_description, value_t};
+use log::info;
 use remoteprocess::Pid;
 
 /// Options on how to collect samples from a python process
@@ -48,6 +49,8 @@ pub struct Config {
     pub dump_json: bool,
     #[doc(hidden)]
     pub dump_locals: bool,
+    #[doc(hidden)]
+    pub address: Option<String>,
 }
 
 arg_enum!{
@@ -83,7 +86,7 @@ impl Default for Config {
                blocking: LockingStrategy::Lock, show_line_numbers: false, sampling_rate: 100,
                duration: RecordDuration::Unlimited, native: false,
                gil_only: false, include_idle: false, include_thread_ids: false,
-               hide_progress: false, capture_output: true, dump_json: false, dump_locals: false, subprocesses: false}
+               hide_progress: false, capture_output: true, dump_json: false, dump_locals: false, subprocesses: false, address: None}
     }
 }
 
@@ -132,6 +135,20 @@ impl Config {
         let program = Arg::with_name("python_program")
                     .help("commandline of a python program to run")
                     .multiple(true);
+
+        let serve = clap::SubCommand::with_name("serve")
+            .about("Start a webserver hosting a continous interactive view of the python program")
+            .arg(program.clone())
+            .arg(pid.clone())
+            .arg(rate.clone())
+            .arg(Arg::with_name("address")
+                .short("a")
+                .long("address")
+                .value_name("address")
+                .help("Address to serve results on (<host>:<port>)")
+                .default_value("localhost:8000")
+                .takes_value(true))
+            .arg(subprocesses.clone());
 
         let record = clap::SubCommand::with_name("record")
             .about("Records stack trace information to a flamegraph, speedscope or raw file")
@@ -208,6 +225,8 @@ impl Config {
 
         // add native unwinding if appropiate
         #[cfg(unwind)]
+        let serve = serve.arg(native.clone());
+        #[cfg(unwind)]
         let record = record.arg(native.clone());
         #[cfg(unwind)]
         let top = top.arg(native.clone());
@@ -215,6 +234,9 @@ impl Config {
         let dump = dump.arg(native.clone());
 
         // Nonblocking isn't an option for freebsd, remove
+        #[allow(unused_variables)]
+        #[cfg(not(target_os="freebsd"))]
+        let serve = serve.arg(nonblocking.clone());
         #[cfg(not(target_os="freebsd"))]
         let record = record.arg(nonblocking.clone());
         #[cfg(not(target_os="freebsd"))]
@@ -222,14 +244,18 @@ impl Config {
         #[cfg(not(target_os="freebsd"))]
         let dump = dump.arg(nonblocking.clone());
 
-        let matches = App::new(crate_name!())
+        let app = App::new(crate_name!())
             .version(crate_version!())
             .about(crate_description!())
             .setting(clap::AppSettings::InferSubcommands)
             .setting(clap::AppSettings::SubcommandRequiredElseHelp)
             .global_setting(clap::AppSettings::DeriveDisplayOrder)
-            .global_setting(clap::AppSettings::UnifiedHelpMessage)
-            .subcommand(record)
+            .global_setting(clap::AppSettings::UnifiedHelpMessage);
+
+        #[cfg(feature="serve")]
+        let app = app.subcommand(serve);
+
+        let matches = app.subcommand(record)
             .subcommand(top)
             .subcommand(dump)
             .get_matches_from_safe(args)?;
@@ -252,6 +278,10 @@ impl Config {
             },
             "top" => {
                 config.sampling_rate = value_t!(matches, "rate", u64)?;
+            },
+            "serve" => {
+                config.sampling_rate = value_t!(matches, "rate", u64)?;
+                config.address = matches.value_of("address").map(|x| x.to_string()) ;
             }
             _ => {}
         }
@@ -273,7 +303,7 @@ impl Config {
         config.dump_locals = matches.occurrences_of("locals") > 0;
         config.subprocesses = matches.occurrences_of("subprocesses") > 0;
 
-        config.capture_output = config.command != "record" || matches.occurrences_of("capture") > 0;
+        config.capture_output = config.command == "top" || matches.occurrences_of("capture") > 0;
         if !config.capture_output {
             config.hide_progress = true;
         }

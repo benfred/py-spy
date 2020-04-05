@@ -5,4 +5,8 @@ Vagrant.configure("2") do |config|
   config.vm.synced_folder "../../", "/code/py-spy"
   config.vm.provision :shell, path: "install.sh"
   config.vm.provision :shell, path: "build_wheels.sh", run: 'always'
+  config.vm.provider "virtualbox" do |v|
+    v.memory = 2048
+    v.cpus = 2
+  end
 end

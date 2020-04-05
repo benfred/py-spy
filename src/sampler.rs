@@ -4,7 +4,8 @@ use std::sync::{Mutex, Arc};
 use std::time::Duration;
 use std::thread;
 
-use failure::Error;
+use log::{info, warn, error};
+use failure::{Error, format_err};
 
 use remoteprocess::Pid;
 

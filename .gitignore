@@ -1,5 +1,4 @@
 /target
-remoteprocess/target
 **/*.rs.bk
 
 # Python Distribution / packaging
@@ -23,3 +22,8 @@ var/
 .vscode/
 **/.vagrant
 *.log
+
+# javascript 
+src/web_viewer/visualizations/dist/
+src/web_viewer/visualizations/node_modules/
+src/web_viewer/visualizations/.rpt2_cache/

@@ -1,5 +1,6 @@
 import os
 import sys
+import platform
 
 from setuptools import setup
 from setuptools.command.install import install
@@ -61,6 +62,11 @@ class PostInstallCommand(install):
             compile_args = ""
             build_dir = os.path.join(source_dir, "target", "release")
 
+        # enable webserver code for 64bit targets (i686 linux doesn't have a prebuilt node
+        # https://github.com/nodejs/build/issues/885 - and is the only 32bit target we support)
+        if platform.architecture()[0] == "64bit":
+            compile_args += " --features serve"
+
         # setuptools_rust doesn't seem to let me specify a musl cross compilation target
         # so instead just build ourselves here =(.
         if os.system("cargo build --release %s" % compile_args):
@@ -89,7 +95,7 @@ setup(name='py-spy',
       url='https://github.com/benfred/py-spy',
       description="A Sampling Profiler for Python",
       long_description=long_description,
-      version="0.3.3",
+      version="0.4.0.dev0",
       license="MIT",
       cmdclass={'install': PostInstallCommand, 'bdist_wheel': bdist_wheel},
       classifiers=[

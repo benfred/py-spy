@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>py-spy> {{~> title }}</title>
+<link rel="stylesheet" href="/assets/pyspy.css">
+{{~> head}}
+</head>
+<body>
+    <div class="menu">
+        <ul class="menu-list">
+            <li class="menu-item"><a href="https://github.com/benfred/py-spy" class="menu-heading"><b>py-spy</b></a></li>
+            <li class="menu-item"><a href="/" class="menu-link {{~> overview_selected }}">Flamegraph</a></li>
+            <li class="menu-item"><a href="/functions" class="menu-link {{~> function_selected }}">Functions</a></li>
+            {{#if name}}
+            <li class="menu-item"><a href="/functions" class="menu-link menu-selected">{{name}}</a></li>
+            {{/if}}
+        </ul>
+    </div>
+{{~> page}}
+</body>
+</html>

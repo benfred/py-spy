@@ -1,4 +1,5 @@
 environment:
+  nodejs_version: "8"
   TWINE_USERNAME: benfred
   # Note: TWINE_PASSWORD is set in Appveyor settings
   matrix:
@@ -10,14 +11,19 @@ environment:
 
 # from: https://github.com/starkat99/appveyor-rust/blob/master/appveyor.yml
 install:
+  - ps: Install-Product node $env:nodejs_version
   - appveyor DownloadFile https://win.rustup.rs/ -FileName rustup-init.exe
   - rustup-init -yv --default-toolchain stable --default-host %target%
   - set PATH=%PATH%;%USERPROFILE%\.cargo\bin
+  - pip install cibuildwheel==0.9.1 setuptools_rust
   - rustc -vV
   - cargo -vV
-  - pip install cibuildwheel==0.9.1 setuptools_rust
+  - node --version
+  - npm --version
+  - npm --prefix src\web_viewer\visualizations install
 
 build_script:
+  - npm --prefix src\web_viewer\visualizations run build:release
   - cibuildwheel --output-dir wheelhouse
   - >
     IF "%APPVEYOR_REPO_TAG%" == "true"

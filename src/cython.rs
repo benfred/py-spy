@@ -4,6 +4,8 @@ use std::collections::{BTreeMap, HashMap};
 use regex::Regex;
 
 use failure::Error;
+use lazy_static::lazy_static;
+use log::{debug, info};
 
 use crate::utils::resolve_filename;
 use crate::stack_trace::Frame;

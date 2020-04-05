@@ -1,3 +1,4 @@
+use log::{info, warn, debug};
 use std;
 use std::collections::HashMap;
 #[cfg(all(target_os="linux", unwind))]
@@ -11,10 +12,10 @@ use regex::Regex;
 #[cfg(windows)]
 use regex::RegexBuilder;
 
-use failure::{Error, ResultExt};
+use failure::{Error, ResultExt, format_err};
+use lazy_static::lazy_static;
 use remoteprocess::{Process, ProcessMemory, Pid, Tid};
 use proc_maps::{get_process_maps, MapRange};
-
 
 use crate::binary_parser::{parse_binary, BinaryInfo};
 use crate::config::{Config, LockingStrategy};

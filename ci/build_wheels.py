@@ -91,4 +91,5 @@ if __name__ == "__main__":
     if args.localonly:
         local_build_wheel()
     else:
-        build_wheels(vagrantfiles=["./ubuntu32", "./ubuntu64"])
+        #build_wheels(vagrantfiles=["./ubuntu32", "./ubuntu64"])
+        build_wheels(vagrantfiles=["./ubuntu64"])
