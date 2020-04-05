@@ -1,7 +1,9 @@
 use std;
 use std::sync::Arc;
 
-use failure::{Error, ResultExt};
+use log::warn;
+use failure::{Error, ResultExt, format_err};
+use serde_derive::Serialize;
 
 use remoteprocess::{ProcessMemory, Pid, Process};
 
@@ -9,7 +11,7 @@ use crate::python_interpreters::{InterpreterState, ThreadState, FrameObject, Cod
 use crate::python_data_access::{copy_string, copy_bytes};
 
 /// Call stack for a single python thread
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Hash, Eq, PartialEq)]
 pub struct StackTrace {
     /// The process id than generated this stack trace
     pub pid: Pid,
@@ -144,6 +146,19 @@ impl StackTrace {
     }
 }
 
+impl Frame {
+    pub fn format(&self, line_numbers: bool) -> String {
+        let filename = match &self.short_filename { Some(f) => &f, None => &self.filename };
+        if line_numbers && self.line > 0 {
+            format!("{} ({}:{})", self.name, filename, self.line)
+        } else if filename.len() > 0 {
+            format!("{} ({})", self.name, filename)
+        } else {
+            self.name.clone()
+        }
+    }
+}
+
 /// Returns the line number from a PyCodeObject (given the lasti index from a PyFrameObject)
 fn get_line_number<C: CodeObject, P: ProcessMemory>(code: &C, lasti: i32, process: &P) -> Result<i32, Error> {
     let table = copy_bytes(code.lnotab(), process).context("Failed to copy line number table")?;
@@ -208,8 +223,8 @@ impl ProcessInfo {
 mod tests {
     use super::*;
     use remoteprocess::LocalProcess;
-    use python_bindings::v3_7_0::{PyCodeObject};
-    use python_data_access::tests::to_byteobject;
+    use crate::python_bindings::v3_7_0::{PyCodeObject};
+    use crate::python_data_access::tests::to_byteobject;
 
     #[test]
     fn test_get_line_number() {

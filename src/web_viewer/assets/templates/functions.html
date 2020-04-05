@@ -1,0 +1,114 @@
+{{#*inline "title"}} Functions {{/inline}}
+{{#*inline "function_selected"}} menu-selected {{/inline}}
+{{#*inline "page"}}
+<div class="row">
+    <div class="col-4 main">
+        <div style="width:100%;">
+            <div class="error_info hidden" >
+                <div class="errordismiss">X</div>
+                <div style="padding: 20px;"><span class="error_text"></span></div>
+            </div>
+        </div>
+        <div id="timeselector"></div>
+        <div style="margin-top:20px; margin-bottom:10px; text-align: left; font-size:12px">
+            <span style="float:left">Showing <b><span id="countselection"></span></b> stack traces from <b><span id="startselection">0s</span></b> to <b><span id="endselection"></span></b>. </span>
+            <div style="float:right; font-size:12px">
+                <input class="flameoption" type="checkbox" id="include_lines"> Line Numbers
+                <select class="flameoption" id="include_frames">
+                    <option value="idle">All Frames</option>
+                    <option value="active">Active Frames</option>
+                    <option value="gil">GIL</option>
+                </select>
+            </div>
+            <div style="clear: both"></div>
+        </div>
+
+        <div id="tablechart">
+            <table style="width:100%">
+                <thead><tr></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+    <div class="col-1">
+        <p style="font-size:12px">
+        <span id ="python_command"></span><br><br>
+        <span style="color:#444">Python v<span id="python_version"></span></span><br>
+        <b><span id="sampling_rate">100</span></b> samples / second<br>
+        Process is  <b><span id="runningstate"></span></b><br>
+        </p>
+        <div id="details">
+        </div>
+    </div>
+</div>
+
+<script src="/js/bundle.js"></script>
+<script>
+    let table = new pyspy.FunctionTableOverview(document.getElementById("tablechart"),
+                                                document.getElementById("timeselector"));
+</script>
+{{/inline}}
+{{#*inline "head"}}
+<style>
+table {
+    border-collapse: collapse;
+    border-spacing: 0;
+    empty-cells: show;
+    border-spacing: 0;
+    border: 1px solid #ccc;
+}
+
+td,
+th {
+    padding: 0.5em;
+    border-left: 1px solid #ccc;
+    border-width: 0 0 0 1px;
+    font-size: inherit;
+    margin: 0;
+    overflow: visible;
+}
+
+thead {
+    background-color: white;
+    border-bottom: 1px solid #ccc;
+    color: #444;
+    text-align: left;
+    vertical-align: bottom;
+}
+
+td {
+    background-color: transparent;
+}
+
+tr:nth-child(2n-1) td {
+    background-color: #f2f2f2;
+}
+
+th.asc:after {
+    content: " \2191";
+}
+th.desc:after {
+    content: " \2193";
+}
+
+td a {
+    color: #444;
+    text-decoration: none;
+    border-bottom-color:transparent;
+}
+
+th:hover span,
+td a:hover {
+    border-bottom-color:orange;
+    background-color:unset;
+    border-bottom-width:1px;
+    border-bottom-style:solid;
+    cursor: pointer
+}
+
+th:hover {
+    cursor: pointer
+}
+</style>
+{{/inline}}
+{{> base }}

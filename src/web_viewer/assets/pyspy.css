@@ -1,0 +1,153 @@
+html {
+    font-family: Helvetica,sans-serif;
+    line-height: 1.2;
+}
+
+.hidden {
+    display: none;
+}
+
+button,
+input,
+optgroup,
+select,
+textarea {
+    font-family: inherit;
+    font-size: 100%;
+    line-height: 1.2;
+    margin: 0 2px 0 2px;
+}
+
+.menu {
+    border-bottom-width: 1px;
+    border-bottom-style: solid;
+    width: 100%;
+    white-space: nowrap;
+}
+
+.menu-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: inline-block;
+}
+
+.menu-heading,
+.menu-link {
+    color: #444;
+    border-bottom-width:2px;
+    border-bottom-style:solid;
+    border-bottom-color:transparent;
+    display: block;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.menu-heading {
+    padding: 0em 1em 0.5em 0em;
+}
+
+.menu-link {
+    padding: 0em 1em 0.5em 1em;
+}
+
+.menu-link:hover {
+    border-bottom-color:orange;
+    background-color:unset;
+}
+
+.menu-link:focus {
+    background-color:unset;
+}
+
+.menu-selected {
+    border-bottom-color:orange;
+}
+
+.menu-heading:hover,
+:not(.menu-selected).menu-link:hover {
+    border-bottom-color: rgb(255,165,0, .5);
+}
+
+.menu-item {
+    padding: 0;
+    margin: 0;
+    height: 100%;
+    display: inline-block;
+    vertical-align: middle;
+}
+
+.error_info {
+    background-color: #ffc107;
+    border-radius: 4px;
+    box-shadow: 2px 2px 2px 1px #a6a6a6;
+    margin-bottom: 20px;
+}
+
+.errordismiss {
+    float:right;
+    margin-top:2px;
+    padding-left: 3px;
+    padding-right: 3px;
+    color:#666
+}
+
+.errordismiss:hover {
+    border-bottom-color:back;
+    background-color:unset;
+    border-bottom-width:1px;
+    border-bottom-style:solid;
+    cursor: pointer
+}
+
+.row {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+}
+.col-1,
+.col-2,
+.col-3,
+.col-4 {
+    display: flex;
+    flex-direction: column;
+    min-width: 200px;
+    max-width: 100%;
+}
+
+.col-1 {
+    flex: 1;
+}
+.col-2 {
+    flex: 2
+}
+.col-3 {
+    flex: 3
+}
+.col-4 {
+    flex: 4;
+}
+
+@media screen and (max-width: 1024px) {
+    .row {
+        flex-direction: column;
+    }
+}
+
+@media screen and (min-width: 1024px) {
+    .main,
+    .menu-list {
+        margin-left: 2em;
+    }
+
+    .menu-heading {
+        padding-left: 1em;
+    }
+
+    .col-1,
+    .col-2,
+    .col-3,
+    .col-4 {
+        padding: 1em;
+    }
+}

@@ -1,6 +1,6 @@
 [package]
 name = "py-spy"
-version = "0.3.4"
+version = "0.4.0-dev0"
 authors = ["Ben Frederickson <github@benfrederickson.com>"]
 repository = "https://github.com/benfred/py-spy"
 homepage = "https://github.com/benfred/py-spy"
@@ -9,6 +9,7 @@ readme = "README.md"
 exclude = ["images/*", "test_programs/*"]
 license = "MIT"
 build="build.rs"
+edition = "2018"
 
 [dependencies]
 clap = {version="2", features=["wrap_help"]}
@@ -19,6 +20,7 @@ env_logger = "0.8"
 failure = "0.1.8"
 goblin = "0.2.3"
 inferno = "0.10.2"
+handlebars = {version="3", optional=true}
 lazy_static = "1.1.0"
 libc = "0.2.82"
 log = "0.4"
@@ -26,6 +28,9 @@ lru = "0.6"
 regex = "1"
 tempfile = "3.0.3"
 proc-maps = "0.1.6"
+rouille = {version="2.2.0", optional=true}
+rust-embed = {version="5.5", features=["interpolate-folder-path"], optional=true}
+mime_guess = {version="1.8.6", optional=true}
 memmap = "0.7.0"
 cpp_demangle = "0.3.2"
 serde = {version="1.0", features=["rc"]}
@@ -40,3 +45,10 @@ termios = "0.3.2"
 
 [target.'cfg(windows)'.dependencies]
 winapi = {version = "0.3", features = ["winbase", "consoleapi", "wincon", "handleapi", "timeapi", "processenv" ]}
+
+[profile.release]
+lto = true
+
+[features]
+default = []
+serve = ["handlebars", "rouille", "rust-embed", "mime_guess"]

@@ -1,0 +1,96 @@
+{{#*inline "title"}} Flamegraph {{/inline}}
+{{#*inline "overview_selected"}} menu-selected {{/inline}}
+{{#*inline "page"}}
+<div class="row">
+    <div class="col-4 main">
+        <div style="width:100%;">
+            <div class="error_info hidden" >
+                <div class="errordismiss">X</div>
+                <div style="padding: 20px;"><span class="error_text"></span></div>
+            </div>
+        </div>
+        <div id="timeselector"></div>
+        <div style="margin-top:20px; margin-bottom:10px; text-align: left; font-size:12px">
+            <span style="float:left">Showing <b><span id="countselection"></span></b> stack traces from <b><span id="startselection">0s</span></b> to <b><span id="endselection"></span></b>. </span>
+            <div style="float:right; font-size:12px">
+                <span class="subprocess_option hidden"><input class="flameoption" type="checkbox" id="include_processes"> Process IDs</span>
+                <input class="flameoption" type="checkbox" id="include_threads"> Thread IDs
+                <input class="flameoption" type="checkbox" id="include_lines"> Line Numbers
+                <select class="flameoption" id="include_frames">
+                    <option value="idle">All Frames</option>
+                    <option value="active">Active Frames</option>
+                    <option value="gil">GIL</option>
+                </select>
+            </div>
+            <div style="clear: both"></div>
+        </div>
+        <div id="flamegraphchart" class="flamegraph"></div>
+    </div>
+    <div class="col-1">
+        <p style="font-size:12px">
+        <span id ="python_command"></span><br><br>
+        <span style="color:#444">Python v<span id="python_version"></span></span><br>
+        <b><span id="sampling_rate">100</span></b> samples / second<br>
+        Process is  <b><span id="runningstate"></span></b><br>
+        </p>
+        <div id="details">
+        </div>
+    </div>
+</div>
+
+<div class="tooltip hidden">
+    <div style="display:table">
+        <div style="display:table-row">
+            <!-- <div style="font-size:16px;vertical-align:middle;display:table-cell;padding-right:5px;border-right:solid 1px lightgrey" class="tooltiptime"><b>0s</b></div> -->
+            <div style="font-size:16px;vertical-align:middle;display:table-cell;padding-right:5px;padding-left:5px;border-right:solid 1px lightgrey" class="tooltippercent">50%</div>
+            <div style="display:table-cell;vertical-align:middle;padding-left:5px;"><span class="tooltiptitle"></span><br><span class="tooltipcontent"></span></div>
+        </div>
+    </div>
+</div>
+<script src="/js/bundle.js"></script>
+<script>
+    let flamegraph = new pyspy.FlamegraphOverview(document.getElementById("flamegraphchart"),
+                                                  document.getElementById("timeselector"));
+</script>
+{{/inline}}
+{{#*inline "head"}}
+<style>
+.flamegraph {
+    position: relative;
+    width: 100%;
+    overflow: hidden;
+}
+
+.flamegraph div {
+    position: absolute;
+    height: 20px;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    border-radius: 2px;
+}
+
+.flamegraph div a {
+    text-decoration: none;
+    color: #000;
+    margin-left: 6px;
+    margin-right: 6px;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.flamegraph div a:hover {
+    text-decoration: underline;
+}
+
+.tooltip {
+    color: #222;
+    background: #fff;
+    border-radius: 4px;
+    box-shadow: 0px 0px 1px 1px #a6a6a6;
+    padding: 5px 10px 5px 10px;
+    position: absolute;
+    font-size: 14px;
+}
+</style>
+{{/inline}}
+{{> base }}

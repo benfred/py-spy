@@ -1,0 +1,84 @@
+{{#*inline "title"}} function "{{ name }}"{{/inline}}
+{{#*inline "page"}}
+<div class="row">
+    <div class="col-4 main">
+
+        Function: {{name}}<br>
+        Filename: {{short_filename}}<br>
+        Full: {{filename}}<br>
+        <hr>
+        <div class="functionheatmap"></div>
+
+        <div class="error_info hidden" >
+            <div class="errordismiss">X</div>
+            <div style="padding: 20px;"><span class="error_text"></span></div>
+        </div>
+    </div>
+</div>
+
+<script src="/js/bundle.js"></script>
+<script>
+    let table = new pyspy.FunctionDetails(document.getElementById("timeselector"), "{{{name}}}", "{{{short_filename}}}", "{{{filename}}}");
+</script>
+{{/inline}}
+
+{{#*inline "head"}}
+<style>
+td {
+    padding: 0px;
+    line-height: 1.0;
+}
+
+code {
+    font-family: monospace
+}
+
+tr:hover {
+    background-color: white;
+}
+
+.linenumber {
+    color: lightgrey;
+    font-size: 12px;
+    text-align: left;
+    vertical-align: top;
+    font-weight: 200;
+    width: 3em;
+}
+
+.percent {
+    width: 5em;
+    color: #444;
+    font-size: 12px
+}
+
+.linenumber,
+.percent {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+.parentcode {
+    text-align: left;
+    font-size: 12px;
+    color: grey;
+    font-weight: 200;
+}
+
+pre .hljs {
+    border-radius: 5px;
+}
+
+table {
+    width: 100%;
+}
+</style>
+
+<link rel="stylesheet" href="/assets/highlight-github.css">
+<script src="/assets/highlight.9.18.1.min.js"></script>
+{{/inline}}
+
+{{> base }}
+
