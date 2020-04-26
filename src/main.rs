@@ -250,7 +250,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
 
             if config.include_thread_ids {
                 let threadid = trace.format_threadid();
-                trace.frames.push(Frame{name: format!("thread {}", threadid),
+                trace.frames.push(Frame{name: format!("thread ({})", threadid),
                     filename: String::from(""),
                     module: None, short_filename: None, line: 0, locals: None});
             }
