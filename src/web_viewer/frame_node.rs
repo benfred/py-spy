@@ -10,6 +10,14 @@ use remoteprocess::{Pid};
 use serde::ser::{self, Serializer, SerializeStruct};
 use serde_derive::Serialize;
 
+#[derive(Debug, Serialize)]
+pub struct FoldedTraces {
+    pub total: u64,
+    pub gil: u64,
+    pub active: u64,
+    pub root: FrameNode
+}
+
 #[derive(Debug)]
 pub struct FrameNode {
     pub count: u64,
@@ -32,19 +40,23 @@ pub struct AggregateOptions {
     pub include_lines: bool,
     // TODO: move these two options into an enum
     pub include_idle: bool,
-    pub gil_only: bool
+    pub gil_only: bool,
+    pub short_filename: Option<String>,
+    pub function: Option<String>,
 }
 
-impl FrameNode {
-    pub fn from_traces(traces: &[Arc<StackTrace>], options: &AggregateOptions) -> Result<FrameNode, Error> {
+impl FoldedTraces {
+    pub fn from_traces(traces: &[Arc<StackTrace>], options: &AggregateOptions) -> Result<FoldedTraces, Error> {
         let aggregate_start = Instant::now();
         let mut root = FrameNode::new(Frame{name: "all".to_owned(), filename: "".to_owned(),
-                                      short_filename: None, module:None, line: 0, locals: None}, options.include_lines);
+                                      short_filename: None, module:None, line: 0, locals: None}, options.include_lines,
+                                    );
 
         // pre aggregate by memory address. since we're interning the objects in data_collector
         // duplicates here should be referring to the same memory address - making this code
         // significantly faster
         let mut trace_counts = HashMap::new();
+
 
         for trace in traces {
             if !(options.include_idle || trace.active) {
@@ -54,18 +66,39 @@ impl FrameNode {
             if options.gil_only && !trace.owns_gil {
                 continue;
             }
+
             let trace_addr = &*trace as &StackTrace as *const StackTrace as usize;
             trace_counts.entry(trace_addr)
                 .or_insert_with(|| (trace.clone(), 0)).1 += 1;
         }
 
+        let mut gil = 0;
+        let mut active = 0;
+        let mut total = 0;
+
         for (trace, count) in trace_counts.values() {
+            if let Some(function) = &options.function {
+                if !trace.frames.iter().any(|frame|
+                        &frame.name == function && frame.short_filename == options.short_filename) {
+                    continue;
+                }
+            }
+            total += count;
+            if trace.active {
+                active += count;
+            }
+            if trace.owns_gil {
+                gil += count;
+            }
             root.insert_trace(options, trace, *count);
         }
 
         info!("aggregated {} ({} unique) traces in {:2?} ", traces.len(), trace_counts.len(), Instant::now() - aggregate_start);
-        Ok(root)
+        Ok(FoldedTraces{root, total, gil, active})
     }
+}
+
+impl FrameNode {
 
     fn new(frame: Frame, line_numbers: bool) -> FrameNode {
         FrameNode{count: 0, frame, children: HashMap::new(), line_numbers}
@@ -97,7 +130,7 @@ impl FrameNode {
                 FrameNode::new(Frame{name: format!("thread 0x{:x}", tid),
                                         filename: "".to_owned(), short_filename: None,
                                         module:None, line: 0, locals: None}, line_numbers))
-}
+    }
 
     fn insert_frames<'a, I>(&mut self, frames: & mut I, count: u64)
         where I: Iterator<Item = &'a Frame> {

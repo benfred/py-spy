@@ -101,7 +101,6 @@ abstract class TimeSeriesOverview {
                 document.getElementById("startselection").textContent = start.toFixed(3) + "s";
                 document.getElementById("endselection").textContent = end.toFixed(3) + "s";
                 // TODO: document.getElementById("countselection").textContent = d.value.toLocaleString();
-
                 this.display_data(d, this.data != null);
 
                 // store reference so that we can redraw easily on resize
@@ -144,6 +143,7 @@ export class FlamegraphOverview extends TimeSeriesOverview {
     }
 
     public display_data(data: any, transition: boolean): void {
+        data = data.root;
         document.getElementById("countselection").textContent = data.value.toLocaleString();
         this.flamegraph.update(this.flame_element, data, transition);
     }

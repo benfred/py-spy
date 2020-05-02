@@ -42,7 +42,7 @@ fn http_handler(data: &Data, request: &Request) -> Response {
         },
         (GET) (/api/flattened_traces) => {
             let aggregates = try_or_400!(get_aggregates(data, request).map_err(|x| x.compat()));
-            let flattened = aggregates.flatten();
+            let flattened = aggregates.root.flatten();
             let mut flattened_values: Vec<&frame_node::FrameInfo> = flattened.values().collect();
 
             // filter down to file/function as required
@@ -52,12 +52,11 @@ fn http_handler(data: &Data, request: &Request) -> Response {
                     None => flattened_values.retain(|&row| row.frame.short_filename.as_ref() == Some(&file))
                 };
             }
-
             Response::json(&flattened_values)
         },
         (GET) (/api/function_info) => {
             let aggregates = try_or_400!(get_aggregates(data, request).map_err(|x| x.compat()));
-            let flattened = aggregates.flatten();
+            let flattened = aggregates.root.flatten();
             let mut flattened_values: Vec<&frame_node::FrameInfo> = flattened.values().collect();
 
             let filename = match request.get_param("file") {
@@ -81,7 +80,11 @@ fn http_handler(data: &Data, request: &Request) -> Response {
                     return Response::json(&json!({"error": format!("Failed to open file '{}': {}", full_filename, e)}));
                 }
             };
-            let output = json!({"contents": contents, "flattened": flattened_values});
+            let output = json!({"contents": contents,
+                                "flattened": flattened_values,
+                                "total": aggregates.total,
+                                "active": aggregates.active,
+                                "gil": aggregates.gil});
             Response::json(&output)
         },
         // HTML pages
@@ -140,7 +143,7 @@ fn register_template(handlebars: &mut handlebars::Handlebars, name: &str) -> Res
     Ok(())
 }
 
-fn get_aggregates(data: &Data, request: &Request) -> Result<frame_node::FrameNode, Error> {
+fn get_aggregates(data: &Data, request: &Request) -> Result<frame_node::FoldedTraces, Error> {
     let start_time = match request.get_param("start") {
         Some(start) => start.parse()?,
         None => 0_u64
@@ -162,7 +165,10 @@ fn get_aggregates(data: &Data, request: &Request) -> Result<frame_node::FrameNod
         _ => (false, false)
     };
 
-    let options = frame_node::AggregateOptions{include_lines, include_threads, include_processes, include_idle, gil_only};
+    let short_filename = request.get_param("file");
+    let function = request.get_param("function");
+    let options = frame_node::AggregateOptions{include_lines, include_threads, include_processes, include_idle,
+                                               gil_only, function, short_filename};
     data.aggregate(start_time, end_time, &options)
 }
 

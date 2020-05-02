@@ -14,6 +14,8 @@ export class FunctionDetails {
         let url = "/api/function_info?file=" + escape(short_filename) + "&function=" + escape(name) + "&include_lines=1&include_frames=idle";
         json(url)
             .then((d: any) => {
+
+                console.log(d);
                 // Doesn't seem like we can get the response body in the catch handler on this promise
                 // so we're putting the error message in the json field instead
                 if ('error' in d) {
@@ -22,16 +24,18 @@ export class FunctionDetails {
                 }
                 this.data = d;
 
+                let gil = d.gil / d.total
+                select("#stats")
+                    .append("span")
+                    .text(`${d.total} samples in function (${(100.0 * d.active / d.total).toLocaleString()}% active, ${(100.0 * d.gil / d.total).toLocaleString()}% with GIL)`)
+
                 let lines = d.contents.split("\n");
                 this.lines = lines;
-
+                let total_samples = d.total;
                 let line_to_node: Record<number, any> = {};
-                let total_samples = 0;
-                let own_samples = 0;
+
                 for (let node of d.flattened) {
                     line_to_node[node.frame.line] = node;
-                    total_samples += node.total_count;
-                    own_samples += node.own_count;
                 }
 
                 for (let code_block of get_code_blocks(lines, this.data.flattened, this.name)) {

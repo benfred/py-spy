@@ -12,7 +12,7 @@ use serde_derive::Serialize;
 use crate::config::Config;
 use crate::sampler::Sample;
 use crate::stack_trace::{StackTrace};
-use super::frame_node::{FrameNode, AggregateOptions};
+use super::frame_node::{FoldedTraces, AggregateOptions};
 
 pub struct Data {
     traces: Vec<Arc<StackTrace>>,
@@ -34,7 +34,7 @@ impl Data {
         Data{traces: Vec::new(), trace_ms: Vec::new(), trace_lookup: HashSet::new(), short_filenames: HashMap::new(), stats}
     }
 
-    pub fn aggregate(&self, start_time: u64, end_time: u64, options: &AggregateOptions) -> Result<FrameNode, Error> {
+    pub fn aggregate(&self, start_time: u64, end_time: u64, options: &AggregateOptions) -> Result<FoldedTraces, Error> {
         let start = if start_time > 0 {
             match self.trace_ms.binary_search(&start_time) {
                 Ok(v) => v,
@@ -60,7 +60,7 @@ impl Data {
         if start >= self.traces.len() || end >= self.traces.len() {
             return Err(format_err!("Invalid trace slice found"));
         }
-        FrameNode::from_traces(&self.traces[start..end], options)
+        FoldedTraces::from_traces(&self.traces[start..end], options)
     }
 }
 
