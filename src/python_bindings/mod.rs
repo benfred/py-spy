@@ -52,7 +52,7 @@ pub mod pyruntime {
     pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
         match version {
              Version{major: 3, minor: 7, patch: 0..=3, ..} => Some(1440),
-             Version{major: 3, minor: 7, patch: 4..=6, ..} => Some(1528),
+             Version{major: 3, minor: 7, patch: 4..=7, ..} => Some(1528),
              Version{major: 3, minor: 8, patch: 0, ..} => {
                  match version.release_flags.as_ref() {
                     "a1" => Some(1432),
@@ -61,7 +61,7 @@ pub mod pyruntime {
                     _ => Some(1416),
                 }
              },
-             Version{major: 3, minor: 8, patch: 1, ..} => { Some(1416) },
+             Version{major: 3, minor: 8, patch: 1..=2, ..} => { Some(1416) },
              _ => None
         }
     }
@@ -78,7 +78,7 @@ pub mod pyruntime {
                     _  => Some(788)
                 }
             },
-            Version{major: 3, minor: 8, patch: 1, ..} => Some(788),
+            Version{major: 3, minor: 8, patch: 1..=2, ..} => Some(788),
             _ => None
         }
     }
@@ -87,7 +87,7 @@ pub mod pyruntime {
     pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
         match version {
             Version{major: 3, minor: 7, patch: 0..=3, ..} => Some(1392),
-            Version{major: 3, minor: 7, patch: 4..=6, ..} => Some(1480),
+            Version{major: 3, minor: 7, patch: 4..=7, ..} => Some(1480),
             Version{major: 3, minor: 8, patch: 0, ..} => {
                 match version.release_flags.as_ref() {
                     "a1" => Some(1384),
@@ -96,7 +96,7 @@ pub mod pyruntime {
                     _  => Some(1368)
                 }
              },
-            Version{major: 3, minor: 8, patch: 1, ..} => Some(1368),
+            Version{major: 3, minor: 8, patch: 1..=2, ..} => Some(1368),
             _ => None
         }
     }
@@ -113,7 +113,7 @@ pub mod pyruntime {
                     _ => Some(1296)
                 }
             },
-            Version{major: 3, minor: 8, patch: 1, ..} => Some(1296),
+            Version{major: 3, minor: 8, patch: 1..=2, ..} => Some(1296),
             _ => None
         }
     }
@@ -122,7 +122,7 @@ pub mod pyruntime {
     pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
         match version {
             Version{major: 3, minor: 7, patch: 0..=3, ..} => Some(1248),
-            Version{major: 3, minor: 7, patch: 4..=6, ..} => Some(1336),
+            Version{major: 3, minor: 7, patch: 4..=7, ..} => Some(1336),
             Version{major: 3, minor: 8, patch: 0, ..} => {
                 match version.release_flags.as_ref() {
                     "a1" => Some(1240),
@@ -131,7 +131,7 @@ pub mod pyruntime {
                     _ => Some(1224)
                 }
             },
-            Version{major: 3, minor: 8, patch: 1, ..} => Some(1224),
+            Version{major: 3, minor: 8, patch: 1..=2, ..} => Some(1224),
             _ => None
         }
     }
