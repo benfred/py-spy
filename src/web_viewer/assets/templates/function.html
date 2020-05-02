@@ -2,16 +2,19 @@
 {{#*inline "page"}}
 <div class="row">
     <div class="col-4 main">
+        <div>
 
-        Function: {{name}}<br>
-        Filename: {{short_filename}}<br>
-        Full: {{filename}}<br>
-        <hr>
-        <div class="functionheatmap"></div>
+            <span style="font-size:16px"><b>{{name}}</b> {{short_filename}}</span>
 
-        <div class="error_info hidden" >
-            <div class="errordismiss">X</div>
-            <div style="padding: 20px;"><span class="error_text"></span></div>
+            <p id="stats" style="font-size:14px"></p>
+            <div class="functionheatmap">
+                <!-- <span style="color:#444>;font-size:14px">{{filename}}</span> -->
+            </div>
+
+            <div class="error_info hidden" >
+                <div class="errordismiss">X</div>
+                <div style="padding: 20px;"><span class="error_text"></span></div>
+            </div>
         </div>
     </div>
 </div>
