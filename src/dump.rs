@@ -3,7 +3,6 @@ use failure::Error;
 
 use crate::config::Config;
 use crate::python_spy::PythonSpy;
-use crate::python_threading::thread_name_lookup;
 
 use remoteprocess::Pid;
 
@@ -14,8 +13,6 @@ pub fn print_traces(pid: Pid, config: &Config) -> Result<(), Error> {
         println!("{}", serde_json::to_string_pretty(&traces)?);
         return Ok(())
     }
-
-    let thread_names = thread_name_lookup(&process);
 
     println!("Process {}: {}",
         style(process.pid).bold().yellow(),
@@ -29,11 +26,7 @@ pub fn print_traces(pid: Pid, config: &Config) -> Result<(), Error> {
 
     for trace in traces.iter().rev() {
         let thread_id = trace.format_threadid();
-        let thread_name = match thread_names.as_ref() {
-            Some(names) => names.get(&trace.thread_id),
-            None => None
-        };
-        match thread_name {
+        match trace.thread_name.as_ref() {
             Some(name) => {
                 println!("Thread {} ({}): \"{}\"", style(thread_id).bold().yellow(), trace.status_str(), name);
             }
