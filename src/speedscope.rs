@@ -126,7 +126,7 @@ enum ValueUnit {
 }
 
 impl SpeedscopeFile {
-  pub fn new(samples: &HashMap<Tid, Vec<Vec<usize>>>, frames: &Vec<Frame>) -> SpeedscopeFile {
+  pub fn new(samples: &HashMap<Tid, Vec<Vec<usize>>>, frames: &Vec<Frame>, thread_name_map: &HashMap<Tid, String>) -> SpeedscopeFile {
     let end_value = samples.len();
 
     SpeedscopeFile {
@@ -139,12 +139,12 @@ impl SpeedscopeFile {
 
       exporter: Some(format!("py-spy@{}", env!("CARGO_PKG_VERSION"))),
 
-      profiles: samples.iter().map(|(_, samples)| {
+      profiles: samples.iter().map(|(thread_id, samples)| {
         let weights: Vec<f64> = (&samples).iter().map(|_s| 1_f64).collect();
 
         Profile {
             profile_type: ProfileType::Sampled,
-            name: String::from("py-spy"),
+            name: thread_name_map.get(thread_id).map_or_else(|| "py-spy".to_string(), |x| x.clone()),
             unit: ValueUnit::None,
             start_value: 0.0,
             end_value: end_value as f64,
@@ -176,6 +176,7 @@ pub struct Stats {
     samples: HashMap<Tid, Vec<Vec<usize>>>,
     frames: Vec<Frame>,
     frame_to_index: HashMap<stack_trace::Frame, usize>,
+    thread_name_map: HashMap<Tid, String>,
     show_line_numbers: bool
 }
 
@@ -185,6 +186,7 @@ impl Stats {
             samples: HashMap::new(),
             frames: vec![],
             frame_to_index: HashMap::new(),
+            thread_name_map: HashMap::new(),
             show_line_numbers
         }
     }
@@ -208,11 +210,15 @@ impl Stats {
         self.samples.entry(stack.thread_id as Tid).or_insert_with(|| {
             vec![]
         }).push(frame_indices);
+        self.thread_name_map.entry(stack.thread_id as Tid).or_insert_with(|| {
+            stack.thread_name.as_ref().map_or_else(|| "py-spy".to_string(), |x| x.clone())
+        });
+
         Ok(())
     }
 
     pub fn write(&self, w: &mut File) -> Result<(), Error> {
-        let json = serde_json::to_string(&SpeedscopeFile::new(&self.samples, &self.frames))?;
+        let json = serde_json::to_string(&SpeedscopeFile::new(&self.samples, &self.frames, &self.thread_name_map))?;
         writeln!(w, "{}", json)?;
         Ok(())
     }

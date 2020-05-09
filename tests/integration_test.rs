@@ -1,5 +1,5 @@
 extern crate py_spy;
-
+use std::collections::HashSet;
 use py_spy::{Config, PythonSpy, Pid};
 
 struct ScriptRunner {
@@ -115,6 +115,41 @@ fn test_long_sleep() {
     // linux+freebsd is trickier
     #[cfg(any(target_os="macos", target_os="windows"))]
     assert!(!traces[0].active);
+}
+
+#[test]
+fn test_thread_names() {
+    #[cfg(target_os = "macos")]
+    {
+        // We need root permissions here to run this on OSX
+        if unsafe { libc::geteuid() } != 0 {
+            return;
+        }
+    }
+    let config = Config {
+        include_idle: true,
+        ..Default::default()
+    };
+    let mut runner = TestRunner::new(config, "./tests/scripts/thread_names.py");
+
+    let traces = runner.spy.get_stack_traces().unwrap();
+    assert_eq!(traces.len(), 11);
+
+    // dictionary + thread name lookup is only supported with python 3.6+
+    if runner.spy.version.major == 3 && runner.spy.version.minor >= 6 {
+        let mut expected_threads: HashSet<String> =
+            (0..10).map(|n| format!("CustomThreadName-{}", n)).collect();
+        expected_threads.insert("MainThread".to_string());
+        let detected_threads: HashSet<String> = traces
+            .iter()
+            .map(|trace| trace.thread_name.as_ref().unwrap().clone())
+            .collect();
+        assert_eq!(expected_threads, detected_threads);
+    } else {
+        for trace in traces.iter() {
+            assert!(trace.thread_name.is_none());
+        }
+    }
 }
 
 #[test]
