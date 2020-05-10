@@ -22,6 +22,7 @@ use crate::config::Config;
 use crate::native_stack_trace::NativeStack;
 use crate::python_bindings::{pyruntime, v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0};
 use crate::python_interpreters::{self, InterpreterState, ThreadState};
+use crate::python_threading::thread_name_lookup;
 use crate::stack_trace::{StackTrace, get_stack_traces, get_stack_trace};
 use crate::version::Version;
 
@@ -39,6 +40,7 @@ pub struct PythonSpy {
     pub native: Option<NativeStack>,
     pub short_filenames: HashMap<String, Option<String>>,
     pub python_thread_ids: HashMap<u64, Tid>,
+    pub python_thread_names: HashMap<u64, String>,
     #[cfg(target_os="linux")]
     pub dockerized: bool
 }
@@ -116,7 +118,8 @@ impl PythonSpy {
                      dockerized: python_info.dockerized,
                      config: config.clone(),
                      short_filenames: HashMap::new(),
-                     python_thread_ids: HashMap::new()})
+                     python_thread_ids: HashMap::new(),
+                     python_thread_names: HashMap::new()})
     }
 
     /// Creates a PythonSpy object, retrying up to max_retries times.
@@ -210,13 +213,15 @@ impl PythonSpy {
             // which totally breaks the caching we were doing here. Detect this and retry
             if let Some(tid) = os_thread_id {
                 if thread_activity.len() > 0 && !thread_activity.contains_key(&tid) {
-                    info!("clearing away thread_id cache, thread {} has exitted", tid);
+                    info!("clearing away thread id caches, thread {} has exitted", tid);
                     self.python_thread_ids.clear();
+                    self.python_thread_names.clear();
                     os_thread_id = self._get_os_thread_id(python_thread_id, &interp)?;
                 }
             }
 
             trace.os_thread_id = os_thread_id.map(|id| id as u64);
+            trace.thread_name = self._get_python_thread_name(python_thread_id);
             trace.owns_gil = trace.thread_id == gil_thread_id;
 
             // Figure out if the thread is sleeping from the OS if possible
@@ -432,6 +437,16 @@ impl PythonSpy {
             }
         }
         Ok(0)
+    }
+
+    fn _get_python_thread_name(&mut self, python_thread_id: u64) -> Option<String> {
+        match self.python_thread_names.get(&python_thread_id) {
+            Some(thread_name) => Some(thread_name.clone()),
+            None => {
+                self.python_thread_names = thread_name_lookup(self).unwrap_or_else(|| HashMap::new());
+                self.python_thread_names.get(&python_thread_id).map(|name| name.clone())
+            }
+        }
     }
 
     /// We want to display filenames without the boilerplate of the python installation

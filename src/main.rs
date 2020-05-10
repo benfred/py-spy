@@ -44,6 +44,7 @@ mod python_bindings;
 mod python_interpreters;
 mod python_spy;
 mod python_data_access;
+mod python_threading;
 mod stack_trace;
 mod console_viewer;
 mod flamegraph;

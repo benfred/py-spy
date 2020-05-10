@@ -14,6 +14,8 @@ pub struct StackTrace {
     pub pid: Pid,
     /// The python thread id for this stack trace
     pub thread_id: u64,
+    // The python thread name for this stack trace
+    pub thread_name: Option<String>,
     /// The OS thread id for this stack tracee
     pub os_thread_id: Option<u64>,
     /// Whether or not the thread was active
@@ -106,7 +108,7 @@ pub fn get_stack_trace<T>(thread: &T, process: &Process, copy_locals: bool) -> R
         frame_ptr = frame.back();
     }
 
-    Ok(StackTrace{pid: process.pid, frames, thread_id: thread.thread_id(), owns_gil: false, active: true, os_thread_id: None})
+    Ok(StackTrace{pid: process.pid, frames, thread_id: thread.thread_id(), thread_name: None, owns_gil: false, active: true, os_thread_id: None})
 }
 
 impl StackTrace {
