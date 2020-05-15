@@ -151,3 +151,28 @@ textarea {
         padding: 1em;
     }
 }
+
+#spinner {
+    margin: 0 auto;
+    text-align: center;
+}
+
+.spinner {
+    border: 10px solid rgb(233, 233, 233);
+    border-top: 10px solid #2f8ece;
+
+    border-top: 5px solid #1f77b4;
+    border-right: 6px solid #ff7f0e;
+    border-bottom: 12px solid #1f77b4;
+    border-left: 6px solid #ff7f0e;
+
+    border-radius: 40%;
+    width: 50px;
+    height: 50px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
