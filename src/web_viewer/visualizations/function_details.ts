@@ -190,6 +190,11 @@ function get_indent_level(lines: string[]): number[] {
         if ((indent == line.length) || (line[indent] == "#")) {
             continue;
         }
+
+        if (line.match(/^\s*\)/)) {
+            continue;
+        }
+
         indent_level[i] = indent;
     }
     return indent_level;

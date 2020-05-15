@@ -95,9 +95,18 @@ abstract class TimeSeriesOverview {
         let filtervalue = framefilter.options[framefilter.selectedIndex].value;
         url += "&include_frames=" + filtervalue;
 
+
         // store a reference to the data (needed to update flamegraph on resize etc)
+        select("#spinner").style("display", "inline-block");
+        select(".spinner")
+            .style("border-left-width", Math.ceil(Math.random() * 25) + "px")
+            .style("border-right-width", Math.ceil(Math.random() * 25) + "px")
+            .style("border-top-width", Math.ceil(Math.random() * 25) + "px")
+            .style("border-bottom-width", Math.ceil(Math.random() * 25) + "px");
+
         json(url)
             .then((d: any) => {
+                select("#spinner").style("display", "none");
                 document.getElementById("startselection").textContent = start.toFixed(3) + "s";
                 document.getElementById("endselection").textContent = end.toFixed(3) + "s";
                 // TODO: document.getElementById("countselection").textContent = d.value.toLocaleString();
@@ -107,6 +116,7 @@ abstract class TimeSeriesOverview {
                 this.data = d;
             })
             .catch(err => {
+                select("#spinner").style("display", "none");
                 display_error_message(err);
                 console.log("Failed to get", url, err);
             });
