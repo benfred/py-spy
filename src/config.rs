@@ -8,7 +8,7 @@ pub struct Config {
     /// Setting this to false will reduce the performance impact on the target
     /// python process, but can lead to incorrect results like partial stack
     /// traces being returned or a higher sampling error rate
-    pub non_blocking: bool,
+    pub blocking: LockingStrategy,
 
     /// Whether or not to profile native extensions. Note: this option can not be
     /// used with the nonblocking option, as we have to pause the process to collect
@@ -60,6 +60,14 @@ arg_enum!{
     }
 }
 
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum LockingStrategy {
+    NonBlocking,
+    AlreadyLocked,
+    Lock
+}
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum RecordDuration {
     Unlimited,
@@ -72,7 +80,7 @@ impl Default for Config {
     fn default() -> Config {
         Config{pid: None, python_program: None, filename: None, format: None,
                command: String::from("top"),
-               non_blocking: false, show_line_numbers: false, sampling_rate: 100,
+               blocking: LockingStrategy::Lock, show_line_numbers: false, sampling_rate: 100,
                duration: RecordDuration::Unlimited, native: false,
                gil_only: false, include_idle: false, include_thread_ids: false,
                hide_progress: false, capture_output: true, dump_json: false, dump_locals: false, subprocesses: false}
@@ -259,7 +267,6 @@ impl Config {
         config.gil_only = matches.occurrences_of("gil") > 0;
         config.include_thread_ids = matches.occurrences_of("threads") > 0;
 
-        config.non_blocking = matches.occurrences_of("nonblocking") > 0;
         config.native = matches.occurrences_of("native") > 0;
         config.hide_progress = matches.occurrences_of("hideprogress") > 0;
         config.dump_json = matches.occurrences_of("json") > 0;
@@ -271,10 +278,13 @@ impl Config {
             config.hide_progress = true;
         }
 
-        // disable native profiling if invalidly asked for
-        if config.native && config.non_blocking {
-            eprintln!("Can't get native stack traces with the --nonblocking option.");
-            std::process::exit(1);
+        if matches.occurrences_of("nonblocking") > 0 {
+            // disable native profiling if invalidly asked for
+            if config.native  {
+                eprintln!("Can't get native stack traces with the --nonblocking option.");
+                std::process::exit(1);
+            }
+            config.blocking = LockingStrategy::NonBlocking;
         }
 
         #[cfg(windows)]
