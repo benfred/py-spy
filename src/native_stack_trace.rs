@@ -35,7 +35,7 @@ impl NativeStack {
                               python,
                               libpython,
                               process,
-                              symbol_cache: LruCache::new(4096)
+                              symbol_cache: LruCache::new(65536)
                               });
     }
 

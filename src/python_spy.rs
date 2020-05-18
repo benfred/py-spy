@@ -17,7 +17,7 @@ use proc_maps::{get_process_maps, MapRange};
 
 
 use crate::binary_parser::{parse_binary, BinaryInfo};
-use crate::config::Config;
+use crate::config::{Config, LockingStrategy};
 #[cfg(unwind)]
 use crate::native_stack_trace::NativeStack;
 use crate::python_bindings::{pyruntime, v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0};
@@ -186,10 +186,10 @@ impl PythonSpy {
         // activity status from the OS (otherwise each thread would report being inactive always).
         // This has the potential for race conditions (in that the thread activity could change
         // between getting the status and locking the thread, but seems unavoidable right now
-        let _lock = if self.config.non_blocking {
-            None
-        } else {
+        let _lock = if self.config.blocking == LockingStrategy::Lock {
             Some(self.process.lock().context("Failed to suspend process")?)
+        } else {
+            None
         };
 
         let gil_thread_id = self._get_gil_threadid::<I>()?;
@@ -329,7 +329,7 @@ impl PythonSpy {
     fn _get_os_thread_id<I: InterpreterState>(&mut self, python_thread_id: u64, interp: &I) -> Result<Option<Tid>, Error> {
         // in nonblocking mode, we can't get the threadid reliably (method here requires reading the RBX
         // register which requires a ptrace attach). fallback to heuristic thread activity here
-        if self.config.non_blocking {
+        if self.config.blocking == LockingStrategy::NonBlocking {
             return Ok(None);
         }
 

@@ -49,8 +49,8 @@ extern crate rand;
 extern crate rand_distr;
 extern crate remoteprocess;
 
-mod config;
-mod binary_parser;
+pub mod config;
+pub mod binary_parser;
 #[cfg(unwind)]
 mod cython;
 #[cfg(unwind)]
