@@ -54,7 +54,7 @@ fn http_handler(data: &Data, request: &Request) -> Response {
             }
             Response::json(&flattened_values)
         },
-        (GET) (/api/function_info) => {
+        (GET) (/api/code_details) => {
             let aggregates = try_or_400!(get_aggregates(data, request).map_err(|x| x.compat()));
             let flattened = aggregates.root.flatten();
             let mut flattened_values: Vec<&frame_node::FrameInfo> = flattened.values().collect();
@@ -63,16 +63,17 @@ fn http_handler(data: &Data, request: &Request) -> Response {
                 Some(filename) => filename,
                 None => { return Response::text("Must specify a filename param").with_status_code(400); }
             };
-            let function = match request.get_param("function") {
-                Some(function) => function,
-                None => { return Response::text("Must specify a function param").with_status_code(400); }
-            };
+
             let full_filename = match data.short_filenames.get(&filename) {
                 Some(filename) => filename.clone(),
                 None => { return Response::text("Unknown file").with_status_code(400); }
             };
 
-            flattened_values.retain(|&row| row.frame.short_filename.as_ref() == Some(&filename) && row.frame.name == function);
+            if let Some(function) = request.get_param("function") {
+                flattened_values.retain(|&row| row.frame.short_filename.as_ref() == Some(&filename) && row.frame.name == function);
+            } else {
+                flattened_values.retain(|&row| row.frame.short_filename.as_ref() == Some(&filename));
+            }
 
             let contents = match std::fs::read_to_string(&full_filename) {
                 Ok(contents) => contents,
@@ -108,6 +109,22 @@ fn http_handler(data: &Data, request: &Request) -> Response {
             template_params.insert("short_filename".to_owned(), filename);
             template_params.insert("filename".to_owned(), full_filename);
             let html = render_template("function", &template_params);
+            try_or_400!(html.map_err(|x| x.compat()))
+        },
+        (GET) (/file) => {
+            let filename = match request.get_param("f") {
+                Some(filename) => filename,
+                None => { return Response::text("Must specify a filename param").with_status_code(400); }
+            };
+            let full_filename = match data.short_filenames.get(&filename) {
+                Some(filename) => filename.clone(),
+                None => { return Response::text("Unknown file").with_status_code(400); }
+            };
+
+            let mut template_params = HashMap::new();
+            template_params.insert("short_filename".to_owned(), filename);
+            template_params.insert("filename".to_owned(), full_filename);
+            let html = render_template("file", &template_params);
             try_or_400!(html.map_err(|x| x.compat()))
         },
         _ =>  { get_404() }

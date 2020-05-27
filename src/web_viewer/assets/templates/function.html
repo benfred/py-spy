@@ -4,7 +4,7 @@
     <div class="col-4 main">
         <div>
 
-            <span style="font-size:16px"><b>{{name}}</b> {{short_filename}}</span>
+            <span style="font-size:16px"><b>{{name}}</b></span><br><a href="/file?f={{short_filename}}">{{short_filename}}</a>
 
             <p id="stats" style="font-size:14px"></p>
             <div class="functionheatmap">
@@ -21,7 +21,7 @@
 
 <script src="/js/bundle.js"></script>
 <script>
-    let table = new pyspy.FunctionDetails(document.getElementById("timeselector"), "{{{name}}}", "{{{short_filename}}}", "{{{filename}}}");
+    let table = new pyspy.CodeDetails(document.getElementById("timeselector"), "{{{name}}}", "{{{short_filename}}}", "{{{filename}}}");
 </script>
 {{/inline}}
 
@@ -76,6 +76,21 @@ pre .hljs {
 
 table {
     width: 100%;
+}
+
+
+.main a {
+    color: #444;
+    text-decoration: none;
+    border-bottom-color:transparent;
+}
+
+.main a:hover {
+    border-bottom-color:orange;
+    background-color:unset;
+    border-bottom-width:1px;
+    border-bottom-style:solid;
+    cursor: pointer
 }
 </style>
 

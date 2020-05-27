@@ -4,18 +4,19 @@ import {display_error_message} from "./utils";
 
 declare var hljs: any;
 
-export class FunctionDetails {
+export class CodeDetails {
     public data: any;
     public hierarchy: any;
     public lines: any;
 
     constructor(public timescale_element: HTMLElement,
                 public name: string, public short_filename: string, public filename: string) {
-        let url = "/api/function_info?file=" + escape(short_filename) + "&function=" + escape(name) + "&include_lines=1&include_frames=idle";
+        let url = "/api/code_details?file=" + escape(short_filename)  + "&include_lines=1&include_frames=idle";
+        if (name !== null) {
+            url += "&function=" + escape(name);
+        }
         json(url)
             .then((d: any) => {
-
-                console.log(d);
                 // Doesn't seem like we can get the response body in the catch handler on this promise
                 // so we're putting the error message in the json field instead
                 if ('error' in d) {
@@ -23,11 +24,9 @@ export class FunctionDetails {
                     return;
                 }
                 this.data = d;
-
-                let gil = d.gil / d.total
                 select("#stats")
                     .append("span")
-                    .text(`${d.total} samples in function (${(100.0 * d.active / d.total).toLocaleString()}% active, ${(100.0 * d.gil / d.total).toLocaleString()}% with GIL)`)
+                    .text(`${d.total} samples (${(100.0 * d.active / d.total).toLocaleString()}% active, ${(100.0 * d.gil / d.total).toLocaleString()}% with GIL)`)
 
                 let lines = d.contents.split("\n");
                 this.lines = lines;
@@ -37,7 +36,6 @@ export class FunctionDetails {
                 for (let node of d.flattened) {
                     line_to_node[node.frame.line] = node;
                 }
-
                 for (let code_block of get_code_blocks(lines, this.data.flattened, this.name)) {
                     let first_line = code_block[0]+1;
                     let next_line = code_block[1]+ 1;

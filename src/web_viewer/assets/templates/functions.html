@@ -16,7 +16,7 @@
                 <input class="flameoption" type="checkbox" id="include_lines"> Line Numbers
                 <select class="flameoption" id="include_frames">
                     <option value="idle">All Frames</option>
-                    <option value="active">Active Frames</option>
+                    <option value="active" selected="selected">Active Frames</option>
                     <option value="gil">GIL</option>
                 </select>
             </div>
@@ -57,6 +57,7 @@ table {
     empty-cells: show;
     border-spacing: 0;
     border: 1px solid #ccc;
+    table-layout: auto;
 }
 
 td,
@@ -67,6 +68,7 @@ th {
     font-size: inherit;
     margin: 0;
     overflow: visible;
+    max-width: 600px;
 }
 
 thead {

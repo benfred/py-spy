@@ -6,7 +6,7 @@ import {FunctionTable} from "./function_table";
 import {TimeSeriesSelector} from "./time_series_selector";
 import {display_error_message} from "./utils";
 
-export {FunctionDetails} from "./function_details";
+export {CodeDetails} from "./code_details";
 
 abstract class TimeSeriesOverview {
     public data: any = null;
@@ -17,13 +17,40 @@ abstract class TimeSeriesOverview {
         this.times = new TimeSeriesSelector(this.timescale_element);
 
         this.times.load = (start: number, end: number) => { this.load_data(start, end); }
-        selectAll(".flameoption").on("change", () => {
-            this.times.load(this.times.selected[0], this.times.selected[1]);
+
+        // update form inputs to match url params
+        let search = new URLSearchParams(window.location.search);
+        for (let name of ["include_threads", "include_lines", "include_processes"]) {
+            let element = document.getElementById(name) as HTMLInputElement;
+            if (element !== null) {
+                element.checked = search.has(name);
+            }
+        }
+        if (search.has("include_frames")) {
+            let select = document.getElementById("include_frames") as HTMLSelectElement;
+            select.value = search.get("include_frames");
+        }
+
+        let times = this.times;
+        selectAll("input[type=checkbox].flameoption").on("change", function() {
+            let search = new URLSearchParams(window.location.search);
+            let checkbox = this as HTMLInputElement;
+            if (checkbox.checked) {
+                search.set(checkbox.id, "1");
+            } else {
+                search.delete(checkbox.id);
+            }
+            history.replaceState({}, "", "?" + search.toString());
+            times.load(times.selected[0], times.selected[1]);
         });
 
-        selectAll("#overview_style").on("change", () => {
-            this.display_data(this.data, false);
-        })
+        selectAll("select.flameoption").on("change", function() {
+            let search = new URLSearchParams(window.location.search);
+            let select = this as HTMLInputElement;
+            search.set(select.id, select.value);
+            history.pushState({}, "", "?" + search.toString());
+            times.load(times.selected[0], times.selected[1]);
+        });
 
         this.load_stats();
         this.timer = interval(() => this.load_stats(), 1000);
@@ -83,27 +110,12 @@ abstract class TimeSeriesOverview {
 
     public load_data(start: number, end: number): void {
         let url = this.get_url_base() + "?start=" + Math.floor(start * 1000) + "&end=" + Math.floor(end * 1000);
-
-        // TODO: this is pretty awful. fix.
-        for (let name of ["include_threads", "include_lines", "include_processes"]) {
-            let element = document.getElementById(name);
-            if (element && (element as HTMLInputElement).checked) {
-                url += "&" + name + "=1"
-            }
+        if (window.location.search.length > 0) {
+            url += "&" + window.location.search.slice(1);
         }
-        let framefilter: any = document.getElementById("include_frames");
-        let filtervalue = framefilter.options[framefilter.selectedIndex].value;
-        url += "&include_frames=" + filtervalue;
-
 
         // store a reference to the data (needed to update flamegraph on resize etc)
-        select("#spinner").style("display", "inline-block");
-        select(".spinner")
-            .style("border-left-width", Math.ceil(Math.random() * 25) + "px")
-            .style("border-right-width", Math.ceil(Math.random() * 25) + "px")
-            .style("border-top-width", Math.ceil(Math.random() * 25) + "px")
-            .style("border-bottom-width", Math.ceil(Math.random() * 25) + "px");
-
+        // select("#spinner").style("display", "inline-block");
         json(url)
             .then((d: any) => {
                 select("#spinner").style("display", "none");
@@ -153,9 +165,8 @@ export class FlamegraphOverview extends TimeSeriesOverview {
     }
 
     public display_data(data: any, transition: boolean): void {
-        data = data.root;
-        document.getElementById("countselection").textContent = data.value.toLocaleString();
-        this.flamegraph.update(this.flame_element, data, transition);
+        document.getElementById("countselection").textContent = data.total.toLocaleString();
+        this.flamegraph.update(this.flame_element, data.root, transition);
     }
 
     public get_url_base(): string {

@@ -146,7 +146,7 @@ impl Config {
                 .long("address")
                 .value_name("address")
                 .help("Address to serve results on (<host>:<port>)")
-                .default_value("localhost:8000")
+                .default_value("0.0.0.0:8000")
                 .takes_value(true))
             .arg(subprocesses.clone());
 
