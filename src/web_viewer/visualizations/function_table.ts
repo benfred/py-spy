@@ -52,7 +52,7 @@ export class FunctionTable {
             .text((d:any) => d.frame.name);
 
         rows.append("td")
-            // .append("a").attr("href", (d:any) => "/file?f=" + escape(d.short_filename))
+            .append("a").attr("href", (d:any) => "/file?f=" + escape(d.frame.short_filename))
             .text((d:any) => d.frame.short_filename + (line_numbers ? ":" + d.frame.line : ""))
 
         rows.append("td").text((d:any) => (100 * d.own_count / total_samples).toPrecision(3) + "%");

@@ -14,7 +14,11 @@
             <li class="menu-item"><a href="/" class="menu-link {{~> overview_selected }}">Flamegraph</a></li>
             <li class="menu-item"><a href="/functions" class="menu-link {{~> function_selected }}">Functions</a></li>
             {{#if name}}
-            <li class="menu-item"><a href="/functions" class="menu-link menu-selected">{{name}}</a></li>
+            <li class="menu-item"><a class="menu-link menu-selected">{{name}}</a></li>
+            {{else}}
+                {{#if short_filename}}
+                    <li class="menu-item"><a class="menu-link menu-selected">{{short_filename}}</a></li>
+                {{/if}}
             {{/if}}
         </ul>
     </div>

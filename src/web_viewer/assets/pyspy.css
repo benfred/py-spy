@@ -158,15 +158,12 @@ textarea {
 }
 
 .spinner {
-    border: 10px solid rgb(233, 233, 233);
-    border-top: 10px solid #2f8ece;
-
-    border-top: 5px solid #1f77b4;
+    border-top: 6px solid #1f77b4;
     border-right: 6px solid #ff7f0e;
-    border-bottom: 12px solid #1f77b4;
+    border-bottom: 6px solid #1f77b4;
     border-left: 6px solid #ff7f0e;
 
-    border-radius: 40%;
+    border-radius: 50%;
     width: 50px;
     height: 50px;
     animation: spin 1s linear infinite;

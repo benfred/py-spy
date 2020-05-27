@@ -15,6 +15,7 @@ pub struct FoldedTraces {
     pub total: u64,
     pub gil: u64,
     pub active: u64,
+    pub filtered: u64,
     pub root: FrameNode
 }
 
@@ -57,13 +58,16 @@ impl FoldedTraces {
         // significantly faster
         let mut trace_counts = HashMap::new();
 
+        let mut filtered = 0;
 
         for trace in traces {
             if !(options.include_idle || trace.active) {
+                filtered += 1;
                 continue;
             }
 
             if options.gil_only && !trace.owns_gil {
+                filtered += 1;
                 continue;
             }
 
@@ -80,9 +84,16 @@ impl FoldedTraces {
             if let Some(function) = &options.function {
                 if !trace.frames.iter().any(|frame|
                         &frame.name == function && frame.short_filename == options.short_filename) {
+                    filtered += count;
+                    continue;
+                }
+            } else if options.short_filename.is_some() {
+                if !trace.frames.iter().any(|frame| frame.short_filename == options.short_filename) {
+                    filtered += count;
                     continue;
                 }
             }
+
             total += count;
             if trace.active {
                 active += count;
@@ -94,7 +105,7 @@ impl FoldedTraces {
         }
 
         info!("aggregated {} ({} unique) traces in {:2?} ", traces.len(), trace_counts.len(), Instant::now() - aggregate_start);
-        Ok(FoldedTraces{root, total, gil, active})
+        Ok(FoldedTraces{root, total, gil, active, filtered})
     }
 }
 
@@ -203,12 +214,16 @@ mod tests {
 
     #[test]
     fn test_from_traces() {
+
+        let mut options =  AggregateOptions{include_processes: false, include_threads:false,
+            include_idle:true, include_lines: false, gil_only: false, short_filename: None, function :None};
+
         let mut traces = Vec::new();
         traces.push(trace(vec![frame("fn2", 30), frame("fn1", 20), frame("root", 10)]));
         traces.push(trace(vec![frame("fn2", 30), frame("fn1", 20), frame("root", 10)]));
         traces.push(trace(vec![frame("fn2", 35), frame("fn1", 20), frame("root", 10)]));
         traces.push(trace(vec![frame("fn1", 20), frame("root", 10)]));
-        let node = FrameNode::from_traces(&traces,true,false,true,false).unwrap();
+        let node = FoldedTraces::from_traces(&traces,&options).unwrap().root;
 
         assert_eq!(node.count, 4);
         assert_eq!(node.children.len(), 1);
@@ -237,7 +252,8 @@ mod tests {
         assert_eq!(node.count, 1);
 
         // Try again with include_threads
-        let node = FrameNode::from_traces(&traces,true,true,true,false).unwrap();
+        options.include_threads = true;
+        let node = FoldedTraces::from_traces(&traces,&options).unwrap().root;
         assert_eq!(node.count, 4);
         assert_eq!(node.children.len(), 1);
         let node = node.children.values().next().unwrap();
