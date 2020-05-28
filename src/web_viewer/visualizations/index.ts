@@ -166,6 +166,11 @@ export class FlamegraphOverview extends TimeSeriesOverview {
 
     public display_data(data: any, transition: boolean): void {
         document.getElementById("countselection").textContent = data.total.toLocaleString();
+        let countdetails = get_frame_descriptions(data);
+        if (countdetails.length) {
+            document.getElementById("countdetails").innerHTML = "<br>" + countdetails + ".";
+        }
+
         this.flamegraph.update(this.flame_element, data.root, transition);
     }
 
@@ -196,4 +201,18 @@ export class FunctionTableOverview extends TimeSeriesOverview {
     public get_url_base(): string {
         return "/api/flattened_traces";
     }
+}
+
+function get_frame_descriptions(data: any): string {
+    let parts = []
+    if (data.total != data.active) {
+        parts.push(`<b>${(100.0 * data.active / data.total).toLocaleString()}</b>% Active`);
+    }
+    if (data.total != data.gil) {
+        parts.push(`<b>${(100.0 * data.gil / data.total).toLocaleString()}</b>% with GIL`);
+    }
+    if (data.filtered > 0) {
+        parts.push(`<b>${data.filtered}</b> stack traces not shown`);
+    }
+    return parts.join(", ");
 }
