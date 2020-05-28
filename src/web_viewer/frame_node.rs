@@ -117,7 +117,7 @@ impl FrameNode {
 
     fn insert_trace(&mut self, options: &AggregateOptions, trace: &StackTrace, count: u64) {
         let frame = if options.include_processes { self.insert_process(trace.pid, count) } else { self };
-        let frame = if options.include_threads { frame.insert_thread(trace.thread_id, count) } else { frame };
+        let frame = if options.include_threads { frame.insert_thread(trace, count) } else { frame };
         frame.insert_frames(&mut trace.frames.iter().rev(), count);
     }
 
@@ -132,15 +132,22 @@ impl FrameNode {
                                         module:None, line: 0, locals: None}, line_numbers));
     }
 
-    fn insert_thread(&mut self, tid: u64, count: u64) -> &mut FrameNode {
+    fn insert_thread(&mut self, trace: &StackTrace, count: u64) -> &mut FrameNode {
         let line_numbers = self.line_numbers;
         self.count += count;
         self.children
-            .entry(format!("thread 0x{:x}", tid))
-            .or_insert_with(||
-                FrameNode::new(Frame{name: format!("thread 0x{:x}", tid),
-                                        filename: "".to_owned(), short_filename: None,
-                                        module:None, line: 0, locals: None}, line_numbers))
+            .entry(format!("thread 0x{:x}", trace.thread_id))
+            .or_insert_with(|| {
+                let thread_id = trace.format_threadid();
+                let display = match trace.thread_name.as_ref() {
+                    Some(name) => format!("Thread {} \"{}\"", thread_id, name),
+                    None => format!("Thread {}", thread_id)
+                };
+                return FrameNode::new(Frame{name: display, filename: "".to_owned(),
+                                            short_filename: None, module:None, line: 0,
+                                            locals: None},
+                                      line_numbers)
+            })
     }
 
     fn insert_frames<'a, I>(&mut self, frames: & mut I, count: u64)
@@ -206,7 +213,7 @@ mod tests {
     use super::*;
 
     fn trace(frames: Vec<Frame>) -> Arc<StackTrace> {
-        Arc::new(StackTrace{pid: 1234, thread_id: 1234, os_thread_id: None, owns_gil: true, active: true, frames})
+        Arc::new(StackTrace{pid: 1234, thread_id: 1234, os_thread_id: None, owns_gil: true, active: true, frames, thread_name: None})
     }
     fn frame(name: &str, line: i32) -> Frame {
         Frame{name: name.to_owned(), line, filename: "file.py".to_owned(), short_filename: None, module: None, locals: None}
@@ -215,8 +222,8 @@ mod tests {
     #[test]
     fn test_from_traces() {
 
-        let mut options =  AggregateOptions{include_processes: false, include_threads:false,
-            include_idle:true, include_lines: false, gil_only: false, short_filename: None, function :None};
+        let mut options =  AggregateOptions{include_processes: false, include_threads: false,
+            include_idle:true, include_lines: true, gil_only: false, short_filename: None, function: None};
 
         let mut traces = Vec::new();
         traces.push(trace(vec![frame("fn2", 30), frame("fn1", 20), frame("root", 10)]));
@@ -257,7 +264,7 @@ mod tests {
         assert_eq!(node.count, 4);
         assert_eq!(node.children.len(), 1);
         let node = node.children.values().next().unwrap();
-        assert!(node.frame.name.starts_with("thread"));
+        assert!(node.frame.name.starts_with("Thread"));
         assert_eq!(node.count, 4);
         assert_eq!(node.children.len(), 1);
     }
