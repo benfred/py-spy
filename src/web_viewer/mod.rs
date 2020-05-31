@@ -52,7 +52,13 @@ fn http_handler(data: &Data, request: &Request) -> Response {
                     None => flattened_values.retain(|&row| row.frame.short_filename.as_ref() == Some(&file))
                 };
             }
-            Response::json(&flattened_values)
+
+            let output = json!({"flattened": flattened_values,
+                                "total": aggregates.total,
+                                "active": aggregates.active,
+                                "filtered": aggregates.filtered,
+                                "gil": aggregates.gil});
+            Response::json(&output)
         },
         (GET) (/api/code_details) => {
             let aggregates = try_or_400!(get_aggregates(data, request).map_err(|x| x.compat()));

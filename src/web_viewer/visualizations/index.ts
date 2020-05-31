@@ -190,12 +190,14 @@ export class FunctionTableOverview extends TimeSeriesOverview {
     }
 
     public display_data(data: any, transition: boolean): void {
-        // ugh: this is a bit of hack, get the total samples from the 'all' row (so we can calculate percentages etc)
-        // then filter it out since it doesn't have a filename
-        const total_samples = data.find((row: any) => row.frame.name == "all" && !row.frame.short_filename ).total_count;
-        document.getElementById("countselection").textContent = total_samples.toLocaleString();
-        data = data.filter((row:any) => row.frame.short_filename);
-        this.table.update(this.table_element, data, total_samples);
+        document.getElementById("countselection").textContent = data.total.toLocaleString();
+        let countdetails = get_frame_descriptions(data);
+        if (countdetails.length) {
+            document.getElementById("countdetails").innerHTML = "<br>" + countdetails + ".";
+        }
+        // remove the 'all' row'
+        let flattened = data.flattened.filter((row:any) => row.frame.short_filename);
+        this.table.update(this.table_element, flattened, data.total);
     }
 
     public get_url_base(): string {

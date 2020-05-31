@@ -162,7 +162,6 @@ impl FrameNode {
         self.count += count;
     }
 
-    // TODO: add unittest
     pub fn flatten(&self) -> HashMap<String, FrameInfo> {
         let mut ret = HashMap::new();
         let mut parents = Vec::new();
