@@ -72,15 +72,16 @@ struct SourceMap {
 impl SourceMap {
     pub fn new(filename: &str, module: &Option<String>) -> Result<SourceMap, Error> {
         let contents = std::fs::read_to_string(filename)?;
-        SourceMap::from_contents(&contents, module)
+        SourceMap::from_contents(&contents, filename, module)
     }
 
-    pub fn from_contents(contents: &str, module: &Option<String>) -> Result<SourceMap, Error> {
+    pub fn from_contents(contents: &str, cpp_filename: &str, module: &Option<String>) -> Result<SourceMap, Error> {
         lazy_static! {
             static ref RE: Regex = Regex::new(r#"^\s*/\* "(.+\..+)":([0-9]+)"#).unwrap();
         }
 
         let mut lookup = BTreeMap::new();
+        let mut resolved: HashMap<String, String> = HashMap::new();
 
         let mut line_count = 0;
         for (lineno, line) in contents.lines().enumerate() {
@@ -89,14 +90,16 @@ impl SourceMap {
                 let cython_line = captures.get(2).map_or("", |m| m.as_str());
 
                 if let Ok(cython_line) = cython_line.parse::<u32>() {
-                    // try resolving the cython filename (TODO: could cache this?)
-                    let filename = match module {
-                        Some(module) => {
-                            resolve_filename(cython_file, module)
-                                .unwrap_or_else(|| cython_file.to_owned())
-                        },
-                        None => cython_file.to_owned()
+                    // try resolving the cython filename
+                    let filename = match resolved.get(cython_file) {
+                        Some(filename) => filename.clone(),
+                        None => {
+                            let filename = resolve_cython_file(cpp_filename, cython_file, module);
+                            resolved.insert(cython_file.to_string(), filename.clone());
+                            filename
+                        }
                     };
+
                     lookup.insert(lineno as u32, (filename, cython_line));
                 }
             }
@@ -171,6 +174,25 @@ pub fn demangle(name: &str) -> &str {
     current
 }
 
+fn resolve_cython_file(cpp_filename: &str, cython_filename: &str, module: &Option<String>) -> String {
+    let cython_path = std::path::PathBuf::from(cython_filename);
+    if let Some(ext) = cython_path.extension() {
+        let mut path_buf = std::path::PathBuf::from(cpp_filename);
+        path_buf.set_extension(&ext);
+        if path_buf.ends_with(&cython_path) && path_buf.exists() {
+            return path_buf.to_string_lossy().to_string();
+        }
+    }
+
+    match module {
+        Some(module) => {
+            resolve_filename(cython_filename, module)
+                .unwrap_or_else(|| cython_filename.to_owned())
+        },
+        None => cython_filename.to_owned()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -189,7 +211,7 @@ mod tests {
 
     #[test]
     fn test_source_map() {
-        let map = SourceMap::from_contents(include_str!("../ci/testdata/cython_test.c"), &None).unwrap();
+        let map = SourceMap::from_contents(include_str!("../ci/testdata/cython_test.c"), "cython_test.c", &None).unwrap();
 
         // we don't have info on cython line numbers until line 1261
         assert_eq!(map.lookup(1000), None);
