@@ -534,7 +534,7 @@ dependencies = [
 
 [[package]]
 name = "lru"
-version = "0.4.3"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "hashbrown 0.6.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -734,7 +734,7 @@ dependencies = [
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.67 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
- "lru 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "lru 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "memmap 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "proc-maps 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.7.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1227,7 +1227,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum libproc 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)" = "58d23e79d5a9fc3f86a75bcd31a5418f27104518aca33615802b0373380beab4"
 "checksum libproc 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)" = "7b220bc8e4907c8b851ca767e0f9d10c75d1391a5bf0a5603fc9f94eae36598a"
 "checksum log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)" = "14b6052be84e6b71ab17edffc2eeabf5c2c3ae1fdb464aae35ac50c67a44e1f7"
-"checksum lru 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)" = "0609345ddee5badacf857d4f547e0e5a2e987db77085c24cd887f73573a04237"
+"checksum lru 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)" = "28e0c685219cd60e49a2796bba7e4fe6523e10daca4fd721e84e7f905093d60c"
 "checksum mach 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)" = "2fd13ee2dd61cc82833ba05ade5a30bb3d63f7ced605ef827063c63078302de9"
 "checksum mach 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)" = "b823e83b2affd8f40a9ee8c29dbc56404c1e34cd2710921f2801e2cf29527afa"
 "checksum mach_o_sys 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "3e854583a83f20cf329bb9283366335387f7db59d640d1412167e05fedb98826"
