@@ -12,7 +12,7 @@ build="build.rs"
 
 [dependencies]
 clap = {version="2", features=["wrap_help"]}
-console = "0.9"
+console = "0.11"
 ctrlc = "3"
 indicatif = "0.14"
 env_logger = "0.7"
