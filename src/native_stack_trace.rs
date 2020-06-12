@@ -221,7 +221,7 @@ impl NativeStack {
                 let mut demangled = None;
                 if func.starts_with('_') {
                     if let Ok((sym, _)) = BorrowedSymbol::with_tail(func.as_bytes()) {
-                        let options = DemangleOptions{no_params: true, ..Default::default()};
+                        let options = DemangleOptions::new().no_params().no_return_type();
                         if let Ok(sym) = sym.demangle(&options) {
                             demangled = Some(sym);
                         }
