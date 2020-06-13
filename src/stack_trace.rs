@@ -56,7 +56,7 @@ pub struct LocalVariable {
     pub repr: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Hash, Eq, PartialEq)]
 pub struct ProcessInfo {
     pub pid:  Pid,
     pub command_line: String,
