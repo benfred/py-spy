@@ -157,7 +157,9 @@ impl Sampler {
                 // collect the traces from each python spy if possible
                 for spy in spies.values_mut() {
                     match spy.collect() {
-                        Some(Ok(mut t)) => { traces.append(&mut t) },
+                        Some(Ok(mut t)) => {
+                            traces.append(&mut t)
+                        },
                         Some(Err(e)) => {
                             let errors = sampling_errors.get_or_insert_with(|| Vec::new());
                             errors.push((spy.process.pid, e));
@@ -208,7 +210,6 @@ struct PythonSpyThread {
     notified: bool,
     pub process: remoteprocess::Process,
     pub parent: Option<Pid>,
-    pub command_line: String
 }
 
 impl PythonSpyThread {
@@ -218,7 +219,6 @@ impl PythonSpyThread {
         let (sample_tx, sample_rx): (Sender<Result<Vec<StackTrace>, Error>>, Receiver<Result<Vec<StackTrace>, Error>>) = mpsc::channel();
         let config = config.clone();
         let process = remoteprocess::Process::new(pid)?;
-        let command_line = process.cmdline().map(|x| x.join(" ")).unwrap_or("".to_owned());
 
         thread::spawn(move || {
             // We need to create this object inside the thread here since PythonSpy objects don't
@@ -250,7 +250,7 @@ impl PythonSpyThread {
                 }
             }
         });
-        Ok(PythonSpyThread{initialized_rx, notify_tx, sample_rx, process, command_line, parent, initialized: None, running: false, notified: false})
+        Ok(PythonSpyThread{initialized_rx, notify_tx, sample_rx, process, parent, initialized: None, running: false, notified: false})
     }
 
     fn wait_initialized(&mut self) -> bool  {
@@ -312,6 +312,7 @@ impl PythonSpyThread {
 fn get_process_info(pid: Pid, spies: &HashMap<Pid, PythonSpyThread>) -> Option<Box<ProcessInfo>> {
     spies.get(&pid).map(|spy| {
         let parent = spy.parent.and_then(|parentpid| get_process_info(parentpid, spies));
-        Box::new(ProcessInfo{pid, parent, command_line: spy.command_line.clone()})
+        let command_line = spy.process.cmdline().map(|x| x.join(" ")).unwrap_or("".to_owned());
+        Box::new(ProcessInfo{pid, parent, command_line: command_line})
     })
 }

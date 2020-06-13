@@ -5,8 +5,7 @@ use std::time::Instant;
 use log::info;
 use failure::Error;
 
-use crate::stack_trace::{StackTrace, Frame};
-use remoteprocess::{Pid};
+use crate::stack_trace::{StackTrace, Frame, ProcessInfo};
 use serde::ser::{self, Serializer, SerializeStruct};
 use serde_derive::Serialize;
 
@@ -116,27 +115,37 @@ impl FrameNode {
     }
 
     fn insert_trace(&mut self, options: &AggregateOptions, trace: &StackTrace, count: u64) {
-        let frame = if options.include_processes { self.insert_process(trace.pid, count) } else { self };
+        let frame = if options.include_processes && trace.process_info.is_some() {
+            self.insert_process(trace.process_info.as_ref().unwrap(), count)
+        } else {
+            self
+        };
         let frame = if options.include_threads { frame.insert_thread(trace, count) } else { frame };
         frame.insert_frames(&mut trace.frames.iter().rev(), count);
     }
 
-    fn insert_process(&mut self, pid: Pid, count: u64) -> &mut FrameNode {
-        let line_numbers = self.line_numbers;
-        self.count += count;
-        return self.children
-            .entry(format!("process {}", pid))
+    fn insert_process(&mut self, process: &ProcessInfo, count: u64) -> & mut FrameNode {
+        // need to insert parent processes first
+        let current = match process.parent.as_ref() {
+            Some(parent) => self.insert_process(parent, count),
+            None => self
+        };
+
+        let line_numbers = current.line_numbers;
+        current.count += count;
+        current.children
+            .entry(format!("process {}", process.pid))
             .or_insert_with(||
-                FrameNode::new(Frame{name: format!("process {}", pid),
+                FrameNode::new(Frame{name: format!("process {} \"{}\"", process.pid, process.command_line),
                                         filename: "".to_owned(), short_filename: None,
-                                        module:None, line: 0, locals: None}, line_numbers));
+                                        module:None, line: 0, locals: None}, line_numbers))
     }
 
     fn insert_thread(&mut self, trace: &StackTrace, count: u64) -> &mut FrameNode {
         let line_numbers = self.line_numbers;
         self.count += count;
         self.children
-            .entry(format!("thread 0x{:x}", trace.thread_id))
+            .entry(trace.format_threadid())
             .or_insert_with(|| {
                 let thread_id = trace.format_threadid();
                 let display = match trace.thread_name.as_ref() {
@@ -212,7 +221,8 @@ mod tests {
     use super::*;
 
     fn trace(frames: Vec<Frame>) -> Arc<StackTrace> {
-        Arc::new(StackTrace{pid: 1234, thread_id: 1234, os_thread_id: None, owns_gil: true, active: true, frames, thread_name: None})
+        Arc::new(StackTrace{pid: 1234, thread_id: 1234, os_thread_id: None, owns_gil: true,
+        active: true, frames, thread_name: None, process_info: None})
     }
     fn frame(name: &str, line: i32) -> Frame {
         Frame{name: name.to_owned(), line, filename: "file.py".to_owned(), short_filename: None, module: None, locals: None}
