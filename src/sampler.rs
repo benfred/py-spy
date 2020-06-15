@@ -11,7 +11,7 @@ use remoteprocess::Pid;
 use crate::timer::Timer;
 use crate::python_spy::PythonSpy;
 use crate::config::Config;
-use crate::stack_trace::StackTrace;
+use crate::stack_trace::{StackTrace, ProcessInfo};
 use crate::version::Version;
 
 pub struct Sampler {
@@ -22,7 +22,6 @@ pub struct Sampler {
 pub struct Sample {
     pub traces: Vec<StackTrace>,
     pub sampling_errors: Option<Vec<(Pid, Error)>>,
-    pub process_info: Option<Arc<Mutex<HashMap<Pid, ProcessInfo>>>>,
     pub late: Option<Duration>
 }
 
@@ -71,7 +70,7 @@ impl Sampler {
                 };
 
                 let late = sleep.err();
-                if tx.send(Sample{traces: traces, sampling_errors, process_info: None, late}).is_err() {
+                if tx.send(Sample{traces: traces, sampling_errors, late}).is_err() {
                     break;
                 }
             }
@@ -85,19 +84,17 @@ impl Sampler {
     /// process or child processes
     fn new_subprocess_sampler(pid: Pid, config: &Config) -> Result<Sampler, Error> {
         // Initialize a PythonSpy object per child, and build up the process tree
-        let mut processes = HashMap::new();
         let mut spies = HashMap::new();
-        processes.insert(pid, ProcessInfo::new(pid, None)?);
-        spies.insert(pid, PythonSpyThread::new(pid, &config));
+
+        spies.insert(pid, PythonSpyThread::new(pid, None, &config)?);
         let process = remoteprocess::Process::new(pid)?;
         for (childpid, parentpid) in process.child_processes()? {
-            spies.insert(childpid, PythonSpyThread::new(childpid, &config));
             // If we can't create the child process, don't worry about it
             // can happen with zombie child processes etc
-            match ProcessInfo::new(childpid, Some(parentpid)) {
-                Ok(process) => { processes.insert(childpid, process); }
+            match PythonSpyThread::new(childpid, Some(parentpid), &config) {
+                Ok(spy)  => { spies.insert(childpid, spy); },
                 Err(e) => { warn!("Failed to open process {}: {}", childpid, e); }
-            };
+            }
         }
 
         // wait for all the various python spy objects to initialize, and if none
@@ -108,20 +105,21 @@ impl Sampler {
 
         // Create a new thread to periodically monitor for new child processes, and update
         // the procesess map
-        let processes = Arc::new(Mutex::new(processes));
-        let monitor_processes = processes.clone();
+        let spies = Arc::new(Mutex::new(spies));
+        let monitor_spies = spies.clone();
+        let monitor_config = config.clone();
         std::thread::spawn(move || {
             while process.exe().is_ok() {
-                match monitor_processes.lock() {
-                    Ok(mut processes) => {
+                match monitor_spies.lock() {
+                    Ok(mut spies) => {
                         for (childpid, parentpid) in process.child_processes().expect("failed to get subprocesses") {
-                            if processes.contains_key(&childpid) {
+                            if spies.contains_key(&childpid) {
                                 continue;
                             }
-                            match ProcessInfo::new(childpid, Some(parentpid)) {
-                                Ok(process) => { processes.insert(childpid, process); }
-                                Err(e) => { warn!("Failed to open process {}: {}", childpid, e);  }
-                            };
+                            match PythonSpyThread::new(childpid, Some(parentpid), &monitor_config) {
+                                Ok(spy) => { spies.insert(childpid, spy); }
+                                Err(e) => { warn!("Failed to create spy for {}: {}", childpid, e);  }
+                            }
                         }
                     },
                     Err(e) => { error!("Failed to acquire lock: {}", e); }
@@ -130,6 +128,8 @@ impl Sampler {
             }
         });
 
+        let mut process_info = HashMap::new();
+
         // Create a new thread to generate samples
         let config = config.clone();
         let (tx, rx): (Sender<Sample>, Receiver<Sample>) = mpsc::channel();
@@ -137,7 +137,8 @@ impl Sampler {
             for sleep in Timer::new(config.sampling_rate as f64) {
                 let mut traces = Vec::new();
                 let mut sampling_errors = None;
-                let mut current = match processes.lock() {
+
+                let mut spies = match spies.lock() {
                     Ok(current) => current,
                     Err(e) => {
                         error!("Failed to get process tree: {}", e);
@@ -146,40 +147,42 @@ impl Sampler {
                 };
 
                 // Notify all the initialized spies to generate a trace
-                for process_info in current.values_mut() {
-                    let pid = process_info.pid;
-                    let spy = spies.entry(pid).or_insert_with(|| PythonSpyThread::new(pid, &config));
+                for spy in spies.values_mut() {
                     if spy.initialized() {
                         spy.notify();
                     }
                 }
 
                 // collect the traces from each python spy if possible
-                for process_info in current.values_mut() {
-                    if let Some(spy) = spies.get_mut(&process_info.pid) {
-                        match spy.collect() {
-                            Some(Ok(mut t)) => traces.append(&mut t),
-                            Some(Err(e)) => {
-                                let errors = sampling_errors.get_or_insert_with(|| Vec::new());
-                                errors.push((process_info.pid, e));
-                            },
-                            None => {}
-                        }
+                for spy in spies.values_mut() {
+                    match spy.collect() {
+                        Some(Ok(mut t)) => { traces.append(&mut t) },
+                        Some(Err(e)) => {
+                            let errors = sampling_errors.get_or_insert_with(|| Vec::new());
+                            errors.push((spy.process.pid, e));
+                        },
+                        None => {}
                     }
                 }
 
+                // Annotate each trace with the process info
+                for trace in traces.iter_mut() {
+                    let pid = trace.pid;
+                    // Annotate each trace with the process info for the curren
+                    let process = process_info.entry(pid).or_insert_with(|| {
+                        get_process_info(pid, &spies).map(|p| Arc::new(*p))
+                    });
+                    trace.process_info = process.clone();
+                }
+
                 // Send the collected info back
-                let process_info = Some(processes.clone());
                 let late = sleep.err();
-                if tx.send(Sample{traces, sampling_errors, late, process_info}).is_err() {
+                if tx.send(Sample{traces, sampling_errors, late}).is_err() {
                     break;
                 }
 
-                // remove dead processes from the map, and check after removal
-                // if we have any python processes left
-                current.retain(|_, x| x.process.exe().is_ok());
-                spies.retain(|pid, _| current.contains_key(pid));
-                if spies.values().all(|x| !x.running) {
+                // If all of our spies have stopped, we're done
+                if spies.len() == 0 || spies.values().all(|x| !x.running) {
                     break;
                 }
             }
@@ -195,21 +198,6 @@ impl Iterator for Sampler {
     }
 }
 
-pub struct ProcessInfo {
-    pub pid: Pid,
-    pub ppid: Option<Pid>,
-    pub cmdline: String,
-    pub process: remoteprocess::Process
-}
-
-impl ProcessInfo {
-    fn new(pid: Pid, ppid: Option<Pid>) -> Result<ProcessInfo, Error> {
-        let process = remoteprocess::Process::new(pid)?;
-        let cmdline = process.cmdline().map(|x| x.join(" ")).unwrap_or("".to_owned());
-        Ok(ProcessInfo{pid, ppid, cmdline, process})
-    }
-}
-
 struct PythonSpyThread {
     initialized_rx: Receiver<Result<Version, Error>>,
     notify_tx: Sender<()>,
@@ -217,14 +205,20 @@ struct PythonSpyThread {
     initialized: Option<Result<Version, Error>>,
     pub running: bool,
     notified: bool,
+    pub process: remoteprocess::Process,
+    pub parent: Option<Pid>,
+    pub command_line: String
 }
 
 impl PythonSpyThread {
-    fn new(pid: Pid, config: &Config) -> PythonSpyThread {
+    fn new(pid: Pid, parent: Option<Pid>, config: &Config) -> Result<PythonSpyThread, Error> {
         let (initialized_tx, initialized_rx): (Sender<Result<Version, Error>>, Receiver<Result<Version, Error>>) = mpsc::channel();
         let (notify_tx, notify_rx): (Sender<()>, Receiver<()>) = mpsc::channel();
         let (sample_tx, sample_rx): (Sender<Result<Vec<StackTrace>, Error>>, Receiver<Result<Vec<StackTrace>, Error>>) = mpsc::channel();
         let config = config.clone();
+        let process = remoteprocess::Process::new(pid)?;
+        let command_line = process.cmdline().map(|x| x.join(" ")).unwrap_or("".to_owned());
+
         thread::spawn(move || {
             // We need to create this object inside the thread here since PythonSpy objects don't
             // have the Send trait implemented on linux
@@ -255,7 +249,7 @@ impl PythonSpyThread {
                 }
             }
         });
-        PythonSpyThread{initialized_rx, notify_tx, sample_rx, initialized: None, running: false, notified: false}
+        Ok(PythonSpyThread{initialized_rx, notify_tx, sample_rx, process, command_line, parent, initialized: None, running: false, notified: false})
     }
 
     fn wait_initialized(&mut self) -> bool  {
@@ -312,4 +306,11 @@ impl PythonSpyThread {
             }
         }
     }
+}
+
+fn get_process_info(pid: Pid, spies: &HashMap<Pid, PythonSpyThread>) -> Option<Box<ProcessInfo>> {
+    spies.get(&pid).map(|spy| {
+        let parent = spy.parent.and_then(|parentpid| get_process_info(parentpid, spies));
+        Box::new(ProcessInfo{pid, parent, command_line: spy.command_line.clone()})
+    })
 }

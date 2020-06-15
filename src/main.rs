@@ -183,7 +183,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
     use indicatif::ProgressBar;
     let progress = match (config.hide_progress, &config.duration) {
         (true, _) => ProgressBar::hidden(),
-        (false, RecordDuration::Seconds(_)) => ProgressBar::new(max_samples.unwrap()),
+        (false, RecordDuration::Seconds(samples)) => ProgressBar::new(*samples),
         (false, RecordDuration::Unlimited) => {
             let progress = ProgressBar::new_spinner();
 
@@ -256,23 +256,17 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
                     module: None, short_filename: None, line: 0, locals: None});
             }
 
-            if let Some(process_info) = sample.process_info.as_ref() {
-                // walk process tree up to root, displaying pid + cmdline in output
-                let processes = process_info.lock().unwrap();
-                let mut pid = trace.pid;
-                loop {
-                    let p = processes.get(&pid);
-                    let process = p.as_ref().unwrap();
-                    trace.frames.push(Frame{name: format!("process {}:\"{}\"", pid, process.cmdline),
-                        filename: String::from(""),
-                        module: None, short_filename: None, line: 0, locals: None});
-
-                    match process.ppid {
-                        Some(ppid) => { pid = ppid; },
-                        None => { break; }
+            if let Some(process_info) = trace.process_info.as_ref().map(|x| x) {
+                trace.frames.push(process_info.to_frame());
+                let mut parent = process_info.parent.as_ref();
+                while parent.is_some() {
+                    if let Some(process_info) = parent {
+                        trace.frames.push(process_info.to_frame());
+                        parent = process_info.parent.as_ref();
                     }
                 }
             }
+
             output.increment(&trace)?;
         }
 

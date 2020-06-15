@@ -1,4 +1,5 @@
 use std;
+use std::sync::Arc;
 
 use failure::{Error, ResultExt};
 
@@ -23,7 +24,9 @@ pub struct StackTrace {
     /// Whether or not the thread held the GIL
     pub owns_gil: bool,
     /// The frames
-    pub frames: Vec<Frame>
+    pub frames: Vec<Frame>,
+    /// process commandline / parent process info
+    pub process_info: Option<Arc<ProcessInfo>>
 }
 
 /// Information about a single function call in a stack trace
@@ -49,6 +52,13 @@ pub struct LocalVariable {
     pub addr: usize,
     pub arg: bool,
     pub repr: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProcessInfo {
+    pub pid:  Pid,
+    pub command_line: String,
+    pub parent: Option<Box<ProcessInfo>>
 }
 
 /// Given an InterpreterState, this function returns a vector of stack traces for each thread
@@ -108,7 +118,7 @@ pub fn get_stack_trace<T>(thread: &T, process: &Process, copy_locals: bool) -> R
         frame_ptr = frame.back();
     }
 
-    Ok(StackTrace{pid: process.pid, frames, thread_id: thread.thread_id(), thread_name: None, owns_gil: false, active: true, os_thread_id: None})
+    Ok(StackTrace{pid: process.pid, frames, thread_id: thread.thread_id(), thread_name: None, owns_gil: false, active: true, os_thread_id: None, process_info: None})
 }
 
 impl StackTrace {
@@ -184,6 +194,14 @@ fn get_locals<C: CodeObject, F: FrameObject, P: ProcessMemory>(code: &C, framept
         ret.push(LocalVariable{name, addr, arg: i < argcount, repr: None});
     }
     Ok(ret)
+}
+
+impl ProcessInfo {
+    pub fn to_frame(&self) -> Frame {
+        Frame{name: format!("process {}:\"{}\"", self.pid, self.command_line),
+            filename: String::from(""),
+            module: None, short_filename: None, line: 0, locals: None}
+    }
 }
 
 #[cfg(test)]
