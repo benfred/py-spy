@@ -5,7 +5,7 @@ name = "addr2line"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
- "cpp_demangle 0.2.14 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cpp_demangle 0.2.16 (registry+https://github.com/rust-lang/crates.io-index)",
  "fallible-iterator 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "gimli 0.20.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazycell 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -195,7 +195,16 @@ dependencies = [
 
 [[package]]
 name = "cpp_demangle"
-version = "0.2.14"
+version = "0.2.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "cfg-if 0.1.10 (registry+https://github.com/rust-lang/crates.io-index)",
+ "glob 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "cpp_demangle"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "cfg-if 0.1.10 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -724,7 +733,7 @@ version = "0.3.3"
 dependencies = [
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "console 0.11.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "cpp_demangle 0.2.14 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cpp_demangle 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "ctrlc 3.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "env_logger 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1199,7 +1208,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum console 0.11.3 (registry+https://github.com/rust-lang/crates.io-index)" = "8c0994e656bba7b922d8dd1245db90672ffb701e684e45be58f20719d69abc5a"
 "checksum const-random 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)" = "2f1af9ac737b2dd2d577701e59fd09ba34822f6f2ebdb30a7647405d9e55e16a"
 "checksum const-random-macro 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)" = "25e4c606eb459dd29f7c57b2e0879f2b6f14ee130918c2b78ccb58a9624e6c7a"
-"checksum cpp_demangle 0.2.14 (registry+https://github.com/rust-lang/crates.io-index)" = "4115af6f575a7bc82c613e9e0ed7cc36a5e4fc3a8b54920dc0c820823a31a0d6"
+"checksum cpp_demangle 0.2.16 (registry+https://github.com/rust-lang/crates.io-index)" = "13c924384107361ca729c7d46b9134151b9a955ce99a773784f2777498e8552d"
+"checksum cpp_demangle 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ad49cad3673b9d586bc50cd92fdc0e9205ecd162d4206073d9774c4fe13a8fde"
 "checksum crc32fast 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ba125de2af0df55319f41944744ad91c71113bf74a4646efff39afe1f6842db1"
 "checksum crossbeam 0.7.3 (registry+https://github.com/rust-lang/crates.io-index)" = "69323bff1fb41c635347b8ead484a5ca6c3f11914d784170b158d8449ab07f8e"
 "checksum crossbeam-channel 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)" = "cced8691919c02aac3cb0a1bc2e9b73d89e832bf9a06fc579d4e71b68a2da061"
