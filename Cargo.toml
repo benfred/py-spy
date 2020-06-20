@@ -14,7 +14,7 @@ build="build.rs"
 clap = {version="2", features=["wrap_help"]}
 console = "0.11"
 ctrlc = "3"
-indicatif = "0.14"
+indicatif = "0.15"
 env_logger = "0.7"
 failure = "0.1.8"
 goblin = "0.2.3"
