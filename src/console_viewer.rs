@@ -9,25 +9,29 @@ use std::thread;
 use console::{Term, style};
 use failure::Error;
 
-use stack_trace::{StackTrace, Frame};
+use crate::config::Config;
+use crate::stack_trace::{StackTrace, Frame};
+use crate::version::Version;
 
 pub struct ConsoleViewer {
     #[allow(dead_code)]
     console_config: os_impl::ConsoleConfig,
     show_idle: bool,
-    version: String,
+    version: Option<Version>,
     command: String,
     sampling_rate: f64,
     running: Arc<atomic::AtomicBool>,
     options: Arc<Mutex<Options>>,
-    stats: Stats
+    stats: Stats,
+    subprocesses: bool
 }
 
 impl ConsoleViewer {
     pub fn new(show_linenumbers: bool,
                python_command: &str,
-               version: &str,
-               sampling_rate: f64) -> io::Result<ConsoleViewer> {
+               version: &Option<Version>,
+               config: &Config) -> io::Result<ConsoleViewer> {
+        let sampling_rate = 1.0 / (config.sampling_rate as f64);
         let running = Arc::new(atomic::AtomicBool::new(true));
         let options = Arc::new(Mutex::new(Options::new(show_linenumbers)));
 
@@ -41,6 +45,7 @@ impl ConsoleViewer {
                 if let Some(Ok(key)) = std::io::stdin().bytes().next() {
                     let mut options = input_options.lock().unwrap();
                     options.dirty = true;
+                    let previous_usage = options.usage;
                     match key as char {
                         'R' | 'r' => options.reset = true,
                         'L' | 'l' => options.show_linenumbers = !options.show_linenumbers,
@@ -52,22 +57,31 @@ impl ConsoleViewer {
                         '4' => options.sort_column = 4,
                         _ => {},
                     }
+
+                    options.reset_style = previous_usage != options.usage;
                 }
             }
         });
 
         Ok(ConsoleViewer{console_config: os_impl::ConsoleConfig::new()?,
-                         version:version.to_owned(),
+                         version: version.clone(),
                          command: python_command.to_owned(),
                          show_idle: false, running, options, sampling_rate,
+                         subprocesses: config.subprocesses,
                          stats: Stats::new()})
     }
 
     pub fn increment(&mut self, traces: &[StackTrace]) -> Result<(), Error> {
         self.maybe_reset();
         self.stats.threads = 0;
+        self.stats.processes = 0;
+        let mut last_pid = None;
         for trace in traces {
             self.stats.threads += 1;
+            if last_pid != Some(trace.pid) {
+                self.stats.processes += 1;
+                last_pid = Some(trace.pid);
+            }
 
             if !(self.show_idle || trace.active) {
                 continue;
@@ -125,6 +139,13 @@ impl ConsoleViewer {
             () => (term.clear_line()?; term.write_line("")?);
             ($($arg:tt)*) => { term.clear_line()?; term.write_line(&format!($($arg)*))?; }
         }
+
+        if options.reset_style {
+            #[cfg(windows)]
+            self.console_config.reset_styles()?;
+            options.reset_style = false;
+        }
+
         self.console_config.reset_cursor()?;
         let mut header_lines = if options.usage { 18 } else { 8 };
 
@@ -137,8 +158,11 @@ impl ConsoleViewer {
             }
         }
 
-        // Display aggregate stats about the process
-        out!("Collecting samples from '{}' (python v{})", style(&self.command).green(), &self.version);
+        if self.subprocesses {
+             out!("Collecting samples from '{}' and subprocesses", style(&self.command).green());
+        } else {
+            out!("Collecting samples from '{}' (python v{})", style(&self.command).green(), self.version.as_ref().unwrap());
+        }
 
         let error_rate = self.stats.errors as f64 / self.stats.overall_samples as f64;
         if error_rate >= 0.01 && self.stats.overall_samples > 100 {
@@ -151,10 +175,15 @@ impl ConsoleViewer {
              out!("Total Samples {}", style(self.stats.overall_samples).bold());
         }
 
-        out!("GIL: {:.2}%, Active: {:>.2}%, Threads: {}",
+        out!("GIL: {:.2}%, Active: {:>.2}%, Threads: {}{}",
             style(100.0 * self.stats.gil as f64 / self.stats.current_samples as f64).bold(),
             style(100.0 * self.stats.active as f64 / self.stats.current_samples as f64).bold(),
-            style(self.stats.threads).bold());
+            style(self.stats.threads).bold(),
+            if self.subprocesses {
+                format!(", Processes {}", style(self.stats.processes).bold())
+            } else {
+                "".to_owned()
+            });
 
         out!();
 
@@ -305,6 +334,7 @@ fn update_function_statistics<K>(counts: &mut HashMap<String, FunctionStatistics
 struct Options {
     dirty: bool,
     usage: bool,
+    reset_style: bool,
     sort_column: i32,
     show_linenumbers: bool,
     reset: bool,
@@ -317,6 +347,7 @@ struct Stats {
     errors: u64,
     late_samples: u64,
     threads: u64,
+    processes: u64,
     active: u64,
     gil: u64,
     function_counts: HashMap<String, FunctionStatistics>,
@@ -327,14 +358,14 @@ struct Stats {
 
 impl Options {
     fn new(show_linenumbers: bool) -> Options {
-        Options{dirty: false, usage: false, reset: false, sort_column: 1, show_linenumbers}
+        Options{dirty: false, usage: false, reset: false, sort_column: 3, show_linenumbers, reset_style: false}
     }
 }
 
 impl Stats {
     fn new() -> Stats {
         Stats{current_samples: 0, overall_samples: 0, elapsed: 0.,
-              errors: 0, late_samples: 0, threads: 0, gil: 0, active: 0,
+              errors: 0, late_samples: 0, threads: 0, processes: 0, gil: 0, active: 0,
               line_counts: HashMap::new(), function_counts: HashMap::new(),
               last_error: None, last_delay: None}
     }
@@ -437,7 +468,7 @@ mod os_impl {
     use winapi::um::handleapi::INVALID_HANDLE_VALUE;
     use winapi::um::consoleapi::{GetConsoleMode, SetConsoleMode};
     use winapi::um::wincon::{ENABLE_LINE_INPUT, ENABLE_ECHO_INPUT, CONSOLE_SCREEN_BUFFER_INFO, SetConsoleCursorPosition,
-                             GetConsoleScreenBufferInfo, COORD};
+                             GetConsoleScreenBufferInfo, COORD, FillConsoleOutputAttribute};
 
     pub struct ConsoleConfig {
         stdin: HANDLE,
@@ -494,7 +525,23 @@ mod os_impl {
                 if SetConsoleCursorPosition(stdout, self.top_left) == 0 {
                     return Err(io::Error::last_os_error());
                 }
+                Ok(())
+            }
+        }
 
+        pub fn reset_styles(&self) -> io::Result<()> {
+            unsafe {
+                let stdout = GetStdHandle(STD_OUTPUT_HANDLE);
+                let mut csbi = CONSOLE_SCREEN_BUFFER_INFO::default();
+                if GetConsoleScreenBufferInfo(stdout, &mut csbi) == 0 {
+                    return Err(io::Error::last_os_error());
+                }
+
+                let mut written: DWORD = 0;
+                let console_size = ((1 + csbi.srWindow.Bottom - csbi.srWindow.Top) * (csbi.srWindow.Right - csbi.srWindow.Left)) as DWORD;
+                if FillConsoleOutputAttribute(stdout, csbi.wAttributes, console_size, self.top_left, &mut written) == 0 {
+                    return Err(io::Error::last_os_error());
+                }
                 Ok(())
             }
         }

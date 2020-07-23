@@ -77,7 +77,7 @@ class PostInstallCommand(install):
         if os.path.isfile(target):
             os.remove(target)
 
-        self.move_file(source, target)
+        self.copy_file(source, target)
 
 
 setup(name='py-spy',
@@ -87,15 +87,15 @@ setup(name='py-spy',
       description="A Sampling Profiler for Python",
       long_description=long_description,
       long_description_content_type="text/markdown",
-      version="0.2.0.dev0",
-      license="GPL",
+      version="0.3.3",
+      license="MIT",
       cmdclass={'install': PostInstallCommand, 'bdist_wheel': bdist_wheel},
       classifiers=[
         "Development Status :: 3 - Alpha",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 2",
         "Intended Audience :: Developers",
-        "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+        "License :: OSI Approved :: MIT License",
         "Topic :: Software Development :: Libraries",
         "Topic :: Utilities"],
       zip_safe=False)

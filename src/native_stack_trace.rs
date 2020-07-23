@@ -1,279 +1,261 @@
-use std::collections::{HashMap, HashSet};
-
+use std::collections::HashSet;
 use failure::Error;
 
-use remoteprocess::{ProcessMemory, Pid};
-use python_interpreters::{InterpreterState};
+use remoteprocess::{self, Pid};
+use lru::LruCache;
 
-use cython;
-use stack_trace::{Frame, StackTrace, get_stack_traces};
-
-use remoteprocess;
-use utils::resolve_filename;
+use crate::binary_parser::BinaryInfo;
+use crate::cython;
+use crate::stack_trace::{Frame};
+use crate::utils::resolve_filename;
+use crate::cpp_demangle::{DemangleOptions, BorrowedSymbol};
 
 pub struct NativeStack {
     should_reload: bool,
-    process: remoteprocess::Process,
-    python_filename: String,
-    libpython_filename: Option<String>,
+    python: Option<BinaryInfo>,
+    libpython: Option<BinaryInfo>,
     cython_maps: cython::SourceMaps,
     unwinder: remoteprocess::Unwinder,
-    // on linux, we also fallback to using libunwind if the main gimli based unwinder fails
-    // (and libunwind is installed)
-    #[cfg(target_os="linux")]
-    libunwinder: Option<remoteprocess::LibUnwind>,
+    symbolicator: remoteprocess::Symbolicator,
+    // TODO: right now on windows if we don't hold on the process handle unwinding will fail
+    #[allow(dead_code)]
+    process: remoteprocess::Process,
+    symbol_cache: LruCache<u64, remoteprocess::StackFrame>,
 }
 
 impl NativeStack {
-    pub fn new(pid: Pid, python_filename: &str, libpython_filename: &Option<String>) -> Result<NativeStack, Error> {
+    pub fn new(pid: Pid, python: Option<BinaryInfo>, libpython: Option<BinaryInfo>) -> Result<NativeStack, Error> {
         let cython_maps = cython::SourceMaps::new();
 
         let process = remoteprocess::Process::new(pid)?;
         let unwinder = process.unwinder()?;
+        let symbolicator = process.symbolicator()?;
 
-        // Try to load up libunwind-ptrace on linux
-        #[cfg(target_os="linux")]
-        let libunwinder = {
-            match remoteprocess::libunwind::LibUnwind::new() {
-                Ok(libunwinder) => Some(libunwinder),
-                Err(e) => {
-                    warn!("Failed to load libunwind-ptrace: {:?}", e);
-                    static mut SHOWN_WARNING: bool = false;
-                    unsafe {
-                        if !SHOWN_WARNING {
-                            eprintln!("\nFailed to load libunwind-ptrace, you may have an elevated error rate");
-                            eprintln!("You can install libunwind-ptrace on ubuntu by going 'sudo apt install libunwind-dev'.\n");
-                            SHOWN_WARNING = true;
-                        }
-                    }
-
-                    None
-                }
-             }
-        };
-
-        return Ok(NativeStack{process, cython_maps, unwinder, should_reload: false,
-                              python_filename: python_filename.to_owned(),
-                              libpython_filename: libpython_filename.clone(),
-                              #[cfg(target_os="linux")]
-                              libunwinder
+        return Ok(NativeStack{cython_maps, unwinder, symbolicator, should_reload: false,
+                              python,
+                              libpython,
+                              process,
+                              symbol_cache: LruCache::new(65536)
                               });
     }
 
-    /// Gets merged Python/Native stack traces
-    pub fn get_native_stack_traces<I, P>(&mut self, interpreter: &I, process: &P) -> Result<(Vec<StackTrace>), Error>
-            where I: InterpreterState, P: ProcessMemory {
+    pub fn merge_native_thread(&mut self, frames: &Vec<Frame>, thread: &remoteprocess::Thread) -> Result<Vec<Frame>, Error> {
         if self.should_reload {
-            self.unwinder.reload()?;
+            self.symbolicator.reload()?;
             self.should_reload = false;
         }
 
-        // Get the native stack trace for each thread in the process
-        let mut native_stacks = HashMap::new();
-        let mut threadid_map = HashMap::new();
-        let mut traces;
-        let mut threadids = HashSet::new();
+        // get the native stack from the thread
+        let native_stack = self.get_thread(thread)?;
 
-        // get all the python stack traces and native stack traces here
-        // (locking to get a consistent snapshot, but releasing the lock
-        // before we merge the stack traces or symbolicate)
-        {
-            let _lock = self.process.lock()?;
-            traces = get_stack_traces(interpreter, process)?;
-            for trace in traces.iter() {
-                threadids.insert(trace.thread_id);
-            }
+        // TODO: merging the two stack together could happen outside of thread lock
+        return self.merge_native_stack(frames, native_stack);
+    }
+    pub fn merge_native_stack(&mut self, frames: &Vec<Frame>, native_stack: Vec<u64>) -> Result<Vec<Frame>, Error> {
+        let mut python_frame_index = 0;
+        let mut merged = Vec::new();
 
-            for thread in self.process.threads()? {
-                #[cfg(not(target_os="linux"))]
-                let (stack, python_thread_id) = self.get_thread(&threadids, &thread)?;
+        // merge the native_stack and python stack together
+        for addr in native_stack {
+            // check in the symbol cache if we have looked up this symbol yet
+            let cached_symbol = self.symbol_cache.get(&addr).map(|f| f.clone());
 
-                // on linux, try again with libunwind if we fail with the gimli based unwinder
-                #[cfg(target_os="linux")]
-                let (stack, python_thread_id) = match self.get_thread(&threadids, &thread) {
-                    Ok(x) => x,
-                    Err(e) => {
-                        if self.libunwinder.is_some() {
-                            self.get_libunwind_thread(&threadids, &thread)?
-                        } else {
-                            return Err(e);
+            // merges a remoteprocess::StackFrame into the current merged vec
+            let is_python_addr = self.python.as_ref().map_or(false, |m| m.contains(addr)) ||
+                    self.libpython.as_ref().map_or(false, |m| m.contains(addr));
+            let merge_frame = &mut |frame: &remoteprocess::StackFrame| {
+                match self.get_merge_strategy(is_python_addr, frame) {
+                    MergeType::Ignore => {},
+                    MergeType::MergeNativeFrame => {
+                        if let Some(python_frame) = self.translate_native_frame(frame) {
+                            merged.push(python_frame);
                         }
+                    },
+                    MergeType::MergePythonFrame => {
+                        // if we have a corresponding python frame for the evalframe
+                        // merge it into the stack. (if we're out of bounds a later
+                        // check will pick up - and report overall totals mismatch)
+                        if python_frame_index < frames.len() {
+                            merged.push(frames[python_frame_index].clone());
+                        }
+                        python_frame_index += 1;
                     }
-                };
-
-                native_stacks.insert(thread, stack);
-                threadid_map.entry(python_thread_id).or_insert(thread);
-            }
-        }
-
-        for trace in traces.iter_mut() {
-            let os_thread_id = match threadid_map.get(&trace.thread_id) {
-                Some(thread) => *thread,
-                None => threadid_map[&0] // TODO: handle this
+                }
             };
 
-            let stack = &native_stacks[&os_thread_id];
-            let mut python_frame_index = 0;
-            let mut merged = Vec::new();
+            if let Some(frame) = cached_symbol {
+                merge_frame(&frame);
+                continue;
+            }
 
-            for addr in stack {
-                self.unwinder.symbolicate(*addr, &mut |frame| {
-                    // TODO: for figuring out python frames/functions don't symbolicate
-                    // and instead just figure out if the addr is in the range
-                    #[cfg(unix)]
-                    let is_python_exe = frame.module == self.python_filename;
+            // Keep track of the first symbolicated frame for caching. We don't cache anything (yet) where
+            // symoblicationg returns multiple frames for an address, like in the case of inlined function calls.
+            // so track how many frames we get for the address, and only update cache in the happy case
+            // of 1 frame
+            let mut symbolicated_count = 0;
+            let mut first_frame = None;
 
-                    #[cfg(windows)]
-                    let is_python_exe = frame.module.to_lowercase() == self.python_filename.to_lowercase();
+            self.symbolicator.symbolicate(addr, !is_python_addr, &mut |frame: &remoteprocess::StackFrame| {
+                symbolicated_count += 1;
+                if symbolicated_count == 1 {
+                    first_frame = Some(frame.clone());
+                }
+                merge_frame(frame);
+            }).unwrap_or_else(|e| {
+                if let remoteprocess::Error::NoBinaryForAddress(_) = e {
+                    debug!("don't have a binary for symbols at 0x{:x} - reloading", addr);
+                    self.should_reload = true;
+                }
+                // if we can't symbolicate, just insert a stub here.
+                merged.push(Frame{filename: "?".to_owned(),
+                                  name: format!("0x{:x}", addr),
+                                  line: 0, short_filename: None, module: None, locals: None});
+            });
 
-                    let mut insert_native = true;
+            if symbolicated_count == 1 {
+                self.symbol_cache.put(addr, first_frame.unwrap());
+            }
+        }
 
-                    if is_python_exe ||
-                       Some(&frame.module) == self.libpython_filename.as_ref() ||
-                       self.python_filename.starts_with(&frame.module) {
+        if python_frame_index != frames.len() {
+            if python_frame_index == 0 {
+                // I've seen a problem come up a bunch where we only get 1-2 native stack traces and then it fails
+                // (with a valid python stack trace on top of that). both the gimli and libunwind unwinder don't
+                // return the full stack, and connecting up to the process with GDB brings a corrupt stack error:
+                //    from /home/ben/anaconda3/lib/python3.7/site-packages/numpy/core/../../../../libmkl_avx512.so
+                //    Backtrace stopped: previous frame inner to this frame (corrupt stack?)
+                //
+                // rather than fail here, lets just insert the python frames after the native frames
+                for frame in frames {
+                    merged.push(frame.clone());
+                }
+            } else if python_frame_index == frames.len() + 1 {
+                // if we have seen exactly one more python frame in the native stack than the python stack - let it go.
+                // (can happen when the python stack has been unwound, but haven't exitted the PyEvalFrame function
+                // yet)
+                info!("Have {} native and {} python threads in stack - allowing for now",
+                    python_frame_index, frames.len());
+            } else {
+                 return Err(format_err!("Failed to merge native and python frames (Have {} native and {} python)",
+                                       python_frame_index, frames.len()));
+            }
+        }
 
-                        insert_native = false;
-                        if let Some(ref function) = frame.function {
+        // TODO: can this by merged into translate_frame?
+        for frame in merged.iter_mut() {
+            self.cython_maps.translate(frame);
+        }
 
-                            // ugh, probably could do a better job of figuring this out
-                            // (also the symbols are different for each OS)
-                            if function == "PyEval_EvalFrameDefault" ||
-                               function == "_PyEval_EvalFrameDefault" ||
-                               function == "__PyEval_EvalFrameDefault" ||
-                               function == "PyEval_EvalFrameEx" {
+        Ok(merged)
+    }
 
-                                // if we have a corresponding python frame for the evalframe
-                                // merge it into the stack. (if we're out of bounds a later
-                                // check will pick up - and report overall totals mismatch)
-                                if python_frame_index < trace.frames.len() {
-                                    merged.push(trace.frames[python_frame_index].clone());
-                                }
-                                python_frame_index += 1;
-                            } else if function == "_time_sleep" || function == "time_sleep" {
-                                insert_native = true;
-                            }
+    fn get_merge_strategy(&self, check_python: bool, frame: &remoteprocess::StackFrame) -> MergeType {
+        if check_python {
+            if let Some(ref function) = frame.function {
+                // We want to include some internal python functions. For example, calls like time.sleep
+                // or os.kill etc are implemented as builtins in the interpeter and filtering them out
+                // is misleading. Create a set of whitelisted python function prefixes to include
+                lazy_static! {
+                    static ref WHITELISTED_PREFIXES: HashSet<&'static str> = {
+                        let mut prefixes = HashSet::new();
+                        prefixes.insert("time");
+                        prefixes.insert("sys");
+                        prefixes.insert("gc");
+                        prefixes.insert("os");
+                        prefixes.insert("unicode");
+                        prefixes.insert("thread");
+                        prefixes.insert("stringio");
+                        prefixes.insert("sre");
+                        // likewise reasoning about lock contention inside python is also useful
+                        prefixes.insert("PyGilState");
+                        prefixes.insert("PyThread");
+                        prefixes.insert("lock");
+                        prefixes
+                    };
+                }
+
+                // Figure out the merge type by looking at the function name, frames that
+                // are used in evaluating python code are ignored, aside from PyEval_EvalFrame*
+                // which is replaced by the function from the python stack
+                let mut tokens = function.split("_").filter(|&x| x.len() > 0);
+                match tokens.next() {
+                    Some("PyEval") => {
+                        match tokens.next() {
+                            Some("EvalFrameDefault") => MergeType::MergePythonFrame,
+                            Some("EvalFrameEx") => MergeType::MergePythonFrame,
+                            _ => MergeType::Ignore
+                        }
+                    },
+                    Some(prefix) if WHITELISTED_PREFIXES.contains(prefix) => MergeType::MergeNativeFrame,
+                    _ => MergeType::Ignore
+                }
+            } else {
+                // is this correct? if we don't have a function name and in python binary should ignore?
+                MergeType::Ignore
+            }
+        } else {
+            MergeType::MergeNativeFrame
+        }
+    }
+
+    /// translates a native frame into a optional frame. none indicates we should ignore this frame
+    fn translate_native_frame(&self, frame: &remoteprocess::StackFrame) -> Option<Frame> {
+        match &frame.function {
+            Some(func) =>  {
+                if ignore_frame(func, &frame.module) {
+                    return None;
+                }
+
+                // Get the filename/line/function name here
+                let line = frame.line.unwrap_or(0) as i32;
+
+                // try to resolve the filename relative to the module if given
+                let filename = match frame.filename.as_ref() {
+                    Some(filename) => {
+                        resolve_filename(filename, &frame.module)
+                            .unwrap_or_else(|| filename.clone())
+                    },
+                    None => frame.module.clone()
+                };
+
+                let mut demangled = None;
+                if func.starts_with('_') {
+                    if let Ok((sym, _)) = BorrowedSymbol::with_tail(func.as_bytes()) {
+                        let options = DemangleOptions::new().no_params().no_return_type();
+                        if let Ok(sym) = sym.demangle(&options) {
+                            demangled = Some(sym);
                         }
                     }
-
-                    if insert_native {
-                        match &frame.function {
-                            Some(func) =>  {
-                                if ignore_frame(func, &frame.module) {
-                                    return;
-                                }
-
-                                // Get the filename/line/function name here
-                                let line = frame.line.unwrap_or(0) as i32;
-
-                                // try to resolve the filename relative to the module if given
-                                let filename = match frame.filename.as_ref() {
-                                    Some(filename) => {
-                                        resolve_filename(filename, &frame.module)
-                                            .unwrap_or_else(|| filename.clone())
-                                    },
-                                    None => frame.module.clone()
-                                };
-
-                                let mut demangled = None;
-                                if func.starts_with('_') {
-                                    if let Ok((sym, _)) = ::cpp_demangle::BorrowedSymbol::with_tail(func.as_bytes()) {
-                                        let mut options = ::cpp_demangle::DemangleOptions::default();
-                                        options.no_params = true;
-                                        if let Ok(sym) = sym.demangle(&options) {
-                                            demangled = Some(sym);
-                                        }
-                                    }
-                                }
-                                let name = demangled.as_ref().unwrap_or_else(|| &func);
-                                if cython::ignore_frame(name) {
-                                    return;
-                                }
-                                let name = cython::demangle(&name).to_owned();
-                                merged.push(Frame{filename, line, name, short_filename: None, module: Some(frame.module.clone())})
-                            },
-                            None => {
-                                merged.push(Frame{filename: frame.module.clone(),
-                                                  name: "?".to_owned(),
-                                                  line: 0, short_filename: None, module: Some(frame.module.clone())})
-                            }
-                        }
-                    }
-                }).unwrap_or_else(|_| {
-                    // if we can't symbolicate, just insert a stub here.
-                    merged.push(Frame{filename: "?".to_owned(),
-                                      name: "?".to_owned(),
-                                      line: 0, short_filename: None, module: None});
-                });
+                }
+                let name = demangled.as_ref().unwrap_or_else(|| &func);
+                if cython::ignore_frame(name) {
+                    return None;
+                }
+                let name = cython::demangle(&name).to_owned();
+                Some(Frame{filename, line, name, short_filename: None, module: Some(frame.module.clone()), locals: None})
+            },
+            None => {
+                Some(Frame{filename: frame.module.clone(),
+                           name: format!("0x{:x}", frame.addr), locals: None,
+                           line: 0, short_filename: None, module: Some(frame.module.clone())})
             }
-
-            if python_frame_index != trace.frames.len() {
-                // TODO: on linux in this case, fallback to libunwind. Vast majority of errors are here
-                // this requires some refactoring here though (don't have thread lock here).
-                // feel like we should only get lock one thread at a time when sampling - and move
-                // code to match the pythonthreadid/os thread id out - and only load native stack when/as
-                // needed
-                return Err(format_err!("Failed to merge native and python frames (Have {} native and {} python",
-                                       python_frame_index, trace.frames.len()));
-            }
-
-            for frame in merged.iter_mut() {
-                self.cython_maps.translate(frame);
-            }
-            trace.os_thread_id = Some(os_thread_id.id()?);
-            trace.frames = merged;
         }
-        Ok(traces)
     }
 
-    fn get_thread(&mut self, threadids: &HashSet<u64>, thread: &remoteprocess::Thread) -> Result<(Vec<u64>, u64), Error> {
+    fn get_thread(&mut self, thread: &remoteprocess::Thread) -> Result<Vec<u64>, Error> {
         let mut stack = Vec::new();
-        let mut cursor = self.unwinder.cursor(thread)?;
-        #[allow(unused_assignments)]
-        let mut python_thread_id = 0;
-
-        while let Some(ip) = cursor.next() {
-            if let Err(remoteprocess::Error::NoBinaryForAddress(_)) = ip {
-                self.should_reload = true;
-            }
-            stack.push(ip?);
-
-            // On unix based systems w/ pthreads - the python thread id
-            // is contained in the RBX register of the last frame (aside from main frame)
-            // This is sort of a massive hack, but seems to work
-            #[cfg(unix)]
-            {
-                let next_bx = cursor.bx();
-                if next_bx != 0 && threadids.contains(&next_bx)  {
-                    python_thread_id = next_bx;
-                }
-            }
-        }
-
-        #[cfg(windows)]
-        {
-        python_thread_id = thread.id()?;
-        }
-
-        Ok((stack, python_thread_id))
-    }
-
-    #[cfg(target_os="linux")]
-    fn get_libunwind_thread(&self, threadids: &HashSet<u64>, thread: &remoteprocess::Thread) -> Result<(Vec<u64>, u64), Error> {
-        let mut stack = Vec::new();
-        let unwinder = self.libunwinder.as_ref().unwrap();
-        let mut cursor = unwinder.cursor(thread.id()? as i32)?;
-        let mut bx = 0;
-        while let Some(ip) = cursor.next() {
-            if let Ok(next_bx) = cursor.bx() {
-                if next_bx != 0 && threadids.contains(&next_bx)  {
-                    bx = next_bx;
-                }
-            }
+        for ip in self.unwinder.cursor(thread)? {
             stack.push(ip?);
         }
-
-        Ok((stack, bx))
+        Ok(stack)
     }
+}
+
+#[derive(Debug)]
+enum MergeType {
+    Ignore,
+    MergePythonFrame,
+    MergeNativeFrame
 }
 
 // the intent here is to remove top-level libc or pthreads calls

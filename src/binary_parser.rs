@@ -3,20 +3,36 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::path::Path;
 
+use failure::Error;
 use goblin;
 use goblin::Object;
-use goblin::error::Error as GoblinError;
 use memmap::Mmap;
 
 pub struct BinaryInfo {
+    pub filename: String,
     pub symbols: HashMap<String, u64>,
     pub bss_addr: u64,
     pub bss_size: u64,
-    pub offset: u64
+    pub offset: u64,
+    pub addr: u64,
+    pub size: u64
+}
+
+impl BinaryInfo {
+    #[cfg(unwind)]
+    pub fn contains(&self, addr: u64) -> bool {
+        addr >= self.addr && addr < (self.addr + self.size)
+    }
 }
 
 /// Uses goblin to parse a binary file, returns information on symbols/bss/adjusted offset etc
-pub fn parse_binary(filename: &str, offset: u64) -> Result<BinaryInfo, GoblinError> {
+pub fn parse_binary(_pid: remoteprocess::Pid, filename: &str, addr: u64, size: u64) -> Result<BinaryInfo, Error> {
+    // on linux the process could be running in docker, access the filename through procfs
+    #[cfg(target_os="linux")]
+    let filename = &format!("/proc/{}/root{}", _pid, filename);
+
+    let offset = addr;
+
     let mut symbols = HashMap::new();
 
     // Read in the filename
@@ -35,7 +51,7 @@ pub fn parse_binary(filename: &str, offset: u64) -> Result<BinaryInfo, GoblinErr
                             Ok(arch) => arch.is_64(),
                             Err(_) => false
                         }
-                    ).expect("Failed to find 64 bit arch in FAT archive")?;
+                    ).ok_or_else(|| format_err!("Failed to find 64 bit arch in FAT archive in {}", filename))??;
                     let bytes = &buffer[arch.offset as usize..][..arch.size as usize];
                     goblin::mach::MachO::parse(bytes, 0)?
                 }
@@ -63,21 +79,21 @@ pub fn parse_binary(filename: &str, offset: u64) -> Result<BinaryInfo, GoblinErr
 
                 }
             }
-            Ok(BinaryInfo{symbols, bss_addr, bss_size, offset})
+            Ok(BinaryInfo{filename: filename.to_owned(), symbols, bss_addr, bss_size, offset, addr, size})
         }
 
         Object::Elf(elf) => {
             let bss_header = elf.section_headers
                 .iter()
                 .find(|ref header| header.sh_type == goblin::elf::section_header::SHT_NOBITS)
-                .expect("Failed to find BSS section header in ELF binary");
+                .ok_or_else(|| format_err!("Failed to find BSS section header in {}", filename))?;
 
             let program_header = elf.program_headers
                 .iter()
                 .find(|ref header|
                     header.p_type == goblin::elf::program_header::PT_LOAD &&
                     header.p_flags & goblin::elf::program_header::PF_X != 0)
-                .expect("Failed to find executable PT_LOAD program header in ELF binary");
+                .ok_or_else(|| format_err!("Failed to find executable PT_LOAD program header in {}", filename))?;
 
             let offset = offset - program_header.p_vaddr;
 
@@ -85,10 +101,17 @@ pub fn parse_binary(filename: &str, offset: u64) -> Result<BinaryInfo, GoblinErr
                 let name = elf.strtab[sym.st_name].to_string();
                 symbols.insert(name, sym.st_value + offset);
             }
-            Ok(BinaryInfo{symbols,
+            for dynsym in elf.dynsyms.iter() {
+                let name = elf.dynstrtab[dynsym.st_name].to_string();
+                symbols.insert(name, dynsym.st_value + offset);
+            }
+            Ok(BinaryInfo{filename: filename.to_owned(),
+                          symbols,
                           bss_addr: bss_header.sh_addr + offset,
                           bss_size: bss_header.sh_size,
-                          offset})
+                          offset,
+                          addr,
+                          size})
         },
         Object::PE(pe) => {
             for export in pe.exports {
@@ -97,18 +120,19 @@ pub fn parse_binary(filename: &str, offset: u64) -> Result<BinaryInfo, GoblinErr
                 }
             }
 
-            let data_section = pe.sections
+            pe.sections
                 .iter()
                 .find(|ref section| section.name.starts_with(b".data"))
-                .expect("Failed to find .data section in PE binary");
+                .ok_or_else(|| format_err!("Failed to find .data section in PE binary of {}", filename))
+                .map(|data_section| {
+                    let bss_addr = u64::from(data_section.virtual_address) + offset;
+                    let bss_size = u64::from(data_section.virtual_size);
 
-            let bss_addr = u64::from(data_section.virtual_address) + offset;
-            let bss_size = u64::from(data_section.virtual_size);
-
-            Ok(BinaryInfo{symbols, bss_addr, bss_size, offset})
+                    BinaryInfo{filename: filename.to_owned(), symbols, bss_addr, bss_size, offset, addr, size}
+                })
         },
         _ => {
-            Err(GoblinError::Malformed(String::from("Unhandled binary type")))
+            Err(format_err!("Unhandled binary type"))
         }
     }
 }

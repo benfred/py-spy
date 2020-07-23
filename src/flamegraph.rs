@@ -28,20 +28,16 @@ SOFTWARE.
 
 use std;
 use std::collections::HashMap;
-use std::io::Write;
 use std::fs::File;
-use std::path::Path;
-use std::process::{Command, Stdio};
 
-use failure::{Error, ResultExt};
-use tempdir;
 
-use stack_trace::StackTrace;
+use failure::Error;
+use inferno::flamegraph::{Direction, Options};
 
-const FLAMEGRAPH_SCRIPT: &[u8] = include_bytes!("../vendor/flamegraph/flamegraph.pl");
+use crate::stack_trace::StackTrace;
 
 pub struct Flamegraph {
-    pub counts: HashMap<Vec<u8>, usize>,
+    pub counts: HashMap<String, usize>,
     pub show_linenumbers: bool,
 }
 
@@ -50,52 +46,47 @@ impl Flamegraph {
         Flamegraph { counts: HashMap::new(), show_linenumbers }
     }
 
-    pub fn increment(&mut self, traces: &[StackTrace]) -> std::io::Result<()> {
-        for trace in traces {
-            if !(trace.active) {
-                continue;
+    pub fn increment(&mut self, trace: &StackTrace) -> std::io::Result<()> {
+        // convert the frame into a single ';' delimited String
+        let frame = trace.frames.iter().rev().map(|frame| {
+            let filename = match &frame.short_filename { Some(f) => &f, None => &frame.filename };
+            if self.show_linenumbers && frame.line != 0 {
+                format!("{} ({}:{})", frame.name, filename, frame.line)
+            } else if filename.len() > 0 {
+                format!("{} ({})", frame.name, filename)
+            } else {
+                frame.name.clone()
             }
-            let mut buf = vec![];
-            for frame in trace.frames.iter().rev() {
-                let filename = match &frame.short_filename { Some(f) => &f, None => &frame.filename };
-                if self.show_linenumbers && frame.line != 0 {
-                    write!(&mut buf, "{} ({}:{});", frame.name, filename, frame.line)?;
-                } else {
-                    write!(&mut buf, "{} ({});", frame.name, filename)?;
-                }
-            }
-            *self.counts.entry(buf).or_insert(0) += 1;
-        }
+        }).collect::<Vec<String>>().join(";");
+        // update counts for that frame
+        *self.counts.entry(frame).or_insert(0) += 1;
         Ok(())
     }
 
-    pub fn write(&self, w: File) -> Result<(), Error> {
-        let tempdir = tempdir::TempDir::new("flamegraph").unwrap();
-        let stacks_file = tempdir.path().join("stacks.txt");
-        let mut file = File::create(&stacks_file).expect("couldn't create file");
-        for (k, v) in &self.counts {
-            file.write_all(&k)?;
-            writeln!(file, " {}", v)?;
-        }
-        write_flamegraph(&stacks_file, w)
+    fn get_lines(&self) -> Vec<String> {
+        self.counts.iter().map(|(k, v)| format!("{} {}", k, v)).collect()
     }
-}
 
-fn write_flamegraph(source: &Path, target: File) -> Result<(), Error> {
-    let mut child = Command::new("perl")
-        .arg("-")
-        .arg("--inverted") // icicle graphs are easier to read
-        .arg("--minwidth").arg("1") // min width 2 pixels saves on disk space
-        .arg(source)
-        .stdin(Stdio::piped()) // pipe in the flamegraph.pl script to stdin
-        .stdout(target)
-        .spawn()
-        .context("Couldn't execute perl")?;
-    // TODO(nll): Remove this silliness after non-lexical lifetimes land.
-    {
-        let stdin = child.stdin.as_mut().expect("failed to write to stdin");
-        stdin.write_all(FLAMEGRAPH_SCRIPT)?;
+    pub fn write(&self, w: &File) -> Result<(), Error> {
+        let mut opts =  Options {
+            direction: Direction::Inverted,
+            min_width: 1.0,
+            title: "py-spy".to_owned(),
+            ..Default::default()
+        };
+
+        let lines = self.get_lines();
+        inferno::flamegraph::from_lines(&mut opts, lines.iter().map(|x| x.as_str()), w)
+            .map_err(|e| format_err!("Failed to write flamegraph: {}", e))?;
+        Ok(())
     }
-    child.wait()?;
-    Ok(())
+
+    pub fn write_raw(&self, w: &mut File) -> Result<(), Error> {
+        use std::io::Write;
+        for line in self.get_lines() {
+            w.write_all(line.as_bytes())?;
+            w.write_all(b"\n")?;
+        }
+        Ok(())
+    }
 }

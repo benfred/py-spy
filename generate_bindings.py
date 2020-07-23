@@ -1,4 +1,4 @@
-""" Scripts to generate bindings of different python interperator versions
+""" Scripts to generate bindings of different python interpreter versions
 
 Requires bindgen to be installed (cargo install bindgen), and probably needs a nightly
 compiler with rustfmt-nightly.
@@ -83,8 +83,10 @@ def calculate_pyruntime_offsets(cpython_path, version, configure=False):
             # this requires a 'x64 Native Tools Command Prompt' to work out properly for 64 bit installs
             # also expects that you have run something like 'PCBuild\build.bat' first
             ret = os.system(f"cl {source_filename} /I {cpython_path} /I {cpython_path}\PC /I {cpython_path}\Include")
+        elif sys.platform.startswith("freebsd"):
+            ret = os.system(f"""cc {source_filename} -I {cpython_path} -I {cpython_path}/Include -o {exe}""")
         else:
-            ret = os.system(f"""gcc {source_filename} -I {cpython_path} -I {cpython_path}/include -o {exe}""")
+            ret = os.system(f"""gcc {source_filename} -I {cpython_path} -I {cpython_path}/Include -o {exe}""")
         if ret:
             print("Failed to compile""")
             return ret
@@ -97,6 +99,7 @@ def calculate_pyruntime_offsets(cpython_path, version, configure=False):
 
 def extract_bindings(cpython_path, version, configure=False):
     print("Generating bindings for python %s from repo at %s" % (version, cpython_path))
+
     ret = os.system(f"""
         cd {cpython_path}
         git checkout {version}
@@ -106,6 +109,9 @@ def extract_bindings(cpython_path, version, configure=False):
 
         cat Include/Python.h > bindgen_input.h
         cat Include/frameobject.h >> bindgen_input.h
+        cat Objects/dict-common.h >> bindgen_input.h
+        echo '#define Py_BUILD_CORE 1\n' >> bindgen_input.h
+        cat Include/internal/pycore_pystate.h >> bindgen_input.h
 
         bindgen  bindgen_input.h -o bindgen_output.rs \
             --with-derive-default \
@@ -120,7 +126,17 @@ def extract_bindings(cpython_path, version, configure=False):
             --whitelist-type PyUnicodeObject \
             --whitelist-type PyCompactUnicodeObject \
             --whitelist-type PyStringObject \
-             -- -I . -I ./Include
+            --whitelist-type PyTupleObject \
+            --whitelist-type PyListObject \
+            --whitelist-type PyIntObject \
+            --whitelist-type PyLongObject \
+            --whitelist-type PyFloatObject \
+            --whitelist-type PyDictObject \
+            --whitelist-type PyDictKeysObject \
+            --whitelist-type PyDictKeyEntry \
+            --whitelist-type PyObject \
+            --whitelist-type PyTypeObject \
+             -- -I . -I ./Include -I ./Include/internal
     """)
     if ret:
         return ret
@@ -173,7 +189,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     if args.all:
-        versions = ['v3.7.0', 'v3.6.6', 'v3.5.5', 'v3.4.8', 'v3.3.7', 'v3.2.6', 'v2.7.15']
+        versions = ['v3.8.0b4', 'v3.7.0', 'v3.6.6', 'v3.5.5', 'v3.4.8', 'v3.3.7', 'v3.2.6', 'v2.7.15']
     else:
         versions = args.versions
         if not versions:
@@ -182,7 +198,7 @@ if __name__ == "__main__":
 
     for version in versions:
         if args.build:
-            # todo: this probably shoudl be a separate script
+            # todo: this probably should be a separate script
             if build_python(args.cpython, version):
                 print("Failed to build python")
         elif args.pyruntime:

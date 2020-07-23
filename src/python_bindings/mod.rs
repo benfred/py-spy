@@ -3,6 +3,7 @@ pub mod v3_3_7;
 pub mod v3_5_5;
 pub mod v3_6_6;
 pub mod v3_7_0;
+pub mod v3_8_0;
 
 // currently the PyRuntime struct used from Python 3.7 on really can't be
 // exposed in a cross platform way using bindgen. PyRuntime has several mutex's
@@ -12,15 +13,37 @@ pub mod v3_7_0;
 // member variables we care about here
 // (note 'generate_bindings.py' has code to figure out these offsets)
 pub mod pyruntime {
-    use version::Version;
+    use crate::version::Version;
 
     // There aren't any OS specific members of PyRuntime before pyinterpreters.head,
     // so these offsets should be valid for all OS'es
     #[cfg(target_pointer_width = "32")]
-    pub static INTERP_HEAD_OFFSET: usize = 16;
+    pub fn get_interp_head_offset(version: &Version) -> usize {
+        match version {
+            Version{major: 3, minor: 8, patch: 0, ..} => {
+                match version.release_flags.as_ref() {
+                    "a1" | "a2" => 16,
+                    _ => 20
+                }
+            },
+            Version{major: 3, minor: 8..=9, ..} => 20,
+            _ => 16
+        }
+    }
 
     #[cfg(target_pointer_width = "64")]
-    pub static INTERP_HEAD_OFFSET: usize = 24;
+    pub fn get_interp_head_offset(version: &Version) -> usize {
+        match version {
+            Version{major: 3, minor: 8, patch: 0, ..} => {
+                 match version.release_flags.as_ref() {
+                    "a1" | "a2" => 24,
+                    _ => 32
+                }
+            },
+            Version{major: 3, minor: 8..=9, ..} => 32,
+            _ => 24
+        }
+    }
 
     // getting gilstate.tstate_current is different for all OS
     // and is also different for each python version, and even
@@ -28,15 +51,17 @@ pub mod pyruntime {
     #[cfg(target_os="macos")]
     pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
         match version {
-             Version{major: 3, minor: 7, ..} => Some(1440),
+             Version{major: 3, minor: 7, patch: 0..=3, ..} => Some(1440),
+             Version{major: 3, minor: 7, patch: 4..=7, ..} => Some(1528),
              Version{major: 3, minor: 8, patch: 0, ..} => {
                  match version.release_flags.as_ref() {
                     "a1" => Some(1432),
                     "a2" => Some(888),
-                    "a3" => Some(1448),
-                    _ => None
+                    "a3" | "a4" => Some(1448),
+                    _ => Some(1416),
                 }
              },
+             Version{major: 3, minor: 8, patch: 1..=2, ..} => { Some(1416) },
              _ => None
         }
     }
@@ -44,48 +69,70 @@ pub mod pyruntime {
     #[cfg(all(target_os="linux", target_pointer_width = "32"))]
     pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
         match version {
-             Version{major: 3, minor: 7, ..} => Some(796),
+            Version{major: 3, minor: 7, patch: 0..=6, ..} => Some(796),
              Version{major: 3, minor: 8, patch: 0, ..} => {
                  match version.release_flags.as_ref() {
                     "a1" => Some(792),
                     "a2" => Some(512),
-                    "a3" => Some(800),
-                    _ => None
+                    "a3" | "a4" => Some(800),
+                    _  => Some(788)
                 }
-             },
-             _ => None
+            },
+            Version{major: 3, minor: 8, patch: 1..=2, ..} => Some(788),
+            _ => None
         }
     }
 
     #[cfg(all(target_os="linux", target_pointer_width = "64"))]
     pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
         match version {
-             Version{major: 3, minor: 7, ..} => Some(1392),
-             Version{major: 3, minor: 8, patch: 0, ..} => {
-                 match version.release_flags.as_ref() {
+            Version{major: 3, minor: 7, patch: 0..=3, ..} => Some(1392),
+            Version{major: 3, minor: 7, patch: 4..=7, ..} => Some(1480),
+            Version{major: 3, minor: 8, patch: 0, ..} => {
+                match version.release_flags.as_ref() {
                     "a1" => Some(1384),
                     "a2" => Some(840),
-                    "a3" => Some(1400),
-                    _ => None
+                    "a3" | "a4" => Some(1400),
+                    _  => Some(1368)
                 }
              },
-             _ => None
+            Version{major: 3, minor: 8, patch: 1..=2, ..} => Some(1368),
+            _ => None
         }
     }
 
     #[cfg(windows)]
     pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
         match version {
-             Version{major: 3, minor: 7, ..} => Some(1320),
-             Version{major: 3, minor: 8, patch: 0, ..} => {
-                 match version.release_flags.as_ref() {
+            Version{major: 3, minor: 7, patch: 0..=3, ..} => Some(1320),
+            Version{major: 3, minor: 8, patch: 0, ..} => {
+                match version.release_flags.as_ref() {
                     "a1" => Some(1312),
                     "a2" => Some(768),
-                    "a3" => Some(1328),
-                    _ => None
+                    "a3" | "a4" => Some(1328),
+                    _ => Some(1296)
                 }
-             },
-             _ => None
+            },
+            Version{major: 3, minor: 8, patch: 1..=2, ..} => Some(1296),
+            _ => None
+        }
+    }
+
+    #[cfg(target_os="freebsd")]
+    pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
+        match version {
+            Version{major: 3, minor: 7, patch: 0..=3, ..} => Some(1248),
+            Version{major: 3, minor: 7, patch: 4..=7, ..} => Some(1336),
+            Version{major: 3, minor: 8, patch: 0, ..} => {
+                match version.release_flags.as_ref() {
+                    "a1" => Some(1240),
+                    "a2" => Some(696),
+                    "a3" | "a4" => Some(1256),
+                    _ => Some(1224)
+                }
+            },
+            Version{major: 3, minor: 8, patch: 1..=2, ..} => Some(1224),
+            _ => None
         }
     }
 }

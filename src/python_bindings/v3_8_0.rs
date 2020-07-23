@@ -1,4 +1,4 @@
-// Generated bindings for python v3.7.0
+// Generated bindings for python v3.8.0b4
 #![allow(dead_code)]
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
@@ -256,6 +256,154 @@ pub type objobjargproc = ::std::option::Option<
         arg3: *mut PyObject,
     ) -> ::std::os::raw::c_int,
 >;
+pub type objobjproc = ::std::option::Option<
+    unsafe extern "C" fn(arg1: *mut PyObject, arg2: *mut PyObject) -> ::std::os::raw::c_int,
+>;
+pub type visitproc = ::std::option::Option<
+    unsafe extern "C" fn(
+        arg1: *mut PyObject,
+        arg2: *mut ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int,
+>;
+pub type traverseproc = ::std::option::Option<
+    unsafe extern "C" fn(
+        arg1: *mut PyObject,
+        arg2: visitproc,
+        arg3: *mut ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int,
+>;
+pub type freefunc = ::std::option::Option<unsafe extern "C" fn(arg1: *mut ::std::os::raw::c_void)>;
+pub type destructor = ::std::option::Option<unsafe extern "C" fn(arg1: *mut PyObject)>;
+pub type getattrfunc = ::std::option::Option<
+    unsafe extern "C" fn(arg1: *mut PyObject, arg2: *mut ::std::os::raw::c_char) -> *mut PyObject,
+>;
+pub type getattrofunc = ::std::option::Option<
+    unsafe extern "C" fn(arg1: *mut PyObject, arg2: *mut PyObject) -> *mut PyObject,
+>;
+pub type setattrfunc = ::std::option::Option<
+    unsafe extern "C" fn(
+        arg1: *mut PyObject,
+        arg2: *mut ::std::os::raw::c_char,
+        arg3: *mut PyObject,
+    ) -> ::std::os::raw::c_int,
+>;
+pub type setattrofunc = ::std::option::Option<
+    unsafe extern "C" fn(
+        arg1: *mut PyObject,
+        arg2: *mut PyObject,
+        arg3: *mut PyObject,
+    ) -> ::std::os::raw::c_int,
+>;
+pub type reprfunc =
+    ::std::option::Option<unsafe extern "C" fn(arg1: *mut PyObject) -> *mut PyObject>;
+pub type hashfunc = ::std::option::Option<unsafe extern "C" fn(arg1: *mut PyObject) -> Py_hash_t>;
+pub type richcmpfunc = ::std::option::Option<
+    unsafe extern "C" fn(
+        arg1: *mut PyObject,
+        arg2: *mut PyObject,
+        arg3: ::std::os::raw::c_int,
+    ) -> *mut PyObject,
+>;
+pub type getiterfunc =
+    ::std::option::Option<unsafe extern "C" fn(arg1: *mut PyObject) -> *mut PyObject>;
+pub type iternextfunc =
+    ::std::option::Option<unsafe extern "C" fn(arg1: *mut PyObject) -> *mut PyObject>;
+pub type descrgetfunc = ::std::option::Option<
+    unsafe extern "C" fn(
+        arg1: *mut PyObject,
+        arg2: *mut PyObject,
+        arg3: *mut PyObject,
+    ) -> *mut PyObject,
+>;
+pub type descrsetfunc = ::std::option::Option<
+    unsafe extern "C" fn(
+        arg1: *mut PyObject,
+        arg2: *mut PyObject,
+        arg3: *mut PyObject,
+    ) -> ::std::os::raw::c_int,
+>;
+pub type initproc = ::std::option::Option<
+    unsafe extern "C" fn(
+        arg1: *mut PyObject,
+        arg2: *mut PyObject,
+        arg3: *mut PyObject,
+    ) -> ::std::os::raw::c_int,
+>;
+pub type newfunc = ::std::option::Option<
+    unsafe extern "C" fn(
+        arg1: *mut _typeobject,
+        arg2: *mut PyObject,
+        arg3: *mut PyObject,
+    ) -> *mut PyObject,
+>;
+pub type allocfunc = ::std::option::Option<
+    unsafe extern "C" fn(arg1: *mut _typeobject, arg2: Py_ssize_t) -> *mut PyObject,
+>;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _typeobject {
+    pub ob_base: PyVarObject,
+    pub tp_name: *const ::std::os::raw::c_char,
+    pub tp_basicsize: Py_ssize_t,
+    pub tp_itemsize: Py_ssize_t,
+    pub tp_dealloc: destructor,
+    pub tp_vectorcall_offset: Py_ssize_t,
+    pub tp_getattr: getattrfunc,
+    pub tp_setattr: setattrfunc,
+    pub tp_as_async: *mut PyAsyncMethods,
+    pub tp_repr: reprfunc,
+    pub tp_as_number: *mut PyNumberMethods,
+    pub tp_as_sequence: *mut PySequenceMethods,
+    pub tp_as_mapping: *mut PyMappingMethods,
+    pub tp_hash: hashfunc,
+    pub tp_call: ternaryfunc,
+    pub tp_str: reprfunc,
+    pub tp_getattro: getattrofunc,
+    pub tp_setattro: setattrofunc,
+    pub tp_as_buffer: *mut PyBufferProcs,
+    pub tp_flags: ::std::os::raw::c_ulong,
+    pub tp_doc: *const ::std::os::raw::c_char,
+    pub tp_traverse: traverseproc,
+    pub tp_clear: inquiry,
+    pub tp_richcompare: richcmpfunc,
+    pub tp_weaklistoffset: Py_ssize_t,
+    pub tp_iter: getiterfunc,
+    pub tp_iternext: iternextfunc,
+    pub tp_methods: *mut PyMethodDef,
+    pub tp_members: *mut PyMemberDef,
+    pub tp_getset: *mut PyGetSetDef,
+    pub tp_base: *mut _typeobject,
+    pub tp_dict: *mut PyObject,
+    pub tp_descr_get: descrgetfunc,
+    pub tp_descr_set: descrsetfunc,
+    pub tp_dictoffset: Py_ssize_t,
+    pub tp_init: initproc,
+    pub tp_alloc: allocfunc,
+    pub tp_new: newfunc,
+    pub tp_free: freefunc,
+    pub tp_is_gc: inquiry,
+    pub tp_bases: *mut PyObject,
+    pub tp_mro: *mut PyObject,
+    pub tp_cache: *mut PyObject,
+    pub tp_subclasses: *mut PyObject,
+    pub tp_weaklist: *mut PyObject,
+    pub tp_del: destructor,
+    pub tp_version_tag: ::std::os::raw::c_uint,
+    pub tp_finalize: destructor,
+    pub tp_vectorcall: vectorcallfunc,
+    pub tp_print: ::std::option::Option<
+        unsafe extern "C" fn(
+            arg1: *mut PyObject,
+            arg2: *mut FILE,
+            arg3: ::std::os::raw::c_int,
+        ) -> ::std::os::raw::c_int,
+    >,
+}
+impl Default for _typeobject {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct bufferinfo {
@@ -286,21 +434,13 @@ pub type getbufferproc = ::std::option::Option<
 >;
 pub type releasebufferproc =
     ::std::option::Option<unsafe extern "C" fn(arg1: *mut PyObject, arg2: *mut Py_buffer)>;
-pub type objobjproc = ::std::option::Option<
-    unsafe extern "C" fn(arg1: *mut PyObject, arg2: *mut PyObject) -> ::std::os::raw::c_int,
->;
-pub type visitproc = ::std::option::Option<
+pub type vectorcallfunc = ::std::option::Option<
     unsafe extern "C" fn(
-        arg1: *mut PyObject,
-        arg2: *mut ::std::os::raw::c_void,
-    ) -> ::std::os::raw::c_int,
->;
-pub type traverseproc = ::std::option::Option<
-    unsafe extern "C" fn(
-        arg1: *mut PyObject,
-        arg2: visitproc,
-        arg3: *mut ::std::os::raw::c_void,
-    ) -> ::std::os::raw::c_int,
+        callable: *mut PyObject,
+        args: *const *mut PyObject,
+        nargsf: usize,
+        kwnames: *mut PyObject,
+    ) -> *mut PyObject,
 >;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -397,137 +537,6 @@ pub struct PyBufferProcs {
     pub bf_releasebuffer: releasebufferproc,
 }
 impl Default for PyBufferProcs {
-    fn default() -> Self {
-        unsafe { ::std::mem::zeroed() }
-    }
-}
-pub type freefunc = ::std::option::Option<unsafe extern "C" fn(arg1: *mut ::std::os::raw::c_void)>;
-pub type destructor = ::std::option::Option<unsafe extern "C" fn(arg1: *mut PyObject)>;
-pub type printfunc = ::std::option::Option<
-    unsafe extern "C" fn(
-        arg1: *mut PyObject,
-        arg2: *mut FILE,
-        arg3: ::std::os::raw::c_int,
-    ) -> ::std::os::raw::c_int,
->;
-pub type getattrfunc = ::std::option::Option<
-    unsafe extern "C" fn(arg1: *mut PyObject, arg2: *mut ::std::os::raw::c_char) -> *mut PyObject,
->;
-pub type getattrofunc = ::std::option::Option<
-    unsafe extern "C" fn(arg1: *mut PyObject, arg2: *mut PyObject) -> *mut PyObject,
->;
-pub type setattrfunc = ::std::option::Option<
-    unsafe extern "C" fn(
-        arg1: *mut PyObject,
-        arg2: *mut ::std::os::raw::c_char,
-        arg3: *mut PyObject,
-    ) -> ::std::os::raw::c_int,
->;
-pub type setattrofunc = ::std::option::Option<
-    unsafe extern "C" fn(
-        arg1: *mut PyObject,
-        arg2: *mut PyObject,
-        arg3: *mut PyObject,
-    ) -> ::std::os::raw::c_int,
->;
-pub type reprfunc =
-    ::std::option::Option<unsafe extern "C" fn(arg1: *mut PyObject) -> *mut PyObject>;
-pub type hashfunc = ::std::option::Option<unsafe extern "C" fn(arg1: *mut PyObject) -> Py_hash_t>;
-pub type richcmpfunc = ::std::option::Option<
-    unsafe extern "C" fn(
-        arg1: *mut PyObject,
-        arg2: *mut PyObject,
-        arg3: ::std::os::raw::c_int,
-    ) -> *mut PyObject,
->;
-pub type getiterfunc =
-    ::std::option::Option<unsafe extern "C" fn(arg1: *mut PyObject) -> *mut PyObject>;
-pub type iternextfunc =
-    ::std::option::Option<unsafe extern "C" fn(arg1: *mut PyObject) -> *mut PyObject>;
-pub type descrgetfunc = ::std::option::Option<
-    unsafe extern "C" fn(
-        arg1: *mut PyObject,
-        arg2: *mut PyObject,
-        arg3: *mut PyObject,
-    ) -> *mut PyObject,
->;
-pub type descrsetfunc = ::std::option::Option<
-    unsafe extern "C" fn(
-        arg1: *mut PyObject,
-        arg2: *mut PyObject,
-        arg3: *mut PyObject,
-    ) -> ::std::os::raw::c_int,
->;
-pub type initproc = ::std::option::Option<
-    unsafe extern "C" fn(
-        arg1: *mut PyObject,
-        arg2: *mut PyObject,
-        arg3: *mut PyObject,
-    ) -> ::std::os::raw::c_int,
->;
-pub type newfunc = ::std::option::Option<
-    unsafe extern "C" fn(
-        arg1: *mut _typeobject,
-        arg2: *mut PyObject,
-        arg3: *mut PyObject,
-    ) -> *mut PyObject,
->;
-pub type allocfunc = ::std::option::Option<
-    unsafe extern "C" fn(arg1: *mut _typeobject, arg2: Py_ssize_t) -> *mut PyObject,
->;
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct _typeobject {
-    pub ob_base: PyVarObject,
-    pub tp_name: *const ::std::os::raw::c_char,
-    pub tp_basicsize: Py_ssize_t,
-    pub tp_itemsize: Py_ssize_t,
-    pub tp_dealloc: destructor,
-    pub tp_print: printfunc,
-    pub tp_getattr: getattrfunc,
-    pub tp_setattr: setattrfunc,
-    pub tp_as_async: *mut PyAsyncMethods,
-    pub tp_repr: reprfunc,
-    pub tp_as_number: *mut PyNumberMethods,
-    pub tp_as_sequence: *mut PySequenceMethods,
-    pub tp_as_mapping: *mut PyMappingMethods,
-    pub tp_hash: hashfunc,
-    pub tp_call: ternaryfunc,
-    pub tp_str: reprfunc,
-    pub tp_getattro: getattrofunc,
-    pub tp_setattro: setattrofunc,
-    pub tp_as_buffer: *mut PyBufferProcs,
-    pub tp_flags: ::std::os::raw::c_ulong,
-    pub tp_doc: *const ::std::os::raw::c_char,
-    pub tp_traverse: traverseproc,
-    pub tp_clear: inquiry,
-    pub tp_richcompare: richcmpfunc,
-    pub tp_weaklistoffset: Py_ssize_t,
-    pub tp_iter: getiterfunc,
-    pub tp_iternext: iternextfunc,
-    pub tp_methods: *mut PyMethodDef,
-    pub tp_members: *mut PyMemberDef,
-    pub tp_getset: *mut PyGetSetDef,
-    pub tp_base: *mut _typeobject,
-    pub tp_dict: *mut PyObject,
-    pub tp_descr_get: descrgetfunc,
-    pub tp_descr_set: descrsetfunc,
-    pub tp_dictoffset: Py_ssize_t,
-    pub tp_init: initproc,
-    pub tp_alloc: allocfunc,
-    pub tp_new: newfunc,
-    pub tp_free: freefunc,
-    pub tp_is_gc: inquiry,
-    pub tp_bases: *mut PyObject,
-    pub tp_mro: *mut PyObject,
-    pub tp_cache: *mut PyObject,
-    pub tp_subclasses: *mut PyObject,
-    pub tp_weaklist: *mut PyObject,
-    pub tp_del: destructor,
-    pub tp_version_tag: ::std::os::raw::c_uint,
-    pub tp_finalize: destructor,
-}
-impl Default for _typeobject {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
@@ -774,18 +783,30 @@ impl Default for PyMethodDef {
     }
 }
 pub type PyThread_type_lock = *mut ::std::os::raw::c_void;
-pub type _PyFrameEvalFunction = ::std::option::Option<
-    unsafe extern "C" fn(arg1: *mut _frame, arg2: ::std::os::raw::c_int) -> *mut PyObject,
->;
+pub type PyThreadState = _ts;
+pub type PyInterpreterState = _is;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct _PyCoreConfig {
+pub struct PyWideStringList {
+    pub length: Py_ssize_t,
+    pub items: *mut *mut wchar_t,
+}
+impl Default for PyWideStringList {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct PyConfig {
+    pub _config_version: ::std::os::raw::c_int,
+    pub _config_init: ::std::os::raw::c_int,
+    pub isolated: ::std::os::raw::c_int,
+    pub use_environment: ::std::os::raw::c_int,
+    pub dev_mode: ::std::os::raw::c_int,
     pub install_signal_handlers: ::std::os::raw::c_int,
-    pub ignore_environment: ::std::os::raw::c_int,
     pub use_hash_seed: ::std::os::raw::c_int,
     pub hash_seed: ::std::os::raw::c_ulong,
-    pub allocator: *const ::std::os::raw::c_char,
-    pub dev_mode: ::std::os::raw::c_int,
     pub faulthandler: ::std::os::raw::c_int,
     pub tracemalloc: ::std::os::raw::c_int,
     pub import_time: ::std::os::raw::c_int,
@@ -793,94 +814,52 @@ pub struct _PyCoreConfig {
     pub show_alloc_count: ::std::os::raw::c_int,
     pub dump_refs: ::std::os::raw::c_int,
     pub malloc_stats: ::std::os::raw::c_int,
-    pub coerce_c_locale: ::std::os::raw::c_int,
-    pub coerce_c_locale_warn: ::std::os::raw::c_int,
-    pub utf8_mode: ::std::os::raw::c_int,
+    pub filesystem_encoding: *mut wchar_t,
+    pub filesystem_errors: *mut wchar_t,
+    pub pycache_prefix: *mut wchar_t,
+    pub parse_argv: ::std::os::raw::c_int,
+    pub argv: PyWideStringList,
     pub program_name: *mut wchar_t,
-    pub argc: ::std::os::raw::c_int,
-    pub argv: *mut *mut wchar_t,
-    pub program: *mut wchar_t,
-    pub nxoption: ::std::os::raw::c_int,
-    pub xoptions: *mut *mut wchar_t,
-    pub nwarnoption: ::std::os::raw::c_int,
-    pub warnoptions: *mut *mut wchar_t,
-    pub module_search_path_env: *mut wchar_t,
+    pub xoptions: PyWideStringList,
+    pub warnoptions: PyWideStringList,
+    pub site_import: ::std::os::raw::c_int,
+    pub bytes_warning: ::std::os::raw::c_int,
+    pub inspect: ::std::os::raw::c_int,
+    pub interactive: ::std::os::raw::c_int,
+    pub optimization_level: ::std::os::raw::c_int,
+    pub parser_debug: ::std::os::raw::c_int,
+    pub write_bytecode: ::std::os::raw::c_int,
+    pub verbose: ::std::os::raw::c_int,
+    pub quiet: ::std::os::raw::c_int,
+    pub user_site_directory: ::std::os::raw::c_int,
+    pub configure_c_stdio: ::std::os::raw::c_int,
+    pub buffered_stdio: ::std::os::raw::c_int,
+    pub stdio_encoding: *mut wchar_t,
+    pub stdio_errors: *mut wchar_t,
+    pub check_hash_pycs_mode: *mut wchar_t,
+    pub pathconfig_warnings: ::std::os::raw::c_int,
+    pub pythonpath_env: *mut wchar_t,
     pub home: *mut wchar_t,
-    pub nmodule_search_path: ::std::os::raw::c_int,
-    pub module_search_paths: *mut *mut wchar_t,
+    pub module_search_paths_set: ::std::os::raw::c_int,
+    pub module_search_paths: PyWideStringList,
     pub executable: *mut wchar_t,
+    pub base_executable: *mut wchar_t,
     pub prefix: *mut wchar_t,
     pub base_prefix: *mut wchar_t,
     pub exec_prefix: *mut wchar_t,
     pub base_exec_prefix: *mut wchar_t,
-    pub _disable_importlib: ::std::os::raw::c_int,
+    pub skip_source_first_line: ::std::os::raw::c_int,
+    pub run_command: *mut wchar_t,
+    pub run_module: *mut wchar_t,
+    pub run_filename: *mut wchar_t,
+    pub _install_importlib: ::std::os::raw::c_int,
+    pub _init_main: ::std::os::raw::c_int,
 }
-impl Default for _PyCoreConfig {
+impl Default for PyConfig {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct _PyMainInterpreterConfig {
-    pub install_signal_handlers: ::std::os::raw::c_int,
-    pub argv: *mut PyObject,
-    pub executable: *mut PyObject,
-    pub prefix: *mut PyObject,
-    pub base_prefix: *mut PyObject,
-    pub exec_prefix: *mut PyObject,
-    pub base_exec_prefix: *mut PyObject,
-    pub warnoptions: *mut PyObject,
-    pub xoptions: *mut PyObject,
-    pub module_search_path: *mut PyObject,
-}
-impl Default for _PyMainInterpreterConfig {
-    fn default() -> Self {
-        unsafe { ::std::mem::zeroed() }
-    }
-}
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct _is {
-    pub next: *mut _is,
-    pub tstate_head: *mut _ts,
-    pub id: i64,
-    pub id_refcount: i64,
-    pub id_mutex: PyThread_type_lock,
-    pub modules: *mut PyObject,
-    pub modules_by_index: *mut PyObject,
-    pub sysdict: *mut PyObject,
-    pub builtins: *mut PyObject,
-    pub importlib: *mut PyObject,
-    pub check_interval: ::std::os::raw::c_int,
-    pub num_threads: ::std::os::raw::c_long,
-    pub pythread_stacksize: usize,
-    pub codec_search_path: *mut PyObject,
-    pub codec_search_cache: *mut PyObject,
-    pub codec_error_registry: *mut PyObject,
-    pub codecs_initialized: ::std::os::raw::c_int,
-    pub fscodec_initialized: ::std::os::raw::c_int,
-    pub core_config: _PyCoreConfig,
-    pub config: _PyMainInterpreterConfig,
-    pub dlopenflags: ::std::os::raw::c_int,
-    pub builtins_copy: *mut PyObject,
-    pub import_func: *mut PyObject,
-    pub eval_frame: _PyFrameEvalFunction,
-    pub co_extra_user_count: Py_ssize_t,
-    pub co_extra_freefuncs: [freefunc; 255usize],
-    pub before_forkers: *mut PyObject,
-    pub after_forkers_parent: *mut PyObject,
-    pub after_forkers_child: *mut PyObject,
-    pub pyexitfunc: ::std::option::Option<unsafe extern "C" fn(arg1: *mut PyObject)>,
-    pub pyexitmodule: *mut PyObject,
-    pub tstate_next_unique_id: u64,
-}
-impl Default for _is {
-    fn default() -> Self {
-        unsafe { ::std::mem::zeroed() }
-    }
-}
-pub type PyInterpreterState = _is;
 pub type Py_tracefunc = ::std::option::Option<
     unsafe extern "C" fn(
         arg1: *mut PyObject,
@@ -934,8 +913,6 @@ pub struct _ts {
     pub on_delete: ::std::option::Option<unsafe extern "C" fn(arg1: *mut ::std::os::raw::c_void)>,
     pub on_delete_data: *mut ::std::os::raw::c_void,
     pub coroutine_origin_tracking_depth: ::std::os::raw::c_int,
-    pub coroutine_wrapper: *mut PyObject,
-    pub in_coroutine_wrapper: ::std::os::raw::c_int,
     pub async_gen_firstiter: *mut PyObject,
     pub async_gen_finalizer: *mut PyObject,
     pub context: *mut PyObject,
@@ -947,7 +924,6 @@ impl Default for _ts {
         unsafe { ::std::mem::zeroed() }
     }
 }
-pub type PyThreadState = _ts;
 pub type getter = ::std::option::Option<
     unsafe extern "C" fn(arg1: *mut PyObject, arg2: *mut ::std::os::raw::c_void) -> *mut PyObject,
 >;
@@ -979,9 +955,15 @@ pub struct PyMemberDef {
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
+pub struct _PyOpcache {
+    _unused: [u8; 0],
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
 pub struct PyCodeObject {
     pub ob_base: PyObject,
     pub co_argcount: ::std::os::raw::c_int,
+    pub co_posonlyargcount: ::std::os::raw::c_int,
     pub co_kwonlyargcount: ::std::os::raw::c_int,
     pub co_nlocals: ::std::os::raw::c_int,
     pub co_stacksize: ::std::os::raw::c_int,
@@ -1000,12 +982,26 @@ pub struct PyCodeObject {
     pub co_zombieframe: *mut ::std::os::raw::c_void,
     pub co_weakreflist: *mut PyObject,
     pub co_extra: *mut ::std::os::raw::c_void,
+    pub co_opcache_map: *mut ::std::os::raw::c_uchar,
+    pub co_opcache: *mut _PyOpcache,
+    pub co_opcache_flag: ::std::os::raw::c_int,
+    pub co_opcache_size: ::std::os::raw::c_uchar,
 }
 impl Default for PyCodeObject {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
+pub const _Py_error_handler__Py_ERROR_UNKNOWN: _Py_error_handler = 0;
+pub const _Py_error_handler__Py_ERROR_STRICT: _Py_error_handler = 1;
+pub const _Py_error_handler__Py_ERROR_SURROGATEESCAPE: _Py_error_handler = 2;
+pub const _Py_error_handler__Py_ERROR_REPLACE: _Py_error_handler = 3;
+pub const _Py_error_handler__Py_ERROR_IGNORE: _Py_error_handler = 4;
+pub const _Py_error_handler__Py_ERROR_BACKSLASHREPLACE: _Py_error_handler = 5;
+pub const _Py_error_handler__Py_ERROR_SURROGATEPASS: _Py_error_handler = 6;
+pub const _Py_error_handler__Py_ERROR_XMLCHARREFREPLACE: _Py_error_handler = 7;
+pub const _Py_error_handler__Py_ERROR_OTHER: _Py_error_handler = 8;
+pub type _Py_error_handler = u32;
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct PyTryBlock {
@@ -1072,6 +1068,79 @@ pub struct _dictkeysobject {
     pub dk_indices: __IncompleteArrayField<::std::os::raw::c_char>,
 }
 impl Default for _dictkeysobject {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _warnings_runtime_state {
+    pub filters: *mut PyObject,
+    pub once_registry: *mut PyObject,
+    pub default_action: *mut PyObject,
+    pub filters_version: ::std::os::raw::c_long,
+}
+impl Default for _warnings_runtime_state {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+pub type _PyFrameEvalFunction = ::std::option::Option<
+    unsafe extern "C" fn(arg1: *mut _frame, arg2: ::std::os::raw::c_int) -> *mut PyObject,
+>;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _is {
+    pub next: *mut _is,
+    pub tstate_head: *mut _ts,
+    pub id: i64,
+    pub id_refcount: i64,
+    pub requires_idref: ::std::os::raw::c_int,
+    pub id_mutex: PyThread_type_lock,
+    pub finalizing: ::std::os::raw::c_int,
+    pub modules: *mut PyObject,
+    pub modules_by_index: *mut PyObject,
+    pub sysdict: *mut PyObject,
+    pub builtins: *mut PyObject,
+    pub importlib: *mut PyObject,
+    pub check_interval: ::std::os::raw::c_int,
+    pub num_threads: ::std::os::raw::c_long,
+    pub pythread_stacksize: usize,
+    pub codec_search_path: *mut PyObject,
+    pub codec_search_cache: *mut PyObject,
+    pub codec_error_registry: *mut PyObject,
+    pub codecs_initialized: ::std::os::raw::c_int,
+    pub fs_codec: _is__bindgen_ty_1,
+    pub config: PyConfig,
+    pub dlopenflags: ::std::os::raw::c_int,
+    pub dict: *mut PyObject,
+    pub builtins_copy: *mut PyObject,
+    pub import_func: *mut PyObject,
+    pub eval_frame: _PyFrameEvalFunction,
+    pub co_extra_user_count: Py_ssize_t,
+    pub co_extra_freefuncs: [freefunc; 255usize],
+    pub before_forkers: *mut PyObject,
+    pub after_forkers_parent: *mut PyObject,
+    pub after_forkers_child: *mut PyObject,
+    pub pyexitfunc: ::std::option::Option<unsafe extern "C" fn(arg1: *mut PyObject)>,
+    pub pyexitmodule: *mut PyObject,
+    pub tstate_next_unique_id: u64,
+    pub warnings: _warnings_runtime_state,
+    pub audit_hooks: *mut PyObject,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _is__bindgen_ty_1 {
+    pub encoding: *mut ::std::os::raw::c_char,
+    pub errors: *mut ::std::os::raw::c_char,
+    pub error_handler: _Py_error_handler,
+}
+impl Default for _is__bindgen_ty_1 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+impl Default for _is {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }

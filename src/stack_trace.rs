@@ -1,36 +1,75 @@
 use std;
+use std::sync::Arc;
 
 use failure::{Error, ResultExt};
-use remoteprocess::ProcessMemory;
 
-use python_interpreters::{InterpreterState, ThreadState, FrameObject, CodeObject, StringObject, BytesObject};
+use remoteprocess::{ProcessMemory, Pid, Process};
 
-#[derive(Debug)]
+use crate::python_interpreters::{InterpreterState, ThreadState, FrameObject, CodeObject, TupleObject};
+use crate::python_data_access::{copy_string, copy_bytes};
+
+/// Call stack for a single python thread
+#[derive(Debug, Clone, Serialize)]
 pub struct StackTrace {
+    /// The process id than generated this stack trace
+    pub pid: Pid,
+    /// The python thread id for this stack trace
     pub thread_id: u64,
+    // The python thread name for this stack trace
+    pub thread_name: Option<String>,
+    /// The OS thread id for this stack tracee
     pub os_thread_id: Option<u64>,
+    /// Whether or not the thread was active
     pub active: bool,
+    /// Whether or not the thread held the GIL
     pub owns_gil: bool,
-    pub frames: Vec<Frame>
+    /// The frames
+    pub frames: Vec<Frame>,
+    /// process commandline / parent process info
+    pub process_info: Option<Arc<ProcessInfo>>
 }
 
-#[derive(Debug, Hash, Eq, PartialEq, Ord, PartialOrd, Clone)]
+/// Information about a single function call in a stack trace
+#[derive(Debug, Hash, Eq, PartialEq, Ord, PartialOrd, Clone, Serialize)]
 pub struct Frame {
+    /// The function name
     pub name: String,
+    /// The full filename of the file
     pub filename: String,
+    /// The module/shared library the
     pub module: Option<String>,
+    /// A short, more readable, representation of the filename
     pub short_filename: Option<String>,
+    /// The line number inside the file (or 0 for native frames without line information)
     pub line: i32,
+    /// Local Variables associated with the frame
+    pub locals: Option<Vec<LocalVariable>>,
+}
+
+#[derive(Debug, Hash, Eq, PartialEq, Ord, PartialOrd, Clone, Serialize)]
+pub struct LocalVariable {
+    pub name: String,
+    pub addr: usize,
+    pub arg: bool,
+    pub repr: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProcessInfo {
+    pub pid:  Pid,
+    pub command_line: String,
+    pub parent: Option<Box<ProcessInfo>>
 }
 
 /// Given an InterpreterState, this function returns a vector of stack traces for each thread
-pub fn get_stack_traces<I, P>(interpreter: &I, process: &P) -> Result<(Vec<StackTrace>), Error>
-        where I: InterpreterState, P: ProcessMemory {
+pub fn get_stack_traces<I>(interpreter: &I, process: &Process) -> Result<Vec<StackTrace>, Error>
+        where I: InterpreterState {
+    // TODO: deprecate this method
     let mut ret = Vec::new();
     let mut threads = interpreter.head();
     while !threads.is_null() {
         let thread = process.copy_pointer(threads).context("Failed to copy PyThreadState")?;
-        ret.push(get_stack_trace(&thread, process)?);
+        ret.push(get_stack_trace(&thread, process, false)?);
         // This seems to happen occasionally when scanning BSS addresses for valid interpeters
         if ret.len() > 4096 {
             return Err(format_err!("Max thread recursion depth reached"));
@@ -41,8 +80,9 @@ pub fn get_stack_traces<I, P>(interpreter: &I, process: &P) -> Result<(Vec<Stack
 }
 
 /// Gets a stack trace for an individual thread
-pub fn get_stack_trace<T, P >(thread: &T, process: &P) -> Result<StackTrace, Error>
-        where T: ThreadState, P: ProcessMemory {
+pub fn get_stack_trace<T>(thread: &T, process: &Process, copy_locals: bool) -> Result<StackTrace, Error>
+        where T: ThreadState {
+    // TODO: just return frames here? everything else probably should be returned out of scope
     let mut frames = Vec::new();
     let mut frame_ptr = thread.frame();
     while !frame_ptr.is_null() {
@@ -51,9 +91,26 @@ pub fn get_stack_trace<T, P >(thread: &T, process: &P) -> Result<StackTrace, Err
 
         let filename = copy_string(code.filename(), process).context("Failed to copy filename")?;
         let name = copy_string(code.name(), process).context("Failed to copy function name")?;
-        let line = get_line_number(&code, frame.lasti(), process).context("Failed to get line number")?;
 
-        frames.push(Frame{name, filename, line, short_filename: None, module: None});
+        let line = match get_line_number(&code, frame.lasti(), process) {
+            Ok(line) => line,
+            Err(e) => {
+                // Failling to get the line number really shouldn't be fatal here, but
+                // can happen in extreme cases (https://github.com/benfred/py-spy/issues/164)
+                // Rather than fail set the linenumber to 0. This is used by the native extensions
+                // to indicate that we can't load a line number and it should be handled gracefully
+                warn!("Failed to get line number from {}.{}: {}", filename, name, e);
+                0
+            }
+        };
+
+        let locals = if copy_locals {
+            Some(get_locals(&code, frame_ptr, &frame, process)?)
+        } else {
+            None
+        };
+
+        frames.push(Frame{name, filename, line, short_filename: None, module: None, locals});
         if frames.len() > 4096 {
             return Err(format_err!("Max frame recursion depth reached"));
         }
@@ -61,23 +118,7 @@ pub fn get_stack_trace<T, P >(thread: &T, process: &P) -> Result<StackTrace, Err
         frame_ptr = frame.back();
     }
 
-    // figure out if the thread is running
-    let idle = if frames.is_empty() {
-        true
-    } else {
-        // TODO: better idle detection. This is just hackily looking at the
-        // function/file to figure out if the thread is waiting (which seems to handle
-        // most cases)
-        let frame = &frames[0];
-        (frame.name == "wait" && frame.filename.ends_with("threading.py")) ||
-        (frame.name == "select" && frame.filename.ends_with("selectors.py")) ||
-        (frame.name == "poll" && (frame.filename.ends_with("asyncore.py") ||
-                                  frame.filename.contains("zmq") ||
-                                  frame.filename.contains("gevent") ||
-                                  frame.filename.contains("tornado")))
-    };
-
-    Ok(StackTrace{frames, thread_id: thread.thread_id(), owns_gil: false, active: !idle, os_thread_id: None})
+    Ok(StackTrace{pid: process.pid, frames, thread_id: thread.thread_id(), thread_name: None, owns_gil: false, active: true, os_thread_id: None, process_info: None})
 }
 
 impl StackTrace {
@@ -86,6 +127,19 @@ impl StackTrace {
             (_, false) => "idle",
             (true, true) => "active+gil",
             (false, true) => "active",
+        }
+    }
+
+    pub fn format_threadid(&self) -> String {
+        // native threadids in osx are kinda useless, use the pthread id instead
+        #[cfg(target_os="macos")]
+        return format!("{:#X}", self.thread_id);
+
+        // otherwise use the native threadid if given
+        #[cfg(not(target_os="macos"))]
+        match self.os_thread_id {
+            Some(tid) => format!("{}", tid),
+            None => format!("{:#X}", self.thread_id)
         }
     }
 }
@@ -106,97 +160,56 @@ fn get_line_number<C: CodeObject, P: ProcessMemory>(code: &C, lasti: i32, proces
             break;
         }
 
-        line_number += i32::from(table[i + 1]);
+        let mut increment = i32::from(table[i + 1]);
+        // Handle negative line increments in the line number table - as shown here:
+        // https://github.com/python/cpython/blob/143a97f6/Objects/lnotab_notes.txt#L48-L49
+        if increment >= 0x80 {
+            increment -= 0x100;
+        }
+        line_number += increment;
         i += 2;
     }
 
     Ok(line_number)
 }
 
-/// Copies a string from a target process. Attempts to handle unicode differences, which mostly seems to be working
-pub fn copy_string<T: StringObject, P: ProcessMemory>(ptr: * const T, process: &P) -> Result<String, Error> {
-    let obj = process.copy_pointer(ptr)?;
-    if obj.size() >= 4096 {
-        return Err(format_err!("Refusing to copy {} chars of a string", obj.size()));
+fn get_locals<C: CodeObject, F: FrameObject, P: ProcessMemory>(code: &C, frameptr: *const F, frame: &F, process: &P)
+        -> Result<Vec<LocalVariable>, Error> {
+    let local_count = code.nlocals() as usize;
+    let argcount = code.argcount() as usize;
+    let varnames = process.copy_pointer(code.varnames())?;
+
+    let ptr_size = std::mem::size_of::<*const i32>();
+    let locals_addr = frameptr as usize + std::mem::size_of_val(frame) - ptr_size;
+
+    let mut ret = Vec::new();
+
+    for i in 0..local_count {
+        let nameptr: *const C::StringObject = process.copy_struct(varnames.address(code.varnames() as usize, i))?;
+        let name = copy_string(nameptr, process)?;
+        let addr: usize = process.copy_struct(locals_addr + i * ptr_size)?;
+        if addr == 0 {
+            continue;
+        }
+        ret.push(LocalVariable{name, addr, arg: i < argcount, repr: None});
     }
-
-    let kind = obj.kind();
-
-    let bytes = process.copy(obj.address(ptr as usize), obj.size() * kind as usize)?;
-
-    match (kind, obj.ascii()) {
-        (4, _) => {
-            #[allow(clippy::cast_ptr_alignment)]
-            let chars = unsafe { std::slice::from_raw_parts(bytes.as_ptr() as * const char, bytes.len() / 4) };
-            Ok(chars.iter().collect())
-        },
-        (2, _) => {
-            // UCS2 strings aren't used internally after v3.3: https://www.python.org/dev/peps/pep-0393/
-            // TODO: however with python 2.7 they could be added with --enable-unicode=ucs2 configure flag.
-            //            or with python 3.2 --with-wide-unicode=ucs2
-            Err(format_err!("ucs2 strings aren't supported yet!"))
-        },
-        (1, true) => Ok(String::from_utf8(bytes)?),
-        (1, false) => Ok(bytes.iter().map(|&b| { b as char }).collect()),
-        _ => Err(format_err!("Unknown string kind {}", kind))
-    }
+    Ok(ret)
 }
 
-/// Copies data from a PyBytesObject (currently only lnotab object)
-pub fn copy_bytes<T: BytesObject, P: ProcessMemory>(ptr: * const T, process: &P) -> Result<Vec<u8>, Error> {
-    let obj = process.copy_pointer(ptr)?;
-    let size = obj.size();
-    if size >= 8192 {
-        return Err(format_err!("Refusing to copy {} bytes", size));
+impl ProcessInfo {
+    pub fn to_frame(&self) -> Frame {
+        Frame{name: format!("process {}:\"{}\"", self.pid, self.command_line),
+            filename: String::from(""),
+            module: None, short_filename: None, line: 0, locals: None}
     }
-    Ok(process.copy(obj.address(ptr as usize), size as usize)?)
 }
 
 #[cfg(test)]
 mod tests {
-    // the idea here is to create various cpython interpretator structs locally
-    // and then test out that the above code handles appropiately
     use super::*;
     use remoteprocess::LocalProcess;
-    use python_bindings::v3_7_0::{PyCodeObject, PyBytesObject, PyVarObject, PyUnicodeObject, PyASCIIObject};
-    use std::ptr::copy_nonoverlapping;
-
-    // python stores data after pybytesobject/pyasciiobject. hack by initializing a 4k buffer for testing.
-    // TODO: get better at Rust and figure out a better solution
-    #[allow(dead_code)]
-    struct AllocatedPyByteObject {
-        base: PyBytesObject,
-        storage: [u8; 4096]
-    }
-
-    #[allow(dead_code)]
-    struct AllocatedPyASCIIObject {
-        base: PyASCIIObject,
-        storage: [u8; 4096]
-    }
-
-    fn to_byteobject(bytes: &[u8]) -> AllocatedPyByteObject {
-        let ob_size = bytes.len() as isize;
-        let base = PyBytesObject{ob_base: PyVarObject{ob_size, ..Default::default()}, ..Default::default()};
-        let mut ret = AllocatedPyByteObject{base, storage: [0 as u8; 4096]};
-        unsafe { copy_nonoverlapping(bytes.as_ptr(), ret.base.ob_sval.as_mut_ptr() as *mut u8, bytes.len()); }
-        ret
-    }
-
-    fn to_asciiobject(input: &str) -> AllocatedPyASCIIObject {
-        let bytes: Vec<u8> = input.bytes().collect();
-        let mut base = PyASCIIObject{length: bytes.len() as isize, ..Default::default()};
-        base.state.set_compact(1);
-        base.state.set_kind(1);
-        base.state.set_ascii(1);
-        let mut ret = AllocatedPyASCIIObject{base, storage: [0 as u8; 4096]};
-        unsafe {
-            let ptr = &mut ret as *mut AllocatedPyASCIIObject as *mut u8;
-            let dst = ptr.offset(std::mem::size_of::<PyASCIIObject>() as isize);
-            copy_nonoverlapping(bytes.as_ptr(), dst, bytes.len());
-        }
-        ret
-    }
+    use python_bindings::v3_7_0::{PyCodeObject};
+    use python_data_access::tests::to_byteobject;
 
     #[test]
     fn test_get_line_number() {
@@ -206,23 +219,5 @@ mod tests {
                                 ..Default::default()};
         let lineno = get_line_number(&code, 30, &LocalProcess).unwrap();
         assert_eq!(lineno, 7);
-    }
-
-    #[test]
-    fn test_copy_string() {
-        let original = "function_name";
-        let obj = to_asciiobject(original);
-
-        let unicode: &PyUnicodeObject = unsafe{ std::mem::transmute(&obj.base) };
-        let copied = copy_string(unicode, &LocalProcess).unwrap();
-        assert_eq!(copied, original);
-    }
-
-    #[test]
-    fn test_copy_bytes() {
-        let original = [10_u8, 20, 30, 40, 50, 70, 80];
-        let bytes = to_byteobject(&original);
-        let copied = copy_bytes(&bytes.base, &LocalProcess).unwrap();
-        assert_eq!(copied, original);
     }
 }
