@@ -9,7 +9,7 @@ program is spending time on without restarting the program or modifying the code
 py-spy is extremely low overhead: it is written in Rust for speed and doesn't run
 in the same process as the profiled Python program. This means py-spy is safe to use against production Python code.
 
-py-spy works on Linux, OSX, Windows and FreeBSD, and supports profiling all recent versions of the CPython
+py-spy works on Linux, OSX, Windows, and FreeBSD, and supports profiling all recent versions of the CPython
 interpreter (versions 2.3-2.7 and 3.3-3.8).
 
 ## Installation
@@ -56,7 +56,7 @@ showing thread-ids, profiling subprocesses and more.
 ### top
 
 Top shows a live view of what functions are taking the most time in your python program, similar
-to the unix [top](https://linux.die.net/man/1/top) command. Running py-spy with:
+to the Unix [top](https://linux.die.net/man/1/top) command. Running py-spy with:
 
 ``` bash
 py-spy top --pid 12345
@@ -64,7 +64,7 @@ py-spy top --pid 12345
 py-spy top -- python myprogram.py
 ```
 
-will bring up a live updating high level view of your python program:
+will bring up a live-updating high-level view of your python program:
 
 ![console viewer demo](./images/console_viewer.gif)
 
@@ -89,7 +89,7 @@ associated with each stack frame by setting the ```--locals``` flag.
 
 ### Why do we need another Python profiler?
 
-This project aims to let you profile and debug any running Python program, even if the program is
+This project aims to let your profile and debug any running Python program, even if the program is
 serving production traffic.
 
 While there are many other python profiling projects, almost all of them require modifying
@@ -97,8 +97,7 @@ the profiled program in some way. Usually, the profiling code runs inside of the
 which will slow down and change how the program operates. This means it's not generally safe
 to use these profilers for debugging issues in production services since they will usually have
 a noticeable impact on performance. The only other Python profiler
-that runs totally in a separate process is [pyflame](https://github.com/uber/pyflame), which profiles
- remote python processes by using the ptrace system call. While pyflame is a great project,
+that runs totally in a separate process is [pyflame](https://github.com/uber/pyflame), which profiles remote python processes by using the ptrace system call. While pyflame is a great project,
  it doesn't support Python 3.7 yet and doesn't work on OSX, Windows or FreeBSD.
 
 ### How does py-spy work?
@@ -110,15 +109,15 @@ or the [ReadProcessMemory](https://msdn.microsoft.com/en-us/library/windows/desk
 on Windows.
 
 Figuring out the call stack of the Python program is done by looking at the global PyInterpreterState variable
- to get all the Python threads running in the interpreter, and then iterating over each PyFrameObject in each thread
- to get the call stack. Since the Python ABI changes between versions, we use rust's [bindgen](https://github.com/rust-lang-nursery/rust-bindgen) to generate different rust structures for each Python interpreter
- class we care about and use these generated structs to figure out the memory layout in the Python program.
+to get all the Python threads running in the interpreter, and then iterating over each PyFrameObject in each thread
+to get the call stack. Since the Python ABI changes between versions, we use rust's [bindgen](https://github.com/rust-lang-nursery/rust-bindgen) to generate different rust structures for each Python interpreter
+class we care about and use these generated structs to figure out the memory layout in the Python program.
 
 Getting the memory address of the Python Interpreter can be a little tricky due to [Address Space Layout Randomization](https://en.wikipedia.org/wiki/Address_space_layout_randomization). If the target python interpreter ships
 with symbols it is pretty easy to figure out the memory address of the interpreter by dereferencing the
 ```interp_head```  or ```_PyRuntime``` variables depending on the Python version. However, many Python
 versions are shipped with either stripped binaries or shipped without the corresponding PDB symbol files on Windows. In
-these cases we scan through the BSS section for addresses that look like they may point to a valid PyInterpreterState
+these cases, we scan through the BSS section for addresses that look like they may point to a valid PyInterpreterState
 and check if the layout of that address is what we expect.
 
 
@@ -126,7 +125,7 @@ and check if the layout of that address is what we expect.
 
 Yes! py-spy supports profiling native python extensions written in languages like C/C++ or Cython,
 on x86_64 Linux and Windows. You can enable this mode by passing ```--native``` on the
-commandline. For best results, you should compile your Python extension with symbols. Also worth
+command-line. For best results, you should compile your Python extension with symbols. Also worth
 noting for Cython programs is that py-spy needs the generated C or C++ file in order to return line
 numbers of the original .pyx file.  Read the [blog post](https://www.benfrederickson.com/profiling-native-python-extensions-with-py-spy/)
 for more information.
@@ -166,7 +165,7 @@ marked as active. First off, we have to get this thread activity information bef
 program, because getting this from a paused program will cause it to always return that this is
 idle. This means there is a potential race condition, where we get the thread activity and
 then the thread is in a different state when we get the stack trace. Querying the OS for thread
-activity also isn't implemented yet for FreeBSD and i686/ARM processors on linux. On windows,
+activity also isn't implemented yet for FreeBSD and i686/ARM processors on Linux. On windows,
 calls that are blocked on IO also won't be marked as idle yet, for instance when reading input
 from stdin. Finally, on some Linux calls the ptrace attach that we are using may cause idle threads
 to wake up momentarily, causing false positives when reading from procfs. For these reasons, 
@@ -206,7 +205,7 @@ This error is caused by docker restricting the process_vm_readv system call we a
 be overridden by setting
 [```--cap-add SYS_PTRACE```](https://docs.docker.com/engine/security/seccomp/) when starting the docker container.
 
-Alternatively you can edit the docker-compose yaml file
+Alternatively, you can edit the docker-compose yaml file
 
 ```
 your_service:
@@ -238,11 +237,11 @@ Note that this will remove the existing pods and create those again.
 ### How do I install py-spy on Alpine Linux?
 
 Alpine python opts out of the `manylinux` wheels: [pypa/pip#3969 (comment)](https://github.com/pypa/pip/issues/3969#issuecomment-247381915).
-You can override this behaviour to use pip to install py-spy on Alpine by going:
+You can override this behavior to use pip to install py-spy on Alpine by going:
 
     echo 'manylinux1_compatible = True' > /usr/local/lib/python3.7/site-packages/_manylinux.py
 
-Alternatively you can download a musl binary from the [GitHub releases page](https://github.com/benfred/py-spy/releases).
+Alternatively, you can download a musl binary from the [GitHub releases page](https://github.com/benfred/py-spy/releases).
 
 ### How can I avoid pausing the Python program?
 
