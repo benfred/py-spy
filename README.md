@@ -273,7 +273,7 @@ this is being installed onto.
 
 Not yet =).
 
-If there are features you'd like to see in py-spy either thumb up the [appropiate
+If there are features you'd like to see in py-spy either thumb up the [appropriate
 issue](https://github.com/benfred/py-spy/issues?q=is%3Aissue+is%3Aopen+sort%3Areactions-%2B1-desc) or create a new one that describes what functionality is missing. 
 
 
