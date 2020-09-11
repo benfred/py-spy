@@ -47,7 +47,7 @@ pub struct Config {
     #[doc(hidden)]
     pub dump_json: bool,
     #[doc(hidden)]
-    pub dump_locals: bool,
+    pub dump_locals: u64,
 }
 
 arg_enum!{
@@ -83,7 +83,7 @@ impl Default for Config {
                blocking: LockingStrategy::Lock, show_line_numbers: false, sampling_rate: 100,
                duration: RecordDuration::Unlimited, native: false,
                gil_only: false, include_idle: false, include_thread_ids: false,
-               hide_progress: false, capture_output: true, dump_json: false, dump_locals: false, subprocesses: false}
+               hide_progress: false, capture_output: true, dump_json: false, dump_locals: 0, subprocesses: false}
     }
 }
 
@@ -200,7 +200,8 @@ impl Config {
             .arg(Arg::with_name("locals")
                 .short("l")
                 .long("locals")
-                .help("Show local variables for each frame"))
+                .multiple(true)
+                .help("Show local variables for each frame. Passing multiple times (-ll) increases verbosity"))
             .arg(Arg::with_name("json")
                 .short("j")
                 .long("json")
@@ -270,7 +271,7 @@ impl Config {
         config.native = matches.occurrences_of("native") > 0;
         config.hide_progress = matches.occurrences_of("hideprogress") > 0;
         config.dump_json = matches.occurrences_of("json") > 0;
-        config.dump_locals = matches.occurrences_of("locals") > 0;
+        config.dump_locals = matches.occurrences_of("locals");
         config.subprocesses = matches.occurrences_of("subprocesses") > 0;
 
         config.capture_output = config.command != "record" || matches.occurrences_of("capture") > 0;
