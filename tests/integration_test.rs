@@ -219,7 +219,7 @@ fn test_local_vars() {
         }
     }
 
-    let config = Config{dump_locals: true, ..Default::default()};
+    let config = Config{dump_locals: 1, ..Default::default()};
     let mut runner = TestRunner::new(config, "./tests/scripts/local_vars.py");
 
     let traces = runner.spy.get_stack_traces().unwrap();
