@@ -32,7 +32,7 @@ serde = {version="1.0", features=["rc"]}
 serde_derive = "1.0"
 serde_json = "1.0"
 rand = "0.7"
-rand_distr = "0.2"
+rand_distr = "0.3"
 remoteprocess = {version="0.3.4", features=["unwind"]}
 
 [target.'cfg(unix)'.dependencies]
