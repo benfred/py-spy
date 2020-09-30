@@ -1,4 +1,4 @@
-py-spy: Sampling profiler for Python programs
+py-spy: Sampling profiler for Python programs:
 =====
 [![Build Status](https://travis-ci.org/benfred/py-spy.svg?branch=master)](https://travis-ci.org/benfred/py-spy)
 [![Windows Build status](https://ci.appveyor.com/api/projects/status/x0jwd5ygaybsa0md?svg=true)](https://ci.appveyor.com/project/benfred/py-spy)
@@ -12,7 +12,7 @@ in the same process as the profiled Python program. This means py-spy is safe to
 py-spy works on Linux, OSX, Windows and FreeBSD, and supports profiling all recent versions of the CPython
 interpreter (versions 2.3-2.7 and 3.3-3.8).
 
-## Installation
+## Installation:
 
 Prebuilt binary wheels can be installed from PyPI with:
 
@@ -25,13 +25,13 @@ Page](https://github.com/benfred/py-spy/releases). This includes binaries for AR
 which can't be installed using pip. If you're a Rust user, py-spy can also be installed with: ```cargo install py-spy```. On Arch Linux, [py-spy is in AUR](https://aur.archlinux.org/packages/py-spy/) and can be
 installed with ```yay -S py-spy```.
 
-## Usage
+## Usage:
 
 py-spy works from the command line and takes either the PID of the program you want to sample from
 or the command line of the python program you want to run. py-spy has three subcommands
 ```record```, ```top``` and ```dump```:
 
-### record
+### record:
 
 py-spy supports recording profiles to a file using the ```record``` command. For example, you can
 generate a [flame graph](http://www.brendangregg.com/flamegraphs.html) of your python process by
@@ -53,7 +53,7 @@ See ```py-spy record --help``` for information on other options including changi
 the sampling rate, filtering to only include threads that hold the GIL, profiling native C extensions,
 showing thread-ids, profiling subprocesses and more.
 
-### top
+### top:
 
 Top shows a live view of what functions are taking the most time in your python program, similar
 to the unix [top](https://linux.die.net/man/1/top) command. Running py-spy with:
@@ -68,7 +68,7 @@ will bring up a live updating high level view of your python program:
 
 ![console viewer demo](./images/console_viewer.gif)
 
-### dump
+### dump:
 
 py-spy can also display the current call stack for each python thread with the ```dump``` command:
 
@@ -85,7 +85,7 @@ This is useful for the case where you just need a single call stack to figure ou
 python program is hung on. This command also has the ability to print out the local variables
 associated with each stack frame by setting the ```--locals``` flag.
 
-## Frequently Asked Questions
+## FREQUENTLY ASKED QUESTIONS:-
 
 ### Why do we need another Python profiler?
 
@@ -278,12 +278,12 @@ If there are features you'd like to see in py-spy either thumb up the [appropiat
 issue](https://github.com/benfred/py-spy/issues?q=is%3Aissue+is%3Aopen+sort%3Areactions-%2B1-desc) or create a new one that describes what functionality is missing. 
 
 
-## Credits
+## Credits:
 
 py-spy is heavily inspired by [Julia Evans](https://github.com/jvns/) excellent work on [rbspy](http://github.com/rbspy/rbspy).
 In particular, the code to generate flamegraph and speedscope files is taken directly from rbspy, and this project uses the
 [read-process-memory](https://github.com/luser/read-process-memory) and [proc-maps](https://github.com/benfred/proc-maps) crates that were spun off from rbspy.
 
-## License
+## License:
 
 py-spy is released under the MIT License, see the [LICENSE](https://github.com/benfred/py-spy/blob/master/LICENSE) file for the full text.
