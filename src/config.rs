@@ -48,9 +48,13 @@ pub struct Config {
     pub dump_json: bool,
     #[doc(hidden)]
     pub dump_locals: u64,
+    #[doc(hidden)]
+    pub trace_line: Option<String>,
+    #[doc(hidden)]
+    pub trace_locals: u64,
 }
 
-arg_enum!{
+arg_enum! {
     #[derive(Debug, Clone, Eq, PartialEq)]
     #[allow(non_camel_case_types)]
     pub enum FileFormat {
@@ -65,25 +69,41 @@ pub enum LockingStrategy {
     NonBlocking,
     #[allow(dead_code)]
     AlreadyLocked,
-    Lock
+    Lock,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum RecordDuration {
     Unlimited,
-    Seconds(u64)
+    Seconds(u64),
 }
 
 impl Default for Config {
     /// Initializes a new Config object with default parameters
     #[allow(dead_code)]
     fn default() -> Config {
-        Config{pid: None, python_program: None, filename: None, format: None,
-               command: String::from("top"),
-               blocking: LockingStrategy::Lock, show_line_numbers: false, sampling_rate: 100,
-               duration: RecordDuration::Unlimited, native: false,
-               gil_only: false, include_idle: false, include_thread_ids: false,
-               hide_progress: false, capture_output: true, dump_json: false, dump_locals: 0, subprocesses: false}
+        Config {
+            pid: None,
+            python_program: None,
+            filename: None,
+            format: None,
+            command: String::from("top"),
+            blocking: LockingStrategy::Lock,
+            show_line_numbers: false,
+            sampling_rate: 100,
+            duration: RecordDuration::Unlimited,
+            native: false,
+            gil_only: false,
+            include_idle: false,
+            include_thread_ids: false,
+            hide_progress: false,
+            capture_output: true,
+            dump_json: false,
+            dump_locals: 0,
+            trace_line: None,
+            trace_locals: 0,
+            subprocesses: false,
+        }
     }
 }
 
@@ -91,47 +111,47 @@ impl Config {
     /// Uses clap to set config options from commandline arguments
     pub fn from_commandline() -> Config {
         let args: Vec<String> = std::env::args().collect();
-        Config::from_args(&args).unwrap_or_else( |e| e.exit() )
+        Config::from_args(&args).unwrap_or_else(|e| e.exit())
     }
 
     pub fn from_args(args: &[String]) -> clap::Result<Config> {
         // pid/native/nonblocking/rate/pythonprogram arguments can be
         // used across various subcommand - define once here
         let pid = Arg::with_name("pid")
-                    .short("p")
-                    .long("pid")
-                    .value_name("pid")
-                    .help("PID of a running python program to spy on")
-                    .takes_value(true)
-                    .required_unless("python_program");
+            .short("p")
+            .long("pid")
+            .value_name("pid")
+            .help("PID of a running python program to spy on")
+            .takes_value(true)
+            .required_unless("python_program");
         #[cfg(unwind)]
-        let native = Arg::with_name("native")
-                    .short("n")
-                    .long("native")
-                    .help("Collect stack traces from native extensions written in Cython, C or C++");
+            let native = Arg::with_name("native")
+            .short("n")
+            .long("native")
+            .help("Collect stack traces from native extensions written in Cython, C or C++");
 
-        #[cfg(not(target_os="freebsd"))]
-        let nonblocking = Arg::with_name("nonblocking")
-                    .long("nonblocking")
-                    .help("Don't pause the python process when collecting samples. Setting this option will reduce \
+        #[cfg(not(target_os = "freebsd"))]
+            let nonblocking = Arg::with_name("nonblocking")
+            .long("nonblocking")
+            .help("Don't pause the python process when collecting samples. Setting this option will reduce \
                           the perfomance impact of sampling, but may lead to inaccurate results");
 
         let rate = Arg::with_name("rate")
-                    .short("r")
-                    .long("rate")
-                    .value_name("rate")
-                    .help("The number of samples to collect per second")
-                    .default_value("100")
-                    .takes_value(true);
+            .short("r")
+            .long("rate")
+            .value_name("rate")
+            .help("The number of samples to collect per second")
+            .default_value("100")
+            .takes_value(true);
 
-    let subprocesses = Arg::with_name("subprocesses")
-        .short("s")
-        .long("subprocesses")
-        .help("Profile subprocesses of the original process");
+        let subprocesses = Arg::with_name("subprocesses")
+            .short("s")
+            .long("subprocesses")
+            .help("Profile subprocesses of the original process");
 
         let program = Arg::with_name("python_program")
-                    .help("commandline of a python program to run")
-                    .multiple(true);
+            .help("commandline of a python program to run")
+            .multiple(true);
 
         let record = clap::SubCommand::with_name("record")
             .about("Records stack trace information to a flamegraph, speedscope or raw file")
@@ -207,21 +227,37 @@ impl Config {
                 .long("json")
                 .help("Format output as JSON"));
 
+        let trace = clap::SubCommand::with_name("trace")
+            .about("Dumps trace")
+            .arg(pid.clone().required(true))
+            .arg(Arg::with_name("locals")
+                .long("locals")
+                .multiple(true)
+                .help("Show local variables for each frame. Passing multiple times (-ll) increases verbosity"))
+            .arg(Arg::with_name("line")
+                .long("line")
+                .value_name("line")
+                .help("trace_line"));
+
         // add native unwinding if appropiate
         #[cfg(unwind)]
-        let record = record.arg(native.clone());
+            let record = record.arg(native.clone());
         #[cfg(unwind)]
-        let top = top.arg(native.clone());
+            let top = top.arg(native.clone());
         #[cfg(unwind)]
-        let dump = dump.arg(native.clone());
+            let dump = dump.arg(native.clone());
+        #[cfg(unwind)]
+            let trace = trace.arg(native.clone());
 
         // Nonblocking isn't an option for freebsd, remove
-        #[cfg(not(target_os="freebsd"))]
-        let record = record.arg(nonblocking.clone());
-        #[cfg(not(target_os="freebsd"))]
-        let top = top.arg(nonblocking.clone());
-        #[cfg(not(target_os="freebsd"))]
-        let dump = dump.arg(nonblocking.clone());
+        #[cfg(not(target_os = "freebsd"))]
+            let record = record.arg(nonblocking.clone());
+        #[cfg(not(target_os = "freebsd"))]
+            let top = top.arg(nonblocking.clone());
+        #[cfg(not(target_os = "freebsd"))]
+            let dump = dump.arg(nonblocking.clone());
+        #[cfg(not(target_os = "freebsd"))]
+            let trace = trace.arg(nonblocking.clone());
 
         let matches = App::new(crate_name!())
             .version(crate_version!())
@@ -233,6 +269,7 @@ impl Config {
             .subcommand(record)
             .subcommand(top)
             .subcommand(dump)
+            .subcommand(trace)
             .get_matches_from_safe(args)?;
         info!("Command line args: {:?}", matches);
 
@@ -250,7 +287,7 @@ impl Config {
                 };
                 config.format = Some(value_t!(matches.value_of("format"), FileFormat).unwrap_or_else(|e| e.exit()));
                 config.filename = matches.value_of("output").map(|f| f.to_owned());
-            },
+            }
             "top" => {
                 config.sampling_rate = value_t!(matches, "rate", u64)?;
             }
@@ -272,6 +309,8 @@ impl Config {
         config.hide_progress = matches.occurrences_of("hideprogress") > 0;
         config.dump_json = matches.occurrences_of("json") > 0;
         config.dump_locals = matches.occurrences_of("locals");
+        config.trace_line = matches.value_of("line").map(|p| p.parse().expect("invalid line"));
+        config.trace_locals = matches.occurrences_of("locals");
         config.subprocesses = matches.occurrences_of("subprocesses") > 0;
 
         config.capture_output = config.command != "record" || matches.occurrences_of("capture") > 0;
@@ -281,7 +320,7 @@ impl Config {
 
         if matches.occurrences_of("nonblocking") > 0 {
             // disable native profiling if invalidly asked for
-            if config.native  {
+            if config.native {
                 eprintln!("Can't get native stack traces with the --nonblocking option.");
                 std::process::exit(1);
             }
@@ -289,28 +328,28 @@ impl Config {
         }
 
         #[cfg(windows)]
-        {
-            if config.native && config.subprocesses {
-                // the native extension profiling code relies on dbghelp library, which doesn't
-                // seem to work when connecting to multiple processes. disallow
-                eprintln!("Can't get native stack traces with the ---subprocesses option on windows.");
-                std::process::exit(1);
+            {
+                if config.native && config.subprocesses {
+                    // the native extension profiling code relies on dbghelp library, which doesn't
+                    // seem to work when connecting to multiple processes. disallow
+                    eprintln!("Can't get native stack traces with the ---subprocesses option on windows.");
+                    std::process::exit(1);
+                }
             }
-        }
 
-        #[cfg(target_os="freebsd")]
-        {
-           if config.pid.is_some() {
-               if std::env::var("PYSPY_ALLOW_FREEBSD_ATTACH").is_err() {
-                    eprintln!("On FreeBSD, running py-spy can cause an exception in the profiled process if the process \
+        #[cfg(target_os = "freebsd")]
+            {
+                if config.pid.is_some() {
+                    if std::env::var("PYSPY_ALLOW_FREEBSD_ATTACH").is_err() {
+                        eprintln!("On FreeBSD, running py-spy can cause an exception in the profiled process if the process \
                         is calling 'socket.connect'.");
-                    eprintln!("While this is fixed in recent versions of python, you need to acknowledge the risk here by \
+                        eprintln!("While this is fixed in recent versions of python, you need to acknowledge the risk here by \
                         setting an environment variable PYSPY_ALLOW_FREEBSD_ATTACH to run this command.");
-                    eprintln!("\nSee https://github.com/benfred/py-spy/issues/147 for more information");
-                    std::process::exit(-1);
-               }
+                        eprintln!("\nSee https://github.com/benfred/py-spy/issues/147 for more information");
+                        std::process::exit(-1);
+                    }
+                }
             }
-        }
         Ok(config)
     }
 }
@@ -318,9 +357,10 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     fn get_config(cmd: &str) -> clap::Result<Config> {
-        #[cfg(target_os="freebsd")]
-        std::env::set_var("PYSPY_ALLOW_FREEBSD_ATTACH", "1");
+        #[cfg(target_os = "freebsd")]
+            std::env::set_var("PYSPY_ALLOW_FREEBSD_ATTACH", "1");
         let args: Vec<String> = cmd.split_whitespace().map(|x| x.to_owned()).collect();
         Config::from_args(&args)
     }

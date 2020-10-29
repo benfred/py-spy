@@ -48,6 +48,7 @@ extern crate cpp_demangle;
 extern crate rand;
 extern crate rand_distr;
 extern crate remoteprocess;
+extern crate console;
 
 pub mod config;
 pub mod binary_parser;
@@ -65,6 +66,7 @@ mod stack_trace;
 pub mod timer;
 mod utils;
 mod version;
+mod trace;
 
 pub use python_spy::PythonSpy;
 pub use config::Config;
