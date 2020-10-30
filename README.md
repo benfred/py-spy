@@ -56,7 +56,7 @@ showing thread-ids, profiling subprocesses and more.
 ### top
 
 Top shows a live view of what functions are taking the most time in your python program, similar
-to the unix [top](https://linux.die.net/man/1/top) command. Running py-spy with:
+to the Unix [top](https://linux.die.net/man/1/top) command. Running py-spy with:
 
 ``` bash
 py-spy top --pid 12345
@@ -96,10 +96,7 @@ While there are many other python profiling projects, almost all of them require
 the profiled program in some way. Usually, the profiling code runs inside of the target python process,
 which will slow down and change how the program operates. This means it's not generally safe
 to use these profilers for debugging issues in production services since they will usually have
-a noticeable impact on performance. The only other Python profiler
-that runs totally in a separate process is [pyflame](https://github.com/uber/pyflame), which profiles
- remote python processes by using the ptrace system call. While pyflame is a great project,
- it doesn't support Python 3.7 yet and doesn't work on OSX, Windows or FreeBSD.
+a noticeable impact on performance.
 
 ### How does py-spy work?
 
@@ -110,9 +107,9 @@ or the [ReadProcessMemory](https://msdn.microsoft.com/en-us/library/windows/desk
 on Windows.
 
 Figuring out the call stack of the Python program is done by looking at the global PyInterpreterState variable
- to get all the Python threads running in the interpreter, and then iterating over each PyFrameObject in each thread
- to get the call stack. Since the Python ABI changes between versions, we use rust's [bindgen](https://github.com/rust-lang-nursery/rust-bindgen) to generate different rust structures for each Python interpreter
- class we care about and use these generated structs to figure out the memory layout in the Python program.
+to get all the Python threads running in the interpreter, and then iterating over each PyFrameObject in each thread
+to get the call stack. Since the Python ABI changes between versions, we use rust's [bindgen](https://github.com/rust-lang-nursery/rust-bindgen) to generate different rust structures for each Python interpreter
+class we care about and use these generated structs to figure out the memory layout in the Python program.
 
 Getting the memory address of the Python Interpreter can be a little tricky due to [Address Space Layout Randomization](https://en.wikipedia.org/wiki/Address_space_layout_randomization). If the target python interpreter ships
 with symbols it is pretty easy to figure out the memory address of the interpreter by dereferencing the
@@ -126,7 +123,7 @@ and check if the layout of that address is what we expect.
 
 Yes! py-spy supports profiling native python extensions written in languages like C/C++ or Cython,
 on x86_64 Linux and Windows. You can enable this mode by passing ```--native``` on the
-commandline. For best results, you should compile your Python extension with symbols. Also worth
+command line. For best results, you should compile your Python extension with symbols. Also worth
 noting for Cython programs is that py-spy needs the generated C or C++ file in order to return line
 numbers of the original .pyx file.  Read the [blog post](https://www.benfrederickson.com/profiling-native-python-extensions-with-py-spy/)
 for more information.
@@ -149,7 +146,7 @@ security settings.
 
 On Linux the default configuration is to require root permissions when attaching to a process that isn't a child.
 For py-spy this means you can profile without root access by getting py-spy to create the process (```py-spy -- python myprogram.py```) but attaching to an existing process by specifying a PID will usually require root (```sudo py-spy --pid 123456```).
-You can remove this restriction on linux by setting the [ptrace_scope sysctl variable](https://wiki.ubuntu.com/SecurityTeam/Roadmap/KernelHardening#ptrace_Protection).
+You can remove this restriction on Linux by setting the [ptrace_scope sysctl variable](https://wiki.ubuntu.com/SecurityTeam/Roadmap/KernelHardening#ptrace_Protection).
 
 ### How do you detect if a thread is idle or not?
 
@@ -166,7 +163,7 @@ marked as active. First off, we have to get this thread activity information bef
 program, because getting this from a paused program will cause it to always return that this is
 idle. This means there is a potential race condition, where we get the thread activity and
 then the thread is in a different state when we get the stack trace. Querying the OS for thread
-activity also isn't implemented yet for FreeBSD and i686/ARM processors on linux. On windows,
+activity also isn't implemented yet for FreeBSD and i686/ARM processors on Linux. On Windows,
 calls that are blocked on IO also won't be marked as idle yet, for instance when reading input
 from stdin. Finally, on some Linux calls the ptrace attach that we are using may cause idle threads
 to wake up momentarily, causing false positives when reading from procfs. For these reasons, 
@@ -274,7 +271,7 @@ this is being installed onto.
 
 Not yet =).
 
-If there are features you'd like to see in py-spy either thumb up the [appropiate
+If there are features you'd like to see in py-spy either thumb up the [appropriate
 issue](https://github.com/benfred/py-spy/issues?q=is%3Aissue+is%3Aopen+sort%3Areactions-%2B1-desc) or create a new one that describes what functionality is missing. 
 
 
