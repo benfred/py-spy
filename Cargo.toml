@@ -15,7 +15,7 @@ clap = {version="2", features=["wrap_help"]}
 console = "0.13"
 ctrlc = "3"
 indicatif = "0.15"
-env_logger = "0.7"
+env_logger = "0.8"
 failure = "0.1.8"
 goblin = "0.2.3"
 inferno = "0.10.1"
