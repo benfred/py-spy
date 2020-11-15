@@ -27,7 +27,7 @@ regex = "1"
 tempfile = "3.0.3"
 proc-maps = "0.1.6"
 memmap = "0.7.0"
-cpp_demangle = "0.3.0"
+cpp_demangle = "0.3.1"
 serde = {version="1.0", features=["rc"]}
 serde_derive = "1.0"
 serde_json = "1.0"
