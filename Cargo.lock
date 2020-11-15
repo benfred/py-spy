@@ -105,7 +105,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "46254cf2fdcdf1badb5934448c1bcbe046a56537b3987d96c51a7afc5d03f293"
 dependencies = [
  "addr2line 0.13.0",
- "cfg-if",
+ "cfg-if 0.1.10",
  "libc",
  "miniz_oxide",
  "object 0.20.0",
@@ -154,6 +154,12 @@ name = "cfg-if"
 version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4785bdd1c96b2a846b2bd7cc02e86b6b3dbf14e7e53446c4f54c92a361040822"
+
+[[package]]
+name = "cfg-if"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "clap"
@@ -213,17 +219,17 @@ version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c924384107361ca729c7d46b9134151b9a955ce99a773784f2777498e8552d"
 dependencies = [
- "cfg-if",
+ "cfg-if 0.1.10",
  "glob",
 ]
 
 [[package]]
 name = "cpp_demangle"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad49cad3673b9d586bc50cd92fdc0e9205ecd162d4206073d9774c4fe13a8fde"
+checksum = "6656dbc7c586cf2965887c3d066d9b983b20400bc2d52ed4cc5e33d0ceb2c602"
 dependencies = [
- "cfg-if",
+ "cfg-if 1.0.0",
  "glob",
 ]
 
@@ -233,7 +239,7 @@ version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba125de2af0df55319f41944744ad91c71113bf74a4646efff39afe1f6842db1"
 dependencies = [
- "cfg-if",
+ "cfg-if 0.1.10",
 ]
 
 [[package]]
@@ -253,7 +259,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3c7c73a2d1e9fc0886a08b93e98eb643461230d5f1925e4036204d5f2e261a8"
 dependencies = [
  "autocfg",
- "cfg-if",
+ "cfg-if 0.1.10",
  "lazy_static",
 ]
 
@@ -274,7 +280,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0f260e2fc850179ef410018660006951c1b55b79e8087e87111a2c388994b9b5"
 dependencies = [
  "ahash 0.3.8",
- "cfg-if",
+ "cfg-if 0.1.10",
  "num_cpus",
 ]
 
@@ -351,7 +357,7 @@ version = "1.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "766d0e77a2c1502169d4a93ff3b8c15a71fd946cd0126309752104e5f3c46d94"
 dependencies = [
- "cfg-if",
+ "cfg-if 0.1.10",
  "crc32fast",
  "libc",
  "miniz_oxide",
@@ -363,7 +369,7 @@ version = "0.1.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc587bc0ec293155d5bfa6b9891ec18a1e330c234f896ea47fbada4cadbe47e6"
 dependencies = [
- "cfg-if",
+ "cfg-if 0.1.10",
  "libc",
  "wasi",
 ]
@@ -566,7 +572,7 @@ version = "0.4.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4fabed175da42fed1fa0746b0ea71f412aa9d35e76e95e59b192c64b9dc2bf8b"
 dependencies = [
- "cfg-if",
+ "cfg-if 0.1.10",
 ]
 
 [[package]]
@@ -641,7 +647,7 @@ checksum = "50e4785f2c3b7589a0d0c1dd60285e1188adac4006e8abd6dd578e1567027363"
 dependencies = [
  "bitflags",
  "cc",
- "cfg-if",
+ "cfg-if 0.1.10",
  "libc",
  "void",
 ]
@@ -784,7 +790,7 @@ version = "0.3.3"
 dependencies = [
  "clap",
  "console",
- "cpp_demangle 0.3.0",
+ "cpp_demangle 0.3.1",
  "ctrlc",
  "env_logger 0.8.1",
  "failure",
@@ -1086,7 +1092,7 @@ version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a6e24d9338a0a5be79593e2fa15a648add6138caa803e2d5bc782c371732ca9"
 dependencies = [
- "cfg-if",
+ "cfg-if 0.1.10",
  "libc",
  "rand",
  "redox_syscall",
