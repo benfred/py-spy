@@ -225,9 +225,9 @@ dependencies = [
 
 [[package]]
 name = "cpp_demangle"
-version = "0.3.1"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6656dbc7c586cf2965887c3d066d9b983b20400bc2d52ed4cc5e33d0ceb2c602"
+checksum = "44919ecaf6f99e8e737bc239408931c9a01e9a6c74814fee8242dd2506b65390"
 dependencies = [
  "cfg-if 1.0.0",
  "glob",
@@ -790,7 +790,7 @@ version = "0.3.3"
 dependencies = [
  "clap",
  "console",
- "cpp_demangle 0.3.1",
+ "cpp_demangle 0.3.2",
  "ctrlc",
  "env_logger 0.8.2",
  "failure",
