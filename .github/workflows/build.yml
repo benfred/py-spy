@@ -35,15 +35,20 @@ jobs:
       id: test
       continue-on-error: true
       run: cargo test --verbose
-    - name: retry-test
+    - name: Test (retry#1)
+      id: test1
       run: cargo test --verbose
       if: steps.test.outcome=='failure'
+      continue-on-error: true
+    - name: Test (retry#2)
+      run: cargo test --verbose
+      if: steps.test1.outcome=='failure'
 
   build-linux-cross:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        target: [i686-musl, armv7-musleabihf, aarch64-musl]
+        target: [i686-musl, armv7-musleabihf, aarch64-musl, x86_64-musl]
     container:
       image: docker://benfred/rust-musl-cross:${{ matrix.target }}
       env:

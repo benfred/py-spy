@@ -18,22 +18,22 @@ indicatif = "0.15"
 env_logger = "0.8"
 failure = "0.1.8"
 goblin = "0.2.3"
-inferno = "0.10.1"
+inferno = "0.10.2"
 lazy_static = "1.1.0"
-libc = "0.2.80"
+libc = "0.2.82"
 log = "0.4"
 lru = "0.6"
 regex = "1"
 tempfile = "3.0.3"
 proc-maps = "0.1.6"
 memmap = "0.7.0"
-cpp_demangle = "0.3.1"
+cpp_demangle = "0.3.2"
 serde = {version="1.0", features=["rc"]}
 serde_derive = "1.0"
 serde_json = "1.0"
-rand = "0.7"
-rand_distr = "0.3"
-remoteprocess = {version="0.3.4", features=["unwind"]}
+rand = "0.8"
+rand_distr = "0.4"
+remoteprocess = {version="0.4.2", features=["unwind"]}
 
 [target.'cfg(unix)'.dependencies]
 termios = "0.3.2"
