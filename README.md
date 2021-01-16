@@ -1,7 +1,6 @@
 py-spy: Sampling profiler for Python programs
 =====
-[![Build Status](https://travis-ci.org/benfred/py-spy.svg?branch=master)](https://travis-ci.org/benfred/py-spy)
-[![Windows Build status](https://ci.appveyor.com/api/projects/status/x0jwd5ygaybsa0md?svg=true)](https://ci.appveyor.com/project/benfred/py-spy)
+[![Build Status](https://github.com/benfred/py-spy/workflows/Build/badge.svg?branch=master)](https://github.com/benfred/py-spy/actions?query=branch%3Amaster)
 [![FreeBSD Build Status](https://api.cirrus-ci.com/github/benfred/py-spy.svg)](https://cirrus-ci.com/github/benfred/py-spy)
 
 py-spy is a sampling profiler for Python programs. It lets you visualize what your Python
