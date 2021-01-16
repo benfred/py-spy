@@ -800,7 +800,7 @@ dependencies = [
  "lru",
  "memmap",
  "proc-maps",
- "rand 0.8.1",
+ "rand 0.8.2",
  "rand_distr",
  "regex",
  "remoteprocess",
@@ -845,9 +845,9 @@ dependencies = [
 
 [[package]]
 name = "rand"
-version = "0.8.1"
+version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c24fcd450d3fa2b592732565aa4f17a27a61c65ece4726353e000939b0edee34"
+checksum = "18519b42a40024d661e1714153e9ad0c3de27cd495760ceb09710920f1098b1e"
 dependencies = [
  "libc",
  "rand_chacha 0.3.0",
@@ -900,7 +900,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da9e8f32ad24fb80d07d2323a9a2ce8b30d68a62b8cb4df88119ff49a698f038"
 dependencies = [
  "num-traits",
- "rand 0.8.1",
+ "rand 0.8.2",
 ]
 
 [[package]]
