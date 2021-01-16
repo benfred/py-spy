@@ -259,7 +259,12 @@ fn test_local_vars() {
     let local3 = &locals[5];
     assert_eq!(local3.name, "local3");
     assert!(!local3.arg);
+
+    #[cfg(target_pointer_width = "64")]
     assert_eq!(local3.repr, Some("123456789123456789".to_owned()));
+
+    #[cfg(target_pointer_width = "32")]
+    assert_eq!(local3.repr, Some("+bigint".to_owned()));
 
     let local4 = &locals[6];
     assert_eq!(local4.name, "local4");
