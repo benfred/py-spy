@@ -1,0 +1,55 @@
+name: Build
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-linux-armv7:
+    runs-on: [self-hosted, linux, arm]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build
+      run: cargo build --verbose
+    - name: Run tests
+      run: cargo test --verbose
+
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install Dependencies
+      run: sudo apt install libunwind-dev
+      if: runner.os == 'Linux'
+    - name: Build
+      run: cargo build --verbose --examples
+    - name: Test
+      id: test
+      continue-on-error: true
+      run: cargo test --verbose
+    - name: retry-test
+      run: cargo test --verbose
+      if: steps.test.outcome=='failure'
+
+  build-linux-cross:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [i686-musl, armv7-musleabihf, aarch64-musl]
+    container:
+      image: docker://benfred/rust-musl-cross:${{ matrix.target }}
+      env:
+        RUSTUP_HOME: /root/.rustup
+        CARGO_HOME: /root/.cargo
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build
+      run: cargo build --verbose
