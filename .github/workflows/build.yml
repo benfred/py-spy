@@ -17,7 +17,7 @@ jobs:
     - name: Build
       run: cargo build --verbose
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test
 
   build:
     runs-on: ${{ matrix.os }}
@@ -34,14 +34,14 @@ jobs:
     - name: Test
       id: test
       continue-on-error: true
-      run: cargo test --verbose
+      run: cargo test
     - name: Test (retry#1)
       id: test1
-      run: cargo test --verbose
+      run: cargo test
       if: steps.test.outcome=='failure'
       continue-on-error: true
     - name: Test (retry#2)
-      run: cargo test --verbose
+      run: cargo test
       if: steps.test1.outcome=='failure'
 
   build-linux-cross:
@@ -57,4 +57,9 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Build
-      run: cargo build --verbose
+      run: python3 setup.py bdist_wheel
+    - name: Upload wheels
+      uses: actions/upload-artifact@v2
+      with:
+        name: wheels
+        path: dist
