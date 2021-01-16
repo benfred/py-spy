@@ -61,5 +61,5 @@ jobs:
     - name: Upload wheels
       uses: actions/upload-artifact@v2
       with:
-        name: wheels
+        name: linux_wheels_${{ target }}
         path: dist
