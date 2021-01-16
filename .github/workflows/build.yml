@@ -30,15 +30,15 @@ jobs:
       run: sudo apt install libunwind-dev
       if: runner.os == 'Linux'
     - name: Build
-      run: cargo build --verbose --examples --features unwind
+      run: cargo build --verbose --examples
     - name: Run tests
-      run: cargo test --verbose --features unwind
+      run: cargo test --verbose 
 
   build-linux-cross:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        target: [i686-musl, x86_64-musl, armv7-musleabihf, aarch64-musl]
+        target: [i686-musl, armv7-musleabihf, aarch64-musl]
     container:
       image: docker://benfred/rust-musl-cross:${{ matrix.target }}
       env:
@@ -48,11 +48,3 @@ jobs:
     - uses: actions/checkout@v2
     - name: Build
       run: cargo build --verbose
-      if: matrix.target == 'x86_64-musl'  || matrix.target == 'armv7-musleabihf'
-    - name: Build (no-unwind)
-      run: cargo build --verbose --examples
-      if: matrix.target == 'i686-musl' || matrix.target == 'aarch64-musl'
-    # unittests don't compile here - with some duplicate symbol errors.
-    - name: Run tests
-      run: cargo test --verbose --features unwind
-      if: matrix.target == 'x86_64-musl'
