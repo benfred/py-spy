@@ -31,8 +31,13 @@ jobs:
       if: runner.os == 'Linux'
     - name: Build
       run: cargo build --verbose --examples
-    - name: Run tests
-      run: cargo test --verbose 
+    - name: Test
+      id: test
+      continue-on-error: true
+      run: cargo test --verbose
+    - name: retry-test
+      run: cargo test --verbose
+      if: steps.test.outcome=='failure'
 
   build-linux-cross:
     runs-on: ubuntu-latest
