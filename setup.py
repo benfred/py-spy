@@ -1,5 +1,6 @@
 import os
 import sys
+import platform
 
 from setuptools import setup
 from setuptools.command.install import install
@@ -17,14 +18,25 @@ try:
 
         def get_tag(self):
             # this set's us up to build generic wheels.
-            # note: we're only doing this for windows right now (causes packaging issues
+            # note: we're only doing this for windows/linux right now (causes packaging issues
             # with osx)
-            if not sys.platform.startswith("win"):
+            if platform.system() == "Darwin":
                 return _bdist_wheel.get_tag(self)
 
             python, abi, plat = _bdist_wheel.get_tag(self)
-            python, abi = 'py2.py3', 'none'
+            cross_compile_target = _get_cross_compile_target()
+            if cross_compile_target == "armv7-unknown-linux-musleabihf":
+                plat = "manylinux2014_armv7l"
+            elif cross_compile_target == "aarch64-unknown-linux-musl":
+                plat = "manylinux2014_aarch64"
+            elif cross_compile_target == "i686-unknown-linux-musl":
+                plat = "manylinux1_i686"
+            elif cross_compile_target == "x86_64-unknown-linux-musl":
+                plat = "manylinux1_x86_64"
+
+            python, abi = "py2.py3", "none"
             return python, abi, plat
+
 
 except ImportError:
     bdist_wheel = None
@@ -38,6 +50,7 @@ executable_name = "py-spy.exe" if sys.platform.startswith("win") else "py-spy"
 
 class PostInstallCommand(install):
     """Post-installation for installation mode."""
+
     def run(self):
         # So ths builds the executable, and even installs it
         # but we can't install to the bin directory:
@@ -50,7 +63,7 @@ class PostInstallCommand(install):
         # issues like https://github.com/benfred/py-spy/issues/5.
         # Note: we're only doing this on demand since this requires musl-tools installed
         # but the released wheels should have this option set
-        cross_compile_target = os.getenv("PYSPY_CROSS_COMPILE_TARGET")
+        cross_compile_target = _get_cross_compile_target()
         if cross_compile_target:
             compile_args = " --target=%s" % cross_compile_target
             build_dir = os.path.join(source_dir, "target", cross_compile_target, "release")
@@ -80,22 +93,29 @@ class PostInstallCommand(install):
         self.copy_file(source, target)
 
 
-setup(name='py-spy',
-      author="Ben Frederickson",
-      author_email="ben@benfrederickson.com",
-      url='https://github.com/benfred/py-spy',
-      description="A Sampling Profiler for Python",
-      long_description=long_description,
-      long_description_content_type="text/markdown",
-      version="0.3.3",
-      license="MIT",
-      cmdclass={'install': PostInstallCommand, 'bdist_wheel': bdist_wheel},
-      classifiers=[
+def _get_cross_compile_target():
+    return os.getenv("PYSPY_CROSS_COMPILE_TARGET") or os.getenv("RUST_MUSL_CROSS_TARGET")
+
+
+setup(
+    name="py-spy",
+    author="Ben Frederickson",
+    author_email="ben@benfrederickson.com",
+    url="https://github.com/benfred/py-spy",
+    description="A Sampling Profiler for Python",
+    long_description=long_description,
+    long_description_content_type="text/markdown",
+    version="0.3.3",
+    license="MIT",
+    cmdclass={"install": PostInstallCommand, "bdist_wheel": bdist_wheel},
+    classifiers=[
         "Development Status :: 3 - Alpha",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 2",
         "Intended Audience :: Developers",
         "License :: OSI Approved :: MIT License",
         "Topic :: Software Development :: Libraries",
-        "Topic :: Utilities"],
-      zip_safe=False)
+        "Topic :: Utilities",
+    ],
+    zip_safe=False,
+)
