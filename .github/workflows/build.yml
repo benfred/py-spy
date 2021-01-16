@@ -58,6 +58,3 @@ jobs:
     - uses: actions/checkout@v2
     - name: Build
       run: cargo build --verbose
-    - name: Test
-      run: cargo test --verbose
-      if: matrix.target == 'x86_64-musl'
