@@ -203,7 +203,7 @@ impl PythonSpy {
         while !threads.is_null() {
             // Get the stack trace of the python thread
             let thread = self.process.copy_pointer(threads).context("Failed to copy PyThreadState")?;
-            let mut trace = get_stack_trace(&thread, &self.process, self.config.dump_locals)?;
+            let mut trace = get_stack_trace(&thread, &self.process, self.config.dump_locals > 0)?;
 
             // Try getting the native thread id
             let python_thread_id = thread.thread_id();
@@ -258,8 +258,9 @@ impl PythonSpy {
                 frame.short_filename = self.shorten_filename(&frame.filename);
                 if let Some(locals) = frame.locals.as_mut() {
                     use crate::python_data_access::format_variable;
+                    let max_length = (128 * self.config.dump_locals) as isize;
                     for local in locals {
-                        let repr = format_variable::<I>(&self.process, &self.version, local.addr, 128);
+                        let repr = format_variable::<I>(&self.process, &self.version, local.addr, max_length);
                         local.repr = Some(repr.unwrap_or("?".to_owned()));
                     }
                 }

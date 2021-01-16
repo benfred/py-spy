@@ -219,7 +219,7 @@ fn test_local_vars() {
         }
     }
 
-    let config = Config{dump_locals: true, ..Default::default()};
+    let config = Config{dump_locals: 1, ..Default::default()};
     let mut runner = TestRunner::new(config, "./tests/scripts/local_vars.py");
 
     let traces = runner.spy.get_stack_traces().unwrap();
@@ -259,7 +259,12 @@ fn test_local_vars() {
     let local3 = &locals[5];
     assert_eq!(local3.name, "local3");
     assert!(!local3.arg);
+
+    #[cfg(target_pointer_width = "64")]
     assert_eq!(local3.repr, Some("123456789123456789".to_owned()));
+
+    #[cfg(target_pointer_width = "32")]
+    assert_eq!(local3.repr, Some("+bigint".to_owned()));
 
     let local4 = &locals[6];
     assert_eq!(local4.name, "local4");
@@ -300,8 +305,16 @@ fn test_subprocesses() {
     std::thread::sleep(std::time::Duration::from_millis(1000));
 
     // Get samples from all the subprocesses, verify that we got from all 3 processes
+    let mut attempts = 0;
+
     for sample in sampler {
+        // wait for other processes here if we don't have the expected number
         let traces = sample.traces;
+        if traces.len() != 3 && attempts < 4 {
+            attempts += 1;
+            std::thread::sleep(std::time::Duration::from_millis(1000));
+            continue;
+        }
         assert_eq!(traces.len(), 3);
         assert!(traces[0].pid != traces[1].pid);
         assert!(traces[1].pid != traces[2].pid);
