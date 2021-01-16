@@ -1,0 +1,58 @@
+name: Build
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-linux-armv7:
+    runs-on: [self-hosted, linux, arm]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build
+      run: cargo build --verbose
+    - name: Run tests
+      run: cargo test --verbose
+
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install Dependencies
+      run: sudo apt install libunwind-dev
+      if: runner.os == 'Linux'
+    - name: Build
+      run: cargo build --verbose --examples --features unwind
+    - name: Run tests
+      run: cargo test --verbose --features unwind
+
+  build-linux-cross:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [i686-musl, x86_64-musl, armv7-musleabihf, aarch64-musl]
+    container:
+      image: docker://benfred/rust-musl-cross:${{ matrix.target }}
+      env:
+        RUSTUP_HOME: /root/.rustup
+        CARGO_HOME: /root/.cargo
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build
+      run: cargo build --verbose
+      if: matrix.target == 'x86_64-musl'  || matrix.target == 'armv7-musleabihf'
+    - name: Build (no-unwind)
+      run: cargo build --verbose --examples
+      if: matrix.target == 'i686-musl' || matrix.target == 'aarch64-musl'
+    # unittests don't compile here - with some duplicate symbol errors.
+    - name: Run tests
+      run: cargo test --verbose --features unwind
+      if: matrix.target == 'x86_64-musl'
