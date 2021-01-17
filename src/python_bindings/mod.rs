@@ -17,7 +17,7 @@ pub mod pyruntime {
 
     // There aren't any OS specific members of PyRuntime before pyinterpreters.head,
     // so these offsets should be valid for all OS'es
-    #[cfg(target_pointer_width = "32")]
+    #[cfg(target_arch = "x86")]
     pub fn get_interp_head_offset(version: &Version) -> usize {
         match version {
             Version{major: 3, minor: 8, patch: 0, ..} => {
@@ -29,6 +29,14 @@ pub mod pyruntime {
             },
             Version{major: 3, minor: 8..=9, ..} => 24,
             _ => 16
+        }
+    }
+
+    #[cfg(target_arch = "arm")]
+    pub fn get_interp_head_offset(version: &Version) -> usize {
+        match version {
+            Version{major: 3, minor: 7, ..} => 20,
+            _ => 28
         }
     }
 
@@ -68,7 +76,7 @@ pub mod pyruntime {
         }
     }
 
-    #[cfg(all(target_os="linux", target_pointer_width = "32"))]
+    #[cfg(all(target_os="linux", target_arch="x86"))]
     pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
         match version {
              Version{major: 3, minor: 7, ..} => Some(796),
@@ -86,7 +94,17 @@ pub mod pyruntime {
         }
     }
 
-    #[cfg(all(target_os="linux", target_pointer_width = "64"))]
+    #[cfg(all(target_os="linux", target_arch="arm"))]
+    pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
+        match version {
+            Version{major: 3, minor: 7, ..} => Some(828),
+            Version{major: 3, minor: 8, ..} => Some(804),
+            Version{major: 3, minor: 8, ..} => Some(364),
+            _ => None
+        }
+    }
+
+    #[cfg(all(target_os="linux", target_pointer_width="64"))]
     pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
         match version {
             Version{major: 3, minor: 7, patch: 0..=3, ..} => Some(1392),
