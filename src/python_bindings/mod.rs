@@ -99,12 +99,23 @@ pub mod pyruntime {
         match version {
             Version{major: 3, minor: 7, ..} => Some(828),
             Version{major: 3, minor: 8, ..} => Some(804),
-            Version{major: 3, minor: 8, ..} => Some(364),
+            Version{major: 3, minor: 9, ..} => Some(364),
             _ => None
         }
     }
 
-    #[cfg(all(target_os="linux", target_pointer_width="64"))]
+    #[cfg(all(target_os="linux", target_arch="aarch64"))]
+    pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
+        match version {
+            Version{major: 3, minor: 7, patch: 0..=3, ..} => Some(1408),
+            Version{major: 3, minor: 7, ..} => Some(1496),
+            Version{major: 3, minor: 8, ..} => Some(1384),
+            Version{major: 3, minor: 9, ..} => Some(584),
+            _ => None
+        }
+    }
+
+    #[cfg(all(target_os="linux", target_arch="x86_64"))]
     pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
         match version {
             Version{major: 3, minor: 7, patch: 0..=3, ..} => Some(1392),
@@ -121,6 +132,11 @@ pub mod pyruntime {
             Version{major: 3, minor: 9, patch: 0..=1, ..} => Some(568),
             _ => None
         }
+    }
+
+    #[cfg(all(target_os="linux", any(target_arch="powerpc64", target_arch="powerpc", target_arch="mips")))]
+    pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
+        None
     }
 
     #[cfg(windows)]
