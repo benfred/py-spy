@@ -17,12 +17,8 @@ try:
             self.root_is_pure = False
 
         def get_tag(self):
-            # this set's us up to build generic wheels.
-            # note: we're only doing this for windows/linux right now (causes packaging issues
-            # with osx)
-            if platform.system() == "Darwin":
-                return _bdist_wheel.get_tag(self)
-
+            # this set's us up to build generic wheels, since we can handle multiple
+            # versions of python and have no ABI requirements
             python, abi, plat = _bdist_wheel.get_tag(self)
             cross_compile_target = _get_cross_compile_target()
             if cross_compile_target == "armv7-unknown-linux-musleabihf":
