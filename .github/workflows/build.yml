@@ -44,8 +44,8 @@ jobs:
       run: cargo test --release
       if: steps.test1.outcome=='failure'
     - uses: actions/setup-python@v2
-        with:
-          python-version: 3.9
+      with:
+        python-version: 3.9
       if: runner.os != 'Linux'
     - name: Build Wheel
       run: python setup.py bdist_wheel
