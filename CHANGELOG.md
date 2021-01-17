@@ -1,3 +1,11 @@
+## v0.3.4
+* Build armv7/aarch64 wheels [#328](https://github.com/benfred/py-spy/issues/328)
+* Detect GIL on Python 3.9 / 3.7.7+ / 3.8.2+
+* Add option for more verbose local variables [#287](https://github.com/benfred/py-spy/issues/287)
+* Fix issues with profiling subprocesses [#265](https://github.com/benfred/py-spy/issues/265)
+* Include python thread names in record [#237](https://github.com/benfred/py-spy/issues/237)
+* Fix issue with threadids triggering differential flamegraphs [#234](https://github.com/benfred/py-spy/issues/233)
+
 ## v0.3.3
 
 * Change to display stdout/stderr from profiled child process [#217](https://github.com/benfred/py-spy/issues/217)
