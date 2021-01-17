@@ -4,7 +4,7 @@
 * Add option for more verbose local variables [#287](https://github.com/benfred/py-spy/issues/287)
 * Fix issues with profiling subprocesses [#265](https://github.com/benfred/py-spy/issues/265)
 * Include python thread names in record [#237](https://github.com/benfred/py-spy/issues/237)
-* Fix issue with threadids triggering differential flamegraphs [#234](https://github.com/benfred/py-spy/issues/233)
+* Fix issue with threadids triggering differential flamegraphs [#234](https://github.com/benfred/py-spy/issues/234)
 
 ## v0.3.3
 
