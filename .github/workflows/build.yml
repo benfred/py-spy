@@ -30,19 +30,32 @@ jobs:
       run: sudo apt install libunwind-dev
       if: runner.os == 'Linux'
     - name: Build
-      run: cargo build --verbose --examples
+      run: cargo build --release --verbose --examples
     - name: Test
       id: test
       continue-on-error: true
-      run: cargo test
+      run: cargo test --release
     - name: Test (retry#1)
       id: test1
-      run: cargo test
+      run: cargo test --release
       if: steps.test.outcome=='failure'
       continue-on-error: true
     - name: Test (retry#2)
-      run: cargo test
+      run: cargo test --release
       if: steps.test1.outcome=='failure'
+    - uses: actions/setup-python@v2
+      with:
+        python-version: 3.9
+    - name: Build Wheel
+      run: |
+        pip install --upgrade wheel pip setuptools
+        python setup.py bdist_wheel
+    - name: Upload wheels
+      uses: actions/upload-artifact@v2
+      with:
+        name: wheels
+        path: dist
+      if: runner.os != 'Linux'
 
   build-linux-cross:
     runs-on: ubuntu-latest
@@ -61,5 +74,30 @@ jobs:
     - name: Upload wheels
       uses: actions/upload-artifact@v2
       with:
-        name: linux_wheels_${{ matrix.target }}
+        name: wheels
         path: dist
+
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    if: "startsWith(github.ref, 'refs/tags/')"
+    needs: [build-linux-cross, build]
+    steps:
+      - uses: actions/download-artifact@v2
+        with:
+          name: wheels
+      - name: Create GitHub Release
+        uses: fnkr/github-action-ghr@v1.3
+        env:
+          GHR_PATH: .
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v2
+        with:
+          python-version: 3.9
+      - name: Push to PyPi
+        env:
+          TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
+          TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
+        run: |
+          pip install --upgrade wheel pip setuptools twine
+          twine upload *
