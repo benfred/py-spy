@@ -46,10 +46,12 @@ jobs:
     - uses: actions/setup-python@v2
       with:
         python-version: 3.9
-      if: runner.os != 'Linux'
     - name: Build Wheel
-      run: python setup.py bdist_wheel
-      if: runner.os != 'Linux'
+      run: pip install --upgrade wheels
+    - name: Build Wheel
+      run: |
+        pip install --upgrade wheel pip setuptools
+        python setup.py bdist_wheel
     - name: Upload wheels
       uses: actions/upload-artifact@v2
       with:

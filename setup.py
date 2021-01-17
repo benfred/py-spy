@@ -1,6 +1,5 @@
 import os
 import sys
-import platform
 
 from setuptools import setup
 from setuptools.command.install import install
@@ -92,6 +91,8 @@ class PostInstallCommand(install):
 def _get_cross_compile_target():
     return os.getenv("PYSPY_CROSS_COMPILE_TARGET") or os.getenv("RUST_MUSL_CROSS_TARGET")
 
+cmdclass={"install": PostInstallCommand, "bdist_wheel": bdist_wheel}
+print("cmdclass", cmdclass)
 
 setup(
     name="py-spy",
