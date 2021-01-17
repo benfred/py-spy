@@ -47,8 +47,6 @@ jobs:
       with:
         python-version: 3.9
     - name: Build Wheel
-      run: pip install --upgrade wheels
-    - name: Build Wheel
       run: |
         pip install --upgrade wheel pip setuptools
         python setup.py bdist_wheel
