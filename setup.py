@@ -1,5 +1,6 @@
 import os
 import sys
+import platform
 
 from setuptools import setup
 from setuptools.command.install import install
@@ -28,6 +29,9 @@ try:
                 plat = "manylinux1_i686"
             elif cross_compile_target == "x86_64-unknown-linux-musl":
                 plat = "manylinux1_x86_64"
+            elif platform.system() == "Darwin" and os.getenv('MACOSX_DEPLOYMENT_TARGET'):
+                target = os.environ['MACOSX_DEPLOYMENT_TARGET']
+                plat = "macosx_{}_{}".format(target.replace(".", "_"), platform.machine())
 
             python, abi = "py2.py3", "none"
             return python, abi, plat
@@ -65,6 +69,9 @@ class PostInstallCommand(install):
         else:
             compile_args = ""
             build_dir = os.path.join(source_dir, "target", "release")
+
+        if platform.system() == "Darwin":
+            os.environ.setdefault("MACOSX_DEPLOYMENT_TARGET", "10.9")
 
         # setuptools_rust doesn't seem to let me specify a musl cross compilation target
         # so instead just build ourselves here =(.
