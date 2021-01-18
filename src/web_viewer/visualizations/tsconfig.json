@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "moduleResolution": "node",
+    "target": "es6",
+    "lib": ["dom", "es6", "es2017"],
+    "removeComments": true,
+    "noImplicitAny": true,
+    "preserveConstEnums": true,
+    "sourceMap": true,
+    "inlineSources": true
+  },
+  "include": [
+    "*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}

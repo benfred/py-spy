@@ -31,7 +31,7 @@ use std::collections::HashMap;
 use std::fs::File;
 
 
-use failure::Error;
+use failure::{Error, format_err};
 use inferno::flamegraph::{Direction, Options};
 
 use crate::stack_trace::StackTrace;
@@ -49,14 +49,7 @@ impl Flamegraph {
     pub fn increment(&mut self, trace: &StackTrace) -> std::io::Result<()> {
         // convert the frame into a single ';' delimited String
         let frame = trace.frames.iter().rev().map(|frame| {
-            let filename = match &frame.short_filename { Some(f) => &f, None => &frame.filename };
-            if self.show_linenumbers && frame.line != 0 {
-                format!("{} ({}:{})", frame.name, filename, frame.line)
-            } else if filename.len() > 0 {
-                format!("{} ({})", frame.name, filename)
-            } else {
-                frame.name.clone()
-            }
+            frame.format(self.show_linenumbers)
         }).collect::<Vec<String>>().join(";");
         // update counts for that frame
         *self.counts.entry(frame).or_insert(0) += 1;

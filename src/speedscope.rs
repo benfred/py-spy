@@ -36,6 +36,7 @@ use remoteprocess::Tid;
 
 use failure::{Error};
 use serde_json;
+use serde_derive::{Serialize, Deserialize};
 
 /*
  * This file contains code to export rbspy profiles for use in https://speedscope.app

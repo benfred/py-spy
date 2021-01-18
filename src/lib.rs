@@ -24,31 +24,6 @@
 //!     Ok(())
 //! }
 //! ```
-
-#[macro_use]
-extern crate clap;
-#[macro_use]
-extern crate failure;
-extern crate goblin;
-#[macro_use]
-extern crate lazy_static;
-extern crate libc;
-#[macro_use]
-extern crate log;
-#[cfg(unwind)]
-extern crate lru;
-extern crate memmap;
-extern crate proc_maps;
-extern crate regex;
-#[macro_use]
-extern crate serde_derive;
-#[cfg(windows)]
-extern crate winapi;
-extern crate cpp_demangle;
-extern crate rand;
-extern crate rand_distr;
-extern crate remoteprocess;
-
 pub mod config;
 pub mod binary_parser;
 #[cfg(unwind)]

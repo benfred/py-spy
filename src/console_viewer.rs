@@ -96,17 +96,11 @@ impl ConsoleViewer {
             }
 
             update_function_statistics(&mut self.stats.line_counts, trace, |frame| {
-                let filename = match &frame.short_filename { Some(f) => &f, None => &frame.filename };
-                if frame.line != 0 {
-                    format!("{} ({}:{})", frame.name, filename, frame.line)
-                } else {
-                    format!("{} ({})", frame.name, filename)
-                }
+                frame.format(true)
             });
 
             update_function_statistics(&mut self.stats.function_counts, trace, |frame| {
-                let filename = match &frame.short_filename { Some(f) => &f, None => &frame.filename };
-                format!("{} ({})", frame.name, filename)
+                frame.format(false)
             });
         }
         self.increment_common()?;
