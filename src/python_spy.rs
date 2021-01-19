@@ -836,12 +836,8 @@ impl PythonProcessInfo {
         };
 
         #[cfg(target_os="linux")]
-        let dockerized = {
-            let target_ns_filename = format!("/proc/{}/ns/mnt", process.pid);
-            let self_mnt = std::fs::read_link("/proc/self/ns/mnt")?;
-            let target_mnt = std::fs::read_link(&target_ns_filename)?;
-            self_mnt != target_mnt
-        };
+        let dockerized = is_dockerized(process.pid).unwrap_or(false);
+
         Ok(PythonProcessInfo{python_binary, libpython_binary, maps, python_filename,
                              #[cfg(target_os="linux")]
                              dockerized
@@ -864,6 +860,13 @@ impl PythonProcessInfo {
         }
         None
     }
+}
+
+#[cfg(target_os="linux")]
+fn is_dockerized(pid: Pid) -> Result<bool, Error> {
+    let self_mnt = std::fs::read_link("/proc/self/ns/mnt")?;
+    let target_mnt = std::fs::read_link(&format!("/proc/{}/ns/mnt", pid))?;
+    Ok(self_mnt != target_mnt)
 }
 
 // We can't use goblin to parse external symbol files (like in a separate .pdb file) on windows,
