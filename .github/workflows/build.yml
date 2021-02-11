@@ -103,3 +103,9 @@ jobs:
         run: |
           pip install --upgrade wheel pip setuptools twine
           twine upload *
+          rm *
+      - uses: actions/checkout@v2
+      - name: Push to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish
