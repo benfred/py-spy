@@ -13,6 +13,7 @@ extern crate lazy_static;
 extern crate libc;
 #[macro_use]
 extern crate log;
+extern crate chrono;
 #[cfg(unwind)]
 extern crate lru;
 extern crate memmap;
@@ -65,6 +66,8 @@ use failure::Error;
 use stack_trace::{StackTrace, Frame};
 use console_viewer::ConsoleViewer;
 use config::{Config, FileFormat, RecordDuration};
+
+use chrono::{SecondsFormat, Local};
 
 #[cfg(unix)]
 fn permission_denied(err: &Error) -> bool {
@@ -153,9 +156,25 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
         None => return Err(format_err!("A file format is required to record samples"))
     };
 
-    let filename = match config.filename.as_ref() {
+    let filename = match config.filename.clone() {
         Some(filename) => filename,
-        None => return Err(format_err!("A filename is required to record samples"))
+        None => {
+            let ext = match config.format.as_ref() {
+                Some(FileFormat::flamegraph) => "svg",
+                Some(FileFormat::speedscope) => "json",
+                Some(FileFormat::raw) => "txt",
+                None => return Err(format_err!("A file format is required to record samples"))
+            };
+            let local_time = Local::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+            let name = match config.python_program.as_ref() {
+                Some(prog) => prog[0].to_string(),
+                None  => match config.pid.as_ref() {
+                    Some(pid) => pid.to_string(),
+                    None => String::from("unknown")
+                }
+            };
+            format!("{}-{}.{}", name, local_time, ext)
+            }
     };
 
     let sampler = sampler::Sampler::new(pid, config)?;
@@ -294,7 +313,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
     }
 
     {
-    let mut out_file = std::fs::File::create(filename)?;
+    let mut out_file = std::fs::File::create(&filename)?;
     output.write(&mut out_file)?;
     }
 
@@ -305,7 +324,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
             // you might be SSH'ed into a server somewhere and this isn't desired, but on
             // that is pretty unlikely for osx) (note to self: xdg-open will open on linux)
             #[cfg(target_os = "macos")]
-            std::process::Command::new("open").arg(filename).spawn()?;
+            std::process::Command::new("open").arg(&filename).spawn()?;
         },
         FileFormat::speedscope =>  {
             println!("{}Wrote speedscope file to '{}'. Samples: {} Errors: {}", lede, filename, samples, errors);
