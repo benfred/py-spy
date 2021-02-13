@@ -143,7 +143,7 @@ impl Config {
                 .value_name("filename")
                 .help("Output filename")
                 .takes_value(true)
-                .required(true))
+                .required(false))
             .arg(Arg::with_name("format")
                 .short("f")
                 .long("format")
