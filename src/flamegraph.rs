@@ -70,8 +70,8 @@ impl Flamegraph {
     pub fn write(&self, w: &File) -> Result<(), Error> {
         let mut opts =  Options::default();
         opts.direction = Direction::Inverted;
-        opts.min_width = 1.0;
-        opts.title = "py-spy".to_owned();
+        opts.min_width = 0.1;
+        opts.title = std::env::args().collect::<Vec<String>>().join(" ");
 
         let lines = self.get_lines();
         inferno::flamegraph::from_lines(&mut opts, lines.iter().map(|x| x.as_str()), w)
