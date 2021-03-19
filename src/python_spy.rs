@@ -45,6 +45,14 @@ pub struct PythonSpy {
     pub dockerized: bool
 }
 
+fn exit_if_gil(config: &Config, version: &Version, msg: &str) {
+    if config.gil_only {
+        eprintln!("Cannot detect GIL holding in version '{}' on the current platform (reason: {})", version, msg);
+        eprintln!("Please open an issue in https://github.com/benfred/py-spy with the Python version and your platform.");
+        std::process::exit(1);
+    }
+}
+
 impl PythonSpy {
     /// Constructs a new PythonSpy object.
     pub fn new(pid: Pid, config: &Config) -> Result<PythonSpy, Error> {
@@ -76,12 +84,12 @@ impl PythonSpy {
                                 addr, offset);
                             addr as usize + offset
                         } else {
-                            warn!("Unknown pyruntime.gilstate.tstate_current offset for version {:?}", version);
+                            exit_if_gil(config, &version, "unknown pyruntime.gilstate.tstate_current offset");
                             0
                         }
                     },
                     None => {
-                        warn!("Failed to find _PyRuntime symbol - won't be able to detect GIL usage");
+                        exit_if_gil(config, &version, "failed to find _PyRuntime symbol");
                         0
                     }
                 }
@@ -93,7 +101,7 @@ impl PythonSpy {
                         addr as usize
                     },
                     None => {
-                        warn!("Failed to find _PyThreadState_Current symbol - won't be able to detect GIL usage");
+                        exit_if_gil(config, &version, "failed to find _PyThreadState_Current symbol");
                         0
                     }
                 }
