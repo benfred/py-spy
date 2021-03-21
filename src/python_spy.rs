@@ -45,6 +45,15 @@ pub struct PythonSpy {
     pub dockerized: bool
 }
 
+fn exit_if_gil(config: &Config, version: &Version, msg: &str) {
+    if config.gil_only {
+        eprintln!("Cannot detect GIL holding in version '{}' on the current platform (reason: {})", version, msg);
+        eprintln!("Please open an issue in https://github.com/benfred/py-spy with the Python version and your platform.");
+        std::process::exit(1);
+    }
+    warn!("Unable to detect GIL usage: {}", msg);
+}
+
 impl PythonSpy {
     /// Constructs a new PythonSpy object.
     pub fn new(pid: Pid, config: &Config) -> Result<PythonSpy, Error> {
@@ -76,12 +85,12 @@ impl PythonSpy {
                                 addr, offset);
                             addr as usize + offset
                         } else {
-                            warn!("Unknown pyruntime.gilstate.tstate_current offset for version {:?}", version);
+                            exit_if_gil(config, &version, "unknown pyruntime.gilstate.tstate_current offset");
                             0
                         }
                     },
                     None => {
-                        warn!("Failed to find _PyRuntime symbol - won't be able to detect GIL usage");
+                        exit_if_gil(config, &version, "failed to find _PyRuntime symbol");
                         0
                     }
                 }
@@ -93,7 +102,7 @@ impl PythonSpy {
                         addr as usize
                     },
                     None => {
-                        warn!("Failed to find _PyThreadState_Current symbol - won't be able to detect GIL usage");
+                        exit_if_gil(config, &version, "failed to find _PyThreadState_Current symbol");
                         0
                     }
                 }
@@ -743,7 +752,7 @@ impl PythonProcessInfo {
 
             // TODO: consistent types? u64 -> usize? for map.start etc
             #[allow(unused_mut)]
-            let python_binary = parse_binary(process.pid, &filename, map.start() as u64, map.size() as u64)
+            let python_binary = parse_binary(process.pid, &filename, map.start() as u64, map.size() as u64, true)
                 .and_then(|mut pb| {
                     // windows symbols are stored in separate files (.pdb), load
                     #[cfg(windows)]
@@ -788,7 +797,7 @@ impl PythonProcessInfo {
                 if let Some(filename) = &libpython.filename() {
                     info!("Found libpython binary @ {}", filename);
                     #[allow(unused_mut)]
-                    let mut parsed = parse_binary(process.pid, filename, libpython.start() as u64, libpython.size() as u64)?;
+                    let mut parsed = parse_binary(process.pid, filename, libpython.start() as u64, libpython.size() as u64, false)?;
                     #[cfg(windows)]
                     parsed.symbols.extend(get_windows_python_symbols(process.pid, filename, libpython.start() as u64)?);
                     libpython_binary = Some(parsed);
@@ -818,7 +827,7 @@ impl PythonProcessInfo {
                     if let Some(libpython) = python_dyld_data {
                         info!("Found libpython binary from dyld @ {}", libpython.filename);
 
-                        let mut binary = parse_binary(process.pid, &libpython.filename, libpython.segment.vmaddr, libpython.segment.vmsize)?;
+                        let mut binary = parse_binary(process.pid, &libpython.filename, libpython.segment.vmaddr, libpython.segment.vmsize, false)?;
 
                         // TODO: bss addr offsets returned from parsing binary are wrong
                         // (assumes data section isn't split from text section like done here).
