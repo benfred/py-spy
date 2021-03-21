@@ -188,7 +188,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
         "".to_owned()
     };
 
-    let max_samples = match &config.duration {
+    let max_intervals = match &config.duration {
         RecordDuration::Unlimited => {
             println!("{}Sampling process {} times a second. Press Control-C to exit.", lede, config.sampling_rate);
             None
@@ -215,6 +215,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
     };
 
     let mut errors = 0;
+    let mut intervals = 0;
     let mut samples = 0;
     println!();
 
@@ -251,9 +252,9 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
             break;
         }
 
-        samples += 1;
-        if let Some(max_samples) = max_samples {
-            if samples >= max_samples {
+        intervals += 1;
+        if let Some(max_intervals) = max_intervals {
+            if intervals >= max_intervals {
                 exit_message = "";
                 break;
             }
@@ -286,6 +287,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
                 }
             }
 
+            samples += 1;
             output.increment(&trace)?;
         }
 
