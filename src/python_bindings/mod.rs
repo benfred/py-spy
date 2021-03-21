@@ -89,7 +89,7 @@ pub mod pyruntime {
                 }
             },
             Version{major: 3, minor: 8, patch: 1..=8, ..} => Some(788),
-            Version{major: 3, minor: 9, patch: 0..=1, ..} => Some(352),
+            Version{major: 3, minor: 9, patch: 0..=2, ..} => Some(352),
             _ => None
         }
     }
@@ -129,7 +129,7 @@ pub mod pyruntime {
                 }
              },
             Version{major: 3, minor: 8, patch: 1..=8, ..} => Some(1368),
-            Version{major: 3, minor: 9, patch: 0..=1, ..} => Some(568),
+            Version{major: 3, minor: 9, patch: 0..=2, ..} => Some(568),
             _ => None
         }
     }
