@@ -32,9 +32,9 @@ pub fn parse_binary(_pid: remoteprocess::Pid, filename: &str, addr: u64, size: u
     // across namespaces just like /proc/pid/root, and also if the file was deleted.
     #[cfg(target_os="linux")]
     let filename = &if _is_bin {
-        format!("/proc/{}/exe", _pid);
+        format!("/proc/{}/exe", _pid)
     } else {
-        format!("/proc/{}/root{}", _pid, filename);
+        format!("/proc/{}/root{}", _pid, filename)
     };
 
     let offset = addr;
