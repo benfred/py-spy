@@ -51,6 +51,7 @@ fn exit_if_gil(config: &Config, version: &Version, msg: &str) {
         eprintln!("Please open an issue in https://github.com/benfred/py-spy with the Python version and your platform.");
         std::process::exit(1);
     }
+    warn!("Unable to detect GIL usage: {}", msg);
 }
 
 impl PythonSpy {
