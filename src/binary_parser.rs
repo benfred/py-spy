@@ -31,14 +31,10 @@ pub fn parse_binary(_pid: remoteprocess::Pid, filename: &str, addr: u64, size: u
     // if filename is the binary executable (not libpython) - take it from /proc/pid/exe, which works
     // across namespaces just like /proc/pid/root, and also if the file was deleted.
     #[cfg(target_os="linux")]
-    let _tmp;
-    #[cfg(target_os="linux")]
-    let filename = if _is_bin {
-        _tmp = format!("/proc/{}/exe", _pid);
-        &_tmp
+    let filename = &if _is_bin {
+        format!("/proc/{}/exe", _pid);
     } else {
-        _tmp = format!("/proc/{}/root{}", _pid, filename);
-        &_tmp
+        format!("/proc/{}/root{}", _pid, filename);
     };
 
     let offset = addr;
