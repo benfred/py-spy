@@ -48,6 +48,8 @@ pub struct Config {
     pub dump_json: bool,
     #[doc(hidden)]
     pub dump_locals: u64,
+    #[doc(hidden)]
+    pub full_filenames: bool,
 }
 
 arg_enum!{
@@ -83,7 +85,8 @@ impl Default for Config {
                blocking: LockingStrategy::Lock, show_line_numbers: false, sampling_rate: 100,
                duration: RecordDuration::Unlimited, native: false,
                gil_only: false, include_idle: false, include_thread_ids: false,
-               hide_progress: false, capture_output: true, dump_json: false, dump_locals: 0, subprocesses: false}
+               hide_progress: false, capture_output: true, dump_json: false, dump_locals: 0, subprocesses: false,
+               full_filenames: false}
     }
 }
 
@@ -95,7 +98,7 @@ impl Config {
     }
 
     pub fn from_args(args: &[String]) -> clap::Result<Config> {
-        // pid/native/nonblocking/rate/pythonprogram arguments can be
+        // pid/native/nonblocking/rate/python_program/subprocesses/full_filenames arguments can be
         // used across various subcommand - define once here
         let pid = Arg::with_name("pid")
                     .short("p")
@@ -124,10 +127,14 @@ impl Config {
                     .default_value("100")
                     .takes_value(true);
 
-    let subprocesses = Arg::with_name("subprocesses")
-        .short("s")
-        .long("subprocesses")
-        .help("Profile subprocesses of the original process");
+        let subprocesses = Arg::with_name("subprocesses")
+                            .short("s")
+                            .long("subprocesses")
+                            .help("Profile subprocesses of the original process");
+
+        let full_filenames = Arg::with_name("full_filenames")
+                                .long("full-filenames")
+                                .help("Show full Python filenames, instead of shortening to show only the package part");
 
         let program = Arg::with_name("python_program")
                     .help("commandline of a python program to run")
@@ -137,6 +144,7 @@ impl Config {
             .about("Records stack trace information to a flamegraph, speedscope or raw file")
             .arg(program.clone())
             .arg(pid.clone())
+            .arg(full_filenames.clone())
             .arg(Arg::with_name("output")
                 .short("o")
                 .long("output")
@@ -192,11 +200,13 @@ impl Config {
             .arg(program.clone())
             .arg(pid.clone())
             .arg(rate.clone())
-            .arg(subprocesses.clone());
+            .arg(subprocesses.clone())
+            .arg(full_filenames.clone());
 
         let dump = clap::SubCommand::with_name("dump")
             .about("Dumps stack traces for a target program to stdout")
             .arg(pid.clone().required(true))
+            .arg(full_filenames.clone())
             .arg(Arg::with_name("locals")
                 .short("l")
                 .long("locals")
@@ -273,6 +283,7 @@ impl Config {
         config.dump_json = matches.occurrences_of("json") > 0;
         config.dump_locals = matches.occurrences_of("locals");
         config.subprocesses = matches.occurrences_of("subprocesses") > 0;
+        config.full_filenames = matches.occurrences_of("full_filenames") > 0;
 
         config.capture_output = config.command != "record" || matches.occurrences_of("capture") > 0;
         if !config.capture_output {

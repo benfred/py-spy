@@ -464,6 +464,11 @@ impl PythonSpy {
     /// directory etc. This function looks only includes paths inside a python
     /// package or subpackage, and not the path the package is installed at
     fn shorten_filename(&mut self, filename: &str) -> Option<String> {
+        // if the user requested full filenames, skip shortening
+        if self.config.full_filenames {
+            return Some(filename.to_string());
+        }
+
         // if we have figured out the short filename already, use it
         if let Some(short) = self.short_filenames.get(filename) {
             return short.clone();
