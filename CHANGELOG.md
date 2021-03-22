@@ -1,3 +1,15 @@
+## v0.3.5
+* Handle case where linux kernel is compiled without ```process_vm_readv``` support  [#22](https://github.com/benfred/py-spy/issues/22)
+* Handle case where /proc/self/ns/mnt is missing [#326](https://github.com/benfred/py-spy/issues/326)
+* Allow attaching to processes where the python binary has been deleted [#109](https://github.com/benfred/py-spy/issues/109)
+* Make '--output' optional [#229](https://github.com/benfred/py-spy/issues/229)
+* Add --full-filenames to allow showing full Python filenames [#363](https://github.com/benfred/py-spy/issues/363)
+* Count "samples" as the number of recorded stacks (per thread) [#365](https://github.com/benfred/py-spy/issues/365)
+* Exit with an error if --gil but we failed to get necessary addrs/offsets [#361](https://github.com/benfred/py-spy/pull/361)
+* Include command/options used to run py-spy in flamegraph output [#293](https://github.com/benfred/py-spy/issues/293)
+* GIL Detection fixes for python 3.9.2/3.8.8 [#362](https://github.com/benfred/py-spy/pull/362)
+* Move to Github Actions for CI
+
 ## v0.3.4
 * Build armv7/aarch64 wheels [#328](https://github.com/benfred/py-spy/issues/328)
 * Detect GIL on Python 3.9 / 3.7.7+ / 3.8.2+

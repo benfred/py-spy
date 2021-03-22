@@ -106,14 +106,14 @@ dependencies = [
 
 [[package]]
 name = "benfred-read-process-memory"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3bf2e237e12009727c3b0cc39eb34f6b29dbc2957f5d643f34ade1e5a7016c9"
+checksum = "09ba08144670324a93f7b6502ff6ca679bfd1efa5230c4efff49801714b3854a"
 dependencies = [
  "kernel32-sys",
  "libc",
  "log",
- "mach 0.1.2",
+ "mach 0.3.2",
  "winapi 0.2.8",
 ]
 
@@ -174,22 +174,6 @@ dependencies = [
  "textwrap",
  "unicode-width",
  "vec_map",
-]
-
-[[package]]
-name = "console"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a50aab2529019abfabfa93f1e6c41ef392f91fbf179b347a7e96abb524884a08"
-dependencies = [
- "encode_unicode",
- "lazy_static",
- "libc",
- "regex",
- "terminal_size",
- "unicode-width",
- "winapi 0.3.9",
- "winapi-util",
 ]
 
 [[package]]
@@ -433,17 +417,6 @@ checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
 
 [[package]]
 name = "goblin"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d20fd25aa456527ce4f544271ae4fea65d2eda4a6561ea56f39fb3ee4f7e3884"
-dependencies = [
- "log",
- "plain",
- "scroll",
-]
-
-[[package]]
-name = "goblin"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c69552f48b18aa6102ce0c82dd9bc9d3f8af5fc0a5797069b1b466b90570e39c"
@@ -502,7 +475,7 @@ version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7baab56125e25686df467fe470785512329883aab42696d661247aca2a2896e4"
 dependencies = [
- "console 0.14.0",
+ "console",
  "lazy_static",
  "number_prefix",
  "regex",
@@ -793,9 +766,9 @@ dependencies = [
 
 [[package]]
 name = "proc-maps"
-version = "0.1.6"
+version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f83fdad949003618365cc72532931c709cf68d98cd4310c1286566718abde698"
+checksum = "405a565c252559e556e2539c8300d01a468053cc6bc12356d2d38441f5db5379"
 dependencies = [
  "failure",
  "libc",
@@ -810,12 +783,12 @@ version = "0.3.4"
 dependencies = [
  "chrono",
  "clap",
- "console 0.13.0",
+ "console",
  "cpp_demangle",
  "ctrlc",
  "env_logger",
  "failure",
- "goblin 0.2.3",
+ "goblin",
  "indicatif",
  "inferno",
  "lazy_static",
@@ -971,13 +944,13 @@ checksum = "b5eb417147ba9860a96cfe72a0b93bf88fee1744b5636ec99ab20c1aa9376581"
 
 [[package]]
 name = "remoteprocess"
-version = "0.4.2"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "545c41c0f54589b5212a0f0fe0f099af949c6106eecdb949b555a29baf401ff1"
+checksum = "c0d23133e0101470829111c52d95c1fd07f4925b9ab59c99a4f9c6034a1648b6"
 dependencies = [
  "addr2line",
  "benfred-read-process-memory",
- "goblin 0.3.0",
+ "goblin",
  "lazy_static",
  "libc",
  "libproc 0.9.1",
