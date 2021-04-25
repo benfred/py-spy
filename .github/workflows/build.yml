@@ -81,12 +81,13 @@ jobs:
 
   test_wheels:
     name: Test Wheels
-    needs: [build]
+    needs: [build, build-linux-cross]
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps: 
+      - uses: actions/checkout@v2
       - uses: actions/download-artifact@v2
         with:
           name: wheels
@@ -97,13 +98,15 @@ jobs:
       - name: Install wheel
         run: |
           pip install --no-index --find-links . py-spy
-      # TODO: use built py-spy to do some tests
+      - name: Test wheel
+        run: |
+          python tests/integration_test.py
 
   release:
     name: Release
     runs-on: ubuntu-latest
     if: "startsWith(github.ref, 'refs/tags/')"
-    needs: [build-linux-cross, test_wheels]
+    needs: [test_wheels]
     steps:
       - uses: actions/download-artifact@v2
         with:
