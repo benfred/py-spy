@@ -83,38 +83,35 @@ impl Sampler {
     /// Creates a new sampler object that samples any python process in the
     /// process or child processes
     fn new_subprocess_sampler(pid: Pid, config: &Config) -> Result<Sampler, Error> {
-        // Initialize a PythonSpy object per child, and build up the process tree
-        let mut spies = HashMap::new();
-
-        spies.insert(pid, PythonSpyThread::new(pid, None, &config)?);
         let process = remoteprocess::Process::new(pid)?;
 
-        // Try a few times to get the process' children to give time to the process to start (?)
-        // Allows to properly get children on Windows 10 in a venv with -s flag
-        let children = {
-            let mut tmp_children = process.child_processes()?;
-            let mut retries = 10;
-            while retries > 0 && tmp_children.len() == 0 {
-                std::thread::sleep(std::time::Duration::from_millis(100));
-                tmp_children = process.child_processes()?;
-                retries -= 1;
-            }
-            tmp_children
-        };
+        // Initialize a PythonSpy object per child, and build up the process tree
+        let mut spies = HashMap::new();
+        let mut retries = 10;
+        spies.insert(pid, PythonSpyThread::new(pid, None, &config)?);
 
-        for (childpid, parentpid) in children {
-            // If we can't create the child process, don't worry about it
-            // can happen with zombie child processes etc
-            match PythonSpyThread::new(childpid, Some(parentpid), &config) {
-                Ok(spy)  => { spies.insert(childpid, spy); },
-                Err(e) => { warn!("Failed to open process {}: {}", childpid, e); }
+        loop {
+            for (childpid, parentpid) in process.child_processes()? {
+                // If we can't create the child process, don't worry about it
+                // can happen with zombie child processes etc
+                match PythonSpyThread::new(childpid, Some(parentpid), &config) {
+                    Ok(spy)  => { spies.insert(childpid, spy); },
+                    Err(e) => { warn!("Failed to open process {}: {}", childpid, e); }
+                }
             }
-        }
 
-        // wait for all the various python spy objects to initialize, and if none
-        // of them initialize appropiately fail right away
-        if spies.values_mut().all(|spy| !spy.wait_initialized()) {
-            return Err(format_err!("No python processes found in process {} or any of its subprocesses", pid));
+            // wait for all the various python spy objects to initialize, and break out of here
+            // if we have one of them started.
+            if spies.values_mut().any(|spy| spy.wait_initialized()) {
+                break;
+            }
+
+            // Otherwise sleep for a short time and retry
+            retries -= 1;
+            if retries == 0 {
+                return Err(format_err!("No python processes found in process {} or any of its subprocesses", pid));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
         }
 
         // Create a new thread to periodically monitor for new child processes, and update
