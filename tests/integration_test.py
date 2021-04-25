@@ -3,7 +3,7 @@ import subprocess
 import sys
 import unittest
 import tempfile
-import pathlib
+import os
 from collections import defaultdict, namedtuple
 from distutils.spawn import find_executable
 
@@ -15,7 +15,7 @@ class TestPyspy(unittest.TestCase):
     """ Basic tests of using py-spy as a commandline application """
     def _sample_process(self, script_name, options=None):
         pyspy = find_executable("py-spy")
-        print(f"Testing py-spy @ {pyspy}")
+        print("Testing py-spy @", pyspy)
 
         # for permissions reasons, we really want to run the sampled python process as a
         # subprocess of the py-spy (works best on linux etc). So we're running the 
@@ -70,8 +70,8 @@ class TestPyspy(unittest.TestCase):
 
 
 def _get_script(name):
-    base_dir = pathlib.Path(__file__).parent
-    return base_dir / "scripts" / name
+    base_dir = os.path.dirname(__file__)
+    return os.path.join(base_dir, "scripts", name)
 
 
 def _most_frequent_sample(samples):
