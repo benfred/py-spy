@@ -8,8 +8,8 @@ struct ScriptRunner {
 }
 
 impl ScriptRunner {
-    fn new(filename: &str) -> ScriptRunner {
-        let child = std::process::Command::new("python").arg(filename).spawn().unwrap();
+    fn new(process_name: &str, filename: &str) -> ScriptRunner {
+        let child = std::process::Command::new(process_name).arg(filename).spawn().unwrap();
         ScriptRunner{child}
     }
 
@@ -32,7 +32,7 @@ struct TestRunner {
 
 impl TestRunner {
     fn new(config: Config, filename: &str) -> TestRunner {
-        let child = ScriptRunner::new(filename);
+        let child = ScriptRunner::new("python", filename);
         std::thread::sleep(std::time::Duration::from_millis(400));
         let spy = PythonSpy::retry_new(child.id(), &config, 20).unwrap();
         TestRunner{child, spy}
@@ -298,7 +298,7 @@ fn test_subprocesses() {
 
     // We used to not be able to create a sampler object if one of the child processes
     // was in a zombie state. Verify that this works now
-    let process = ScriptRunner::new("./tests/scripts/subprocesses.py");
+    let process = ScriptRunner::new("python", "./tests/scripts/subprocesses.py");
     std::thread::sleep(std::time::Duration::from_millis(1000));
     let config = Config{subprocesses: true, ..Default::default()};
     let sampler = py_spy::sampler::Sampler::new(process.id(), &config).unwrap();
@@ -335,7 +335,7 @@ fn test_subprocesses_zombiechild() {
 
     // We used to not be able to create a sampler object if one of the child processes
     // was in a zombie state. Verify that this works now
-    let process = ScriptRunner::new("./tests/scripts/subprocesses_zombie_child.py");
+    let process = ScriptRunner::new("python", "./tests/scripts/subprocesses_zombie_child.py");
     std::thread::sleep(std::time::Duration::from_millis(200));
     let config = Config{subprocesses: true, ..Default::default()};
     let _sampler = py_spy::sampler::Sampler::new(process.id(), &config).unwrap();
@@ -372,5 +372,22 @@ fn test_negative_linenumber_increment() {
             assert_eq!(trace.frames[1].line, 13);
         },
         _ => panic!("Unknown python major version")
+    }
+}
+
+#[cfg(target_os="linux")]
+#[test]
+fn test_delayed_subprocess() {
+    let process = ScriptRunner::new("bash", "./tests/scripts/delayed_launch.sh");
+    let config = Config{subprocesses: true, ..Default::default()};
+    let sampler = py_spy::sampler::Sampler::new(process.id(), &config).unwrap();
+    for sample in sampler {
+        // wait for other processes here if we don't have the expected number
+        let traces = sample.traces;
+
+        // should have one trace from the subprocess
+        assert_eq!(traces.len(), 1);
+        assert!(traces[0].pid != process.id());
+        break;
     }
 }
