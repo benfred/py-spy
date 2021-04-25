@@ -99,13 +99,11 @@ jobs:
         run: |
           pip install --no-index --find-links . py-spy
       - name: Test Wheel
-        run: |
-          python tests/integration_test.py
-        if: runner.os != "macOS"
+        run: python tests/integration_test.py
+        if: runner.os != 'macOS'
       - name: Test macOS Wheel
-        run: |
-          sudo "PATH=$PATH" python tests/integration_test.py
-        if: runner.os == "macOS"
+        run: sudo "PATH=$PATH" python tests/integration_test.py
+        if: runner.os == 'macOS'
 
 
   release:
