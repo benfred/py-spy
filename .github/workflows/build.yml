@@ -79,11 +79,34 @@ jobs:
         name: wheels
         path: dist
 
+  test_wheels:
+    name: Test Wheels
+    needs: [build]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps: 
+      - uses: actions/download-artifact@v2
+        with:
+          name: wheels
+      - uses: actions/setup-python@v2
+        with:
+          # todo: test other versions of python
+          python-version: 3.8
+      - name: Install wheel
+        run: |
+          pip install --no-index --find-links . py-spy
+      # TODO: use built py-spy to do some tests
+
   release:
     name: Release
     runs-on: ubuntu-latest
     if: "startsWith(github.ref, 'refs/tags/')"
-    needs: [build-linux-cross, build]
+    needs: [build-linux-cross, test_wheels]
+      - uses: actions/setup-python@v2
+        with:
+          python-version: 3.9
     steps:
       - uses: actions/download-artifact@v2
         with:
