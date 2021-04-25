@@ -86,6 +86,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: [2.7, 3.6, 3.7, 3.8, 3.9]
     steps: 
       - uses: actions/checkout@v2
       - uses: actions/download-artifact@v2
@@ -93,8 +94,7 @@ jobs:
           name: wheels
       - uses: actions/setup-python@v2
         with:
-          # todo: test other versions of python
-          python-version: 3.8
+          python-version: ${{ matrix.python-version }}
       - name: Install wheel
         run: |
           pip install --no-index --find-links . py-spy
