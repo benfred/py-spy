@@ -104,9 +104,6 @@ jobs:
     runs-on: ubuntu-latest
     if: "startsWith(github.ref, 'refs/tags/')"
     needs: [build-linux-cross, test_wheels]
-      - uses: actions/setup-python@v2
-        with:
-          python-version: 3.9
     steps:
       - uses: actions/download-artifact@v2
         with:
