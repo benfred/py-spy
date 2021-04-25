@@ -88,7 +88,21 @@ impl Sampler {
 
         spies.insert(pid, PythonSpyThread::new(pid, None, &config)?);
         let process = remoteprocess::Process::new(pid)?;
-        for (childpid, parentpid) in process.child_processes()? {
+
+        // Try a few times to get the process' children to give time to the process to start (?)
+        // Allows to properly get children on Windows 10 in a venv with -s flag
+        let children = {
+            let mut tmp_children = process.child_processes()?;
+            let mut retries = 10;
+            while retries > 0 && tmp_children.len() == 0 {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                tmp_children = process.child_processes()?;
+                retries -= 1;
+            }
+            tmp_children
+        };
+
+        for (childpid, parentpid) in children {
             // If we can't create the child process, don't worry about it
             // can happen with zombie child processes etc
             match PythonSpyThread::new(childpid, Some(parentpid), &config) {
