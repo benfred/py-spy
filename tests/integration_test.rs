@@ -382,10 +382,8 @@ fn test_delayed_subprocess() {
     let config = Config{subprocesses: true, ..Default::default()};
     let sampler = py_spy::sampler::Sampler::new(process.id(), &config).unwrap();
     for sample in sampler {
-        // wait for other processes here if we don't have the expected number
-        let traces = sample.traces;
-
         // should have one trace from the subprocess
+        let traces = sample.traces;
         assert_eq!(traces.len(), 1);
         assert!(traces[0].pid != process.id());
         break;
