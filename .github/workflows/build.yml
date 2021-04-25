@@ -24,6 +24,7 @@ jobs:
   build:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
@@ -62,6 +63,7 @@ jobs:
   build-linux-cross:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         target: [i686-musl, armv7-musleabihf, aarch64-musl, x86_64-musl]
     container:
@@ -84,6 +86,7 @@ jobs:
     needs: [build, build-linux-cross]
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: [2.7, 3.6, 3.7, 3.8, 3.9]
