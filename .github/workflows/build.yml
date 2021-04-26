@@ -116,7 +116,7 @@ jobs:
     runs-on: [self-hosted, linux, arm]
     strategy:
       matrix:
-        arm-python-version: [2.7.18, 3.7.10, 3.8.9, 3.9.4]
+        pyenv-python-version: [2.7.18, 3.7.10, 3.8.9, 3.9.4]
     steps:
       - uses: actions/checkout@v2
       - uses: actions/download-artifact@v2
@@ -126,8 +126,8 @@ jobs:
         run: |
           # build the version of python if not installed already
           # (note this relies on pyenv being setup already)
-          pyenv install -s ${{ arm-python-version }}
-          pyenv global ${{ arm-python-version }}
+          pyenv install -s ${{ matrix.pyenv-python-version }}
+          pyenv global ${{ matrix.pyenv-python-version }}
           python --version
       - name: Install wheel
         run: |
