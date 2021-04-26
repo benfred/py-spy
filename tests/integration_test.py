@@ -17,12 +17,13 @@ GIL = ["--gil"] if not sys.platform.startswith("win") else []
 
 class TestPyspy(unittest.TestCase):
     """ Basic tests of using py-spy as a commandline application """
+
     def _sample_process(self, script_name, options=None):
         pyspy = find_executable("py-spy")
         print("Testing py-spy @", pyspy)
 
         # for permissions reasons, we really want to run the sampled python process as a
-        # subprocess of the py-spy (works best on linux etc). So we're running the 
+        # subprocess of the py-spy (works best on linux etc). So we're running the
         # record option, and setting different flags. To get the profile output
         # we're using the speedscope format (since we can read that in as json)
         with tempfile.NamedTemporaryFile() as profile_file:
@@ -42,7 +43,7 @@ class TestPyspy(unittest.TestCase):
             subprocess.check_call(cmdline)
             with open(profile_file.name) as f:
                 profiles = json.load(f)
-        
+
         frames = profiles["shared"]["frames"]
         samples = defaultdict(int)
         for p in profiles["profiles"]:
@@ -72,7 +73,6 @@ class TestPyspy(unittest.TestCase):
         assert sum(profile.values()) >= 95
 
 
-
 def _get_script(name):
     base_dir = os.path.dirname(__file__)
     return os.path.join(base_dir, "scripts", name)
@@ -80,6 +80,7 @@ def _get_script(name):
 
 def _most_frequent_sample(samples):
     return max(samples.items(), key=lambda x: x[1])
+
 
 if __name__ == "__main__":
     unittest.main()
