@@ -102,7 +102,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install wheel
         run: |
-          pip install --no-index --find-links . py-spy
+          pip install --force-reinstall --no-index --find-links . py-spy
       - name: Test Wheel
         run: python tests/integration_test.py
         if: runner.os != 'macOS'
@@ -133,7 +133,7 @@ jobs:
           python --version
       - name: Install wheel
         run: |
-          pip install --no-index --find-links . py-spy
+          pip install --force-reinstall --no-index --find-links . py-spy
       - name: Test Wheel
         run: python tests/integration_test.py
 
