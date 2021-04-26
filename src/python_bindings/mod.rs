@@ -70,8 +70,8 @@ pub mod pyruntime {
                     _ => Some(1416),
                 }
              },
-             Version{major: 3, minor: 8, patch: 1..=7, ..} => { Some(1416) },
-             Version{major: 3, minor: 9, patch: 0..=1, ..} => { Some(616) },
+             Version{major: 3, minor: 8, patch: 1..=9, ..} => { Some(1416) },
+             Version{major: 3, minor: 9, patch: 0..=4, ..} => { Some(616) },
              _ => None
         }
     }
@@ -151,8 +151,8 @@ pub mod pyruntime {
                     _ => Some(1296)
                 }
             },
-            Version{major: 3, minor: 8, patch: 1..=7, ..} => Some(1296),
-            Version{major: 3, minor: 9, patch: 0..=1, ..} => Some(496),
+            Version{major: 3, minor: 8, patch: 1..=9, ..} => Some(1296),
+            Version{major: 3, minor: 9, patch: 0..=4, ..} => Some(496),
             _ => None
         }
     }
@@ -170,8 +170,8 @@ pub mod pyruntime {
                     _ => Some(1224)
                 }
             },
-            Version{major: 3, minor: 8, patch: 1..=7, ..} => Some(1224),
-            Version{major: 3, minor: 9, patch: 0..=1, ..} => Some(424),
+            Version{major: 3, minor: 8, patch: 1..=9, ..} => Some(1224),
+            Version{major: 3, minor: 9, patch: 0..=4, ..} => Some(424),
             _ => None
         }
     }
