@@ -116,15 +116,19 @@ jobs:
     runs-on: [self-hosted, linux, arm]
     strategy:
       matrix:
-        arm-python-version: [2.7, 3.6, 3.7, 3.8, 3.9]
+        arm-python-version: [2.7.18, 3.7.10, 3.8.9, 3.9.4]
     steps:
       - uses: actions/checkout@v2
       - uses: actions/download-artifact@v2
         with:
           name: wheels
-      - uses: actions/setup-python@v2
-        with:
-          python-version: ${{ matrix.arm-python-version }}
+      - name: Setup pyenv
+        run: |
+          # build the version of python if not installed already
+          # (note this relies on pyenv being setup already)
+          pyenv install -s ${{ arm-python-version }}
+          pyenv global ${{ arm-python-version }}
+          python --version
       - name: Install wheel
         run: |
           pip install --no-index --find-links . py-spy
