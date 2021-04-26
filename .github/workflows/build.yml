@@ -124,7 +124,7 @@ jobs:
           name: wheels
       - uses: actions/setup-python@v2
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: ${{ matrix.arm-python-version }}
       - name: Install wheel
         run: |
           pip install --no-index --find-links . py-spy
