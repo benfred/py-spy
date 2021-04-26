@@ -11,7 +11,7 @@ def get_github_python_versions():
     raw_versions = [v["version"] for v in versions_json]
     versions = []
     for version_str in raw_versions:
-        if '-' in version_str:
+        if "-" in version_str:
             continue
 
         v = pkg_resources.parse_version(version_str)
@@ -28,8 +28,12 @@ def get_github_python_versions():
 
 
 if __name__ == "__main__":
-    versions = sorted(get_github_python_versions(), key = lambda x: pkg_resources.parse_version(x))
-    build_yml = pathlib.Path(__file__).parent.parent / ".github" / "workflows" / "build.yml"
+    versions = sorted(
+        get_github_python_versions(), key=lambda x: pkg_resources.parse_version(x)
+    )
+    build_yml = (
+        pathlib.Path(__file__).parent.parent / ".github" / "workflows" / "build.yml"
+    )
 
     transformed = []
     for line in open(build_yml):
