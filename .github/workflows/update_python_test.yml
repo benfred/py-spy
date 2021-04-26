@@ -1,4 +1,4 @@
-name: Update Dependencies
+name: Update Python Test Versions
 on:
   workflow_dispatch:
   schedule:
