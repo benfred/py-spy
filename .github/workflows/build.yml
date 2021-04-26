@@ -114,6 +114,7 @@ jobs:
     name: Test ARMv7 Wheel
     needs: [build-linux-cross]
     runs-on: [self-hosted, linux, arm]
+    strategy:
       matrix:
         arm-python-version: [2.7, 3.6, 3.7, 3.8, 3.9]
     steps:
