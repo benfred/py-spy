@@ -15,12 +15,12 @@ def get_github_python_versions():
             continue
 
         v = pkg_resources.parse_version(version_str)
-        if v.major == 3 and v.minor < 3:
-            # we don't support python 3.0/3.1/3.2
+        if v.major == 3 and v.minor < 5:
+            # we don't support python 3.0/3.1/3.2 , and don't bother testing 3.3/3.4
             continue
 
-        elif v.major == 2 and v.minor < 3:
-            # we don't support python before 2.3
+        elif v.major == 2 and v.minor < 7:
+            # we don't test python support before 2.7
             continue
 
         versions.append(version_str)

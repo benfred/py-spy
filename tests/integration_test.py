@@ -53,7 +53,7 @@ class TestPyspy(unittest.TestCase):
     def test_longsleep(self):
         # running with the gil flag should have ~ no samples returned
         profile = self._sample_process(_get_script("longsleep.py"), GIL)
-        assert sum(profile.values()) <= 1
+        assert sum(profile.values()) <= 5
 
         # running with the idle flag should have > 95%  of samples in the sleep call
         profile = self._sample_process(_get_script("longsleep.py"), ["--idle"])
