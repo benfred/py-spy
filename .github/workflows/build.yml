@@ -116,7 +116,9 @@ jobs:
     runs-on: [self-hosted, linux, arm]
     strategy:
       matrix:
-        pyenv-python-version: [2.7.18, 3.7.10, 3.8.9, 3.9.4]
+        # we're installing the manylinux2014 wheel, so can
+        # only test out relatively recent versions of python
+        pyenv-python-version: [3.7.10, 3.8.9, 3.9.4]
     steps:
       - uses: actions/checkout@v2
       - uses: actions/download-artifact@v2
