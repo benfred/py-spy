@@ -16,6 +16,10 @@ jobs:
   build-linux-armv7:
     runs-on: [self-hosted, linux, arm]
     steps:
+    - name: Setup python
+      run: |
+        pyenv global system
+        python --version
     - uses: actions/checkout@v2
     - name: Build
       run: cargo build --verbose
