@@ -2,7 +2,7 @@ name: Update Python Test Versions
 on:
   workflow_dispatch:
   schedule:
-    - cron:  '0 1 * * 1'
+  - cron: "0 1 * * *"
 jobs:
   update-dep:
     runs-on: ubuntu-latest
