@@ -1,3 +1,4 @@
+from __future__ import print_function
 import json
 import subprocess
 import sys
@@ -13,22 +14,19 @@ Frame = namedtuple("Frame", ["file", "name", "line", "col"])
 # disable gil checks on windows - just rely on active
 # (doesn't seem to be working quite right - TODO: investigate)
 GIL = ["--gil"] if not sys.platform.startswith("win") else []
+PYSPY = find_executable("py-spy")
 
 
 class TestPyspy(unittest.TestCase):
     """ Basic tests of using py-spy as a commandline application """
-
     def _sample_process(self, script_name, options=None):
-        pyspy = find_executable("py-spy")
-        print("Testing py-spy @", pyspy)
-
         # for permissions reasons, we really want to run the sampled python process as a
         # subprocess of the py-spy (works best on linux etc). So we're running the
         # record option, and setting different flags. To get the profile output
         # we're using the speedscope format (since we can read that in as json)
         with tempfile.NamedTemporaryFile() as profile_file:
             cmdline = [
-                pyspy,
+                PYSPY,
                 "record",
                 "-o",
                 profile_file.name,
@@ -40,7 +38,7 @@ class TestPyspy(unittest.TestCase):
             cmdline.extend(options or [])
             cmdline.extend(["--", sys.executable, script_name])
 
-            subprocess.check_call(cmdline)
+            subprocess.check_output(cmdline)
             with open(profile_file.name) as f:
                 profiles = json.load(f)
 
@@ -69,7 +67,6 @@ class TestPyspy(unittest.TestCase):
     def test_busyloop(self):
         # can't be sure what line we're on, but we should have ~ all samples holding the gil
         profile = self._sample_process(_get_script("busyloop.py"), GIL)
-        print(profile)
         assert sum(profile.values()) >= 95
 
 
@@ -83,4 +80,5 @@ def _most_frequent_sample(samples):
 
 
 if __name__ == "__main__":
+    print("Testing py-spy @", PYSPY)
     unittest.main()
