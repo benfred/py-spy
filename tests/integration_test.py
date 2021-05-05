@@ -37,7 +37,7 @@ class TestPyspy(unittest.TestCase):
                 "--format",
                 "speedscope",
                 "-d",
-                "1",
+                "2",
             ]
             cmdline.extend(options or [])
             cmdline.extend(["--", sys.executable, script_name])
@@ -102,7 +102,9 @@ def _get_script(name):
 
 
 def _most_frequent_sample(samples):
-    return max(samples.items(), key=lambda x: x[1])
+    frames, count = max(samples.items(), key=lambda x: x[1])
+    # lets normalize as a percentage here, rather than raw number of samples
+    return frames, int(100 * count / sum(samples.values()))
 
 
 if __name__ == "__main__":
