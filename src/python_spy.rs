@@ -45,13 +45,23 @@ pub struct PythonSpy {
     pub dockerized: bool
 }
 
-fn exit_if_gil(config: &Config, version: &Version, msg: &str) {
-    if config.gil_only {
-        eprintln!("Cannot detect GIL holding in version '{}' on the current platform (reason: {})", version, msg);
-        eprintln!("Please open an issue in https://github.com/benfred/py-spy with the Python version and your platform.");
-        std::process::exit(1);
+fn error_if_gil(config: &Config, version: &Version, msg: &str) -> Result<(), Error> {
+    lazy_static! {
+        static ref WARNED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     }
-    warn!("Unable to detect GIL usage: {}", msg);
+
+    if config.gil_only {
+        if !WARNED.load(std::sync::atomic::Ordering::Relaxed) {
+            // only print this once
+            eprintln!("Cannot detect GIL holding in version '{}' on the current platform (reason: {})", version, msg);
+            eprintln!("Please open an issue in https://github.com/benfred/py-spy with the Python version and your platform.");
+            WARNED.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        Err(format_err!("Cannot detect GIL holding in version '{}' on the current platform (reason: {})", version, msg))
+    } else {
+        warn!("Unable to detect GIL usage: {}", msg);
+        Ok(())
+    }
 }
 
 impl PythonSpy {
@@ -85,12 +95,12 @@ impl PythonSpy {
                                 addr, offset);
                             addr as usize + offset
                         } else {
-                            exit_if_gil(config, &version, "unknown pyruntime.gilstate.tstate_current offset");
+                            error_if_gil(config, &version, "unknown pyruntime.gilstate.tstate_current offset")?;
                             0
                         }
                     },
                     None => {
-                        exit_if_gil(config, &version, "failed to find _PyRuntime symbol");
+                        error_if_gil(config, &version, "failed to find _PyRuntime symbol")?;
                         0
                     }
                 }
@@ -102,7 +112,7 @@ impl PythonSpy {
                         addr as usize
                     },
                     None => {
-                        exit_if_gil(config, &version, "failed to find _PyThreadState_Current symbol");
+                        error_if_gil(config, &version, "failed to find _PyThreadState_Current symbol")?;
                         0
                     }
                 }
