@@ -112,6 +112,7 @@ def extract_bindings(cpython_path, version, configure=False):
         cat Objects/dict-common.h >> bindgen_input.h
         echo '#define Py_BUILD_CORE 1\n' >> bindgen_input.h
         cat Include/internal/pycore_pystate.h >> bindgen_input.h
+        cat Include/internal/pycore_interp.h >> bindgen_input.h
 
         bindgen  bindgen_input.h -o bindgen_output.rs \
             --with-derive-default \

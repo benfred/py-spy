@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use failure::Error;
 
-use crate::python_bindings::{v3_6_6, v3_7_0, v3_8_0};
+use crate::python_bindings::{v3_6_6, v3_7_0, v3_8_0, v3_9_5};
 use crate::python_interpreters::{InterpreterState, Object, TypeObject};
 use crate::python_spy::PythonSpy;
 use crate::python_data_access::{copy_string, copy_long, DictIterator};
@@ -59,10 +59,12 @@ fn _thread_name_lookup<I: InterpreterState>(spy: &PythonSpy) -> Result<HashMap<u
 // processing we only handle py3.6+ right now, and this doesn't work at all if the
 // threading module isn't imported in the target program
 pub fn thread_name_lookup(process: &PythonSpy) -> Option<HashMap<u64, String>> {
-    match process.version {
-        Version{major: 3, minor: 6, ..} => _thread_name_lookup::<v3_6_6::_is>(&process).ok(),
-        Version{major: 3, minor: 7, ..} => _thread_name_lookup::<v3_7_0::_is>(&process).ok(),
-        Version{major: 3, minor: 8, ..} => _thread_name_lookup::<v3_8_0::_is>(&process).ok(),
-        _ => None
-    }
+    let err = match process.version {
+        Version{major: 3, minor: 6, ..} => _thread_name_lookup::<v3_6_6::_is>(&process),
+        Version{major: 3, minor: 7, ..} => _thread_name_lookup::<v3_7_0::_is>(&process),
+        Version{major: 3, minor: 8, ..} => _thread_name_lookup::<v3_8_0::_is>(&process),
+        Version{major: 3, minor: 9, ..} => _thread_name_lookup::<v3_9_5::_is>(&process),
+        _ => return None
+    };
+    err.ok()
 }
