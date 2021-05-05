@@ -51,7 +51,9 @@ class TestPyspy(unittest.TestCase):
             for sample in p["samples"]:
                 if include_profile_name:
                     samples[
-                        (p["name"], *(Frame(**frames[frame]) for frame in sample))
+                        tuple(
+                            [p["name"]] + [Frame(**frames[frame]) for frame in sample]
+                        )
                     ] += 1
                 else:
                     samples[tuple(Frame(**frames[frame]) for frame in sample)] += 1
@@ -88,7 +90,7 @@ class TestPyspy(unittest.TestCase):
             ["--threads", "--idle"],
             include_profile_name=True,
         )
-        expected_thread_names = {f"CustomThreadName-{i}" for i in range(10)}
+        expected_thread_names = set("CustomThreadName-" + str(i) for i in range(10))
         expected_thread_names.add("MainThread")
         actual_thread_names = {p[0] for p in profile}
         assert expected_thread_names == actual_thread_names
