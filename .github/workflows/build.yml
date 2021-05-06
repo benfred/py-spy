@@ -108,11 +108,33 @@ jobs:
         run: |
           pip install --force-reinstall --no-index --find-links . py-spy
       - name: Test Wheel
+        id: test
         run: python tests/integration_test.py
         if: runner.os != 'macOS'
+        continue-on-error: true
+      - name: Test Wheel (Retry#1)
+        id: test1
+        run: python tests/integration_test.py
+        if: steps.test.outcome=='failure'
+        continue-on-error: true
+      - name: Test Wheel (Retry#2)
+        id: test2
+        run: python tests/integration_test.py
+        if: steps.test1.outcome=='failure'
       - name: Test macOS Wheel
+        id: osx_test
         run: sudo "PATH=$PATH" python tests/integration_test.py
         if: runner.os == 'macOS'
+        continue-on-error: true
+      - name: Test macOS Wheel (Retry#1)
+        id: osx_test1
+        run: python tests/integration_test.py
+        if: steps.osx_test.outcome=='failure'
+        continue-on-error: true
+      - name: Test macOS Wheel (Retry#2)
+        id: osx_test2
+        run: python tests/integration_test.py
+        if: steps.osx_test1.outcome=='failure'
 
   test-wheel-linux-armv7:
     name: Test ARMv7 Wheel

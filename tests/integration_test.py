@@ -1,13 +1,14 @@
 from __future__ import print_function
+
 import json
+import os
+import platform
 import subprocess
 import sys
-import unittest
 import tempfile
-import os
+import unittest
 from collections import defaultdict, namedtuple
 from distutils.spawn import find_executable
-
 
 Frame = namedtuple("Frame", ["file", "name", "line", "col"])
 
@@ -18,8 +19,12 @@ PYSPY = find_executable("py-spy")
 
 
 class TestPyspy(unittest.TestCase):
-    """ Basic tests of using py-spy as a commandline application """
-    def _sample_process(self, script_name, options=None):
+    """Basic tests of using py-spy as a commandline application"""
+
+    def _sample_process(self, script_name, options=None, include_profile_name=False):
+        if not PYSPY:
+            raise ValueError("Failed to find py-spy on the path")
+
         # for permissions reasons, we really want to run the sampled python process as a
         # subprocess of the py-spy (works best on linux etc). So we're running the
         # record option, and setting different flags. To get the profile output
@@ -33,11 +38,10 @@ class TestPyspy(unittest.TestCase):
                 "--format",
                 "speedscope",
                 "-d",
-                "1",
+                "2",
             ]
             cmdline.extend(options or [])
             cmdline.extend(["--", sys.executable, script_name])
-
             subprocess.check_output(cmdline)
             with open(profile_file.name) as f:
                 profiles = json.load(f)
@@ -46,7 +50,14 @@ class TestPyspy(unittest.TestCase):
         samples = defaultdict(int)
         for p in profiles["profiles"]:
             for sample in p["samples"]:
-                samples[tuple(Frame(**frames[frame]) for frame in sample)] += 1
+                if include_profile_name:
+                    samples[
+                        tuple(
+                            [p["name"]] + [Frame(**frames[frame]) for frame in sample]
+                        )
+                    ] += 1
+                else:
+                    samples[tuple(Frame(**frames[frame]) for frame in sample)] += 1
         return samples
 
     def test_longsleep(self):
@@ -69,6 +80,26 @@ class TestPyspy(unittest.TestCase):
         profile = self._sample_process(_get_script("busyloop.py"), GIL)
         assert sum(profile.values()) >= 95
 
+    def test_thread_names(self):
+        # we don't support getting thread names on python < 3.6
+        v = sys.version_info
+        if v.major < 3 or v.minor < 6:
+            return
+
+        # this also doesn't currently work on armv7
+        if platform.machine().startswith("armv7"):
+            return
+
+        profile = self._sample_process(
+            _get_script("thread_names.py"),
+            ["--threads", "--idle"],
+            include_profile_name=True,
+        )
+        expected_thread_names = set("CustomThreadName-" + str(i) for i in range(10))
+        expected_thread_names.add("MainThread")
+        actual_thread_names = {p[0] for p in profile}
+        assert expected_thread_names == actual_thread_names
+
 
 def _get_script(name):
     base_dir = os.path.dirname(__file__)
@@ -76,7 +107,9 @@ def _get_script(name):
 
 
 def _most_frequent_sample(samples):
-    return max(samples.items(), key=lambda x: x[1])
+    frames, count = max(samples.items(), key=lambda x: x[1])
+    # lets normalize as a percentage here, rather than raw number of samples
+    return frames, int(100 * count / sum(samples.values()))
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ pub mod v3_5_5;
 pub mod v3_6_6;
 pub mod v3_7_0;
 pub mod v3_8_0;
+pub mod v3_9_5;
 
 // currently the PyRuntime struct used from Python 3.7 on really can't be
 // exposed in a cross platform way using bindgen. PyRuntime has several mutex's
