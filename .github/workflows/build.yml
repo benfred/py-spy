@@ -128,12 +128,12 @@ jobs:
         continue-on-error: true
       - name: Test macOS Wheel (Retry#1)
         id: osx_test1
-        run: python tests/integration_test.py
+        run: sudo "PATH=$PATH" python tests/integration_test.py
         if: steps.osx_test.outcome=='failure'
         continue-on-error: true
       - name: Test macOS Wheel (Retry#2)
         id: osx_test2
-        run: python tests/integration_test.py
+        run: sudo "PATH=$PATH" python tests/integration_test.py
         if: steps.osx_test1.outcome=='failure'
 
   test-wheel-linux-armv7:
