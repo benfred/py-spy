@@ -42,7 +42,7 @@ impl Sampler {
         thread::spawn(move || {
             // We need to create this object inside the thread here since PythonSpy objects don't
             // have the Send trait implemented on linux
-            let mut spy = match PythonSpy::retry_new(pid, &config, 5) {
+            let mut spy = match PythonSpy::retry_new(pid, &config, 20) {
                 Ok(spy) => {
                     if let Err(_) = initialized_tx.send(Ok(spy.version.clone())) {
                         return;

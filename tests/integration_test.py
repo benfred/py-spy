@@ -86,10 +86,6 @@ class TestPyspy(unittest.TestCase):
         if v.major < 3 or v.minor < 6:
             return
 
-        # this also doesn't currently work on armv7
-        if platform.machine().startswith("armv7"):
-            return
-
         profile = self._sample_process(
             _get_script("thread_names.py"),
             ["--threads", "--idle"],
