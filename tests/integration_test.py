@@ -2,6 +2,7 @@ from __future__ import print_function
 
 import json
 import os
+import platform
 import subprocess
 import sys
 import tempfile
@@ -83,6 +84,10 @@ class TestPyspy(unittest.TestCase):
         # we don't support getting thread names on python < 3.6
         v = sys.version_info
         if v.major < 3 or v.minor < 6:
+            return
+
+        # this also doesn't currently work on armv7
+        if platform.machine().startswith("armv7"):
             return
 
         profile = self._sample_process(
