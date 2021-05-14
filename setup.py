@@ -111,7 +111,7 @@ setup(
     license="MIT",
     cmdclass={"install": PostInstallCommand, "bdist_wheel": bdist_wheel},
     classifiers=[
-        "Development Status :: 3 - Alpha",
+        "Development Status :: 5 - Production/Stable",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 2",
         "Intended Audience :: Developers",
