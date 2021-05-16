@@ -107,7 +107,7 @@ setup(
     description="A Sampling Profiler for Python",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    version="0.3.6",
+    version="0.3.7",
     license="MIT",
     cmdclass={"install": PostInstallCommand, "bdist_wheel": bdist_wheel},
     classifiers=[
