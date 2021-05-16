@@ -1,3 +1,7 @@
+## v0.3.7
+* Fix error that sometimes left the profiled program suspended [#390](https://github.com/benfred/py-spy/issues/390)
+* Documentation fixes for README [#391](https://github.com/benfred/py-spy/issues/391), [#393](https://github.com/benfred/py-spy/issues/393)
+
 ## v0.3.6
 * Fix profiling inside a venv on windows [#216](https://github.com/benfred/py-spy/issues/216)
 * Detect GIL on Python 3.9.3+, 3.8.9+ [#375](https://github.com/benfred/py-spy/issues/375)
