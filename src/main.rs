@@ -151,7 +151,7 @@ impl Recorder for RawFlamegraph {
 fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error> {
     let mut output: Box<dyn Recorder> = match config.format {
         Some(FileFormat::flamegraph) => Box::new(flamegraph::Flamegraph::new(config.show_line_numbers)),
-        Some(FileFormat::speedscope) =>  Box::new(speedscope::Stats::new(config.show_line_numbers)),
+        Some(FileFormat::speedscope) =>  Box::new(speedscope::Stats::new(config.show_line_numbers, config.sampling_rate)),
         Some(FileFormat::raw) => Box::new(RawFlamegraph(flamegraph::Flamegraph::new(config.show_line_numbers))),
         None => return Err(format_err!("A file format is required to record samples"))
     };

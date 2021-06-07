@@ -125,11 +125,11 @@ enum ValueUnit {
 }
 
 impl SpeedscopeFile {
-  pub fn new(samples: &HashMap<Tid, Vec<Vec<usize>>>, frames: &Vec<Frame>, thread_name_map: &HashMap<Tid, String>) -> SpeedscopeFile {
+  pub fn new(samples: &HashMap<Tid, Vec<Vec<usize>>>, frames: &Vec<Frame>, thread_name_map: &HashMap<Tid, String>, sample_rate: u64) -> SpeedscopeFile {
     let end_value = samples.len();
 
     // we sample at 100 Hz, so scale the end value to match
-    let scaled_end_value = end_value as f64 / 100.0;
+    let scaled_end_value = end_value as f64 / sample_rate as f64;
     SpeedscopeFile {
       // This is always the same
       schema: "https://www.speedscope.app/file-format-schema.json".to_string(),
@@ -178,17 +178,20 @@ pub struct Stats {
     frames: Vec<Frame>,
     frame_to_index: HashMap<stack_trace::Frame, usize>,
     thread_name_map: HashMap<Tid, String>,
-    show_line_numbers: bool
+    show_line_numbers: bool,
+    // Sample rate in Hz
+    sample_rate: u64,
 }
 
 impl Stats {
-    pub fn new(show_line_numbers: bool) -> Stats {
+    pub fn new(show_line_numbers: bool, sample_rate: u64) -> Stats {
         Stats {
             samples: HashMap::new(),
             frames: vec![],
             frame_to_index: HashMap::new(),
             thread_name_map: HashMap::new(),
-            show_line_numbers
+            show_line_numbers,
+            sample_rate,
         }
     }
 
@@ -219,7 +222,7 @@ impl Stats {
     }
 
     pub fn write(&self, w: &mut dyn Write) -> Result<(), Error> {
-        let json = serde_json::to_string(&SpeedscopeFile::new(&self.samples, &self.frames, &self.thread_name_map))?;
+        let json = serde_json::to_string(&SpeedscopeFile::new(&self.samples, &self.frames, &self.thread_name_map, self.sample_rate))?;
         writeln!(w, "{}", json)?;
         Ok(())
     }
@@ -232,7 +235,8 @@ mod tests {
 
     #[test]
     fn test_speedscope_units() {
-        let mut stats = Stats::new(true);
+        let sample_rate = 100;
+        let mut stats = Stats::new(true, sample_rate);
         let mut cursor = Cursor::new(Vec::new());
 
         let frame = stack_trace::Frame {
@@ -265,6 +269,6 @@ mod tests {
         let trace: SpeedscopeFile = serde_json::from_str(&s).unwrap();
 
         assert_eq!(trace.profiles[0].unit, ValueUnit::Seconds);
-        assert_eq!(trace.profiles[0].end_value, 1.0 / 100.0f64);
+        assert_eq!(trace.profiles[0].end_value, 1.0 / sample_rate as f64);
     }
 }
