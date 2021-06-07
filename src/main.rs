@@ -55,7 +55,7 @@ mod timer;
 mod utils;
 mod version;
 
-use std::io::Read;
+use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -115,14 +115,14 @@ fn sample_console(pid: remoteprocess::Pid,
 
 pub trait Recorder {
     fn increment(&mut self, trace: &StackTrace) -> Result<(), Error>;
-    fn write(&self, w: &mut std::fs::File) -> Result<(), Error>;
+    fn write(&self, w: &mut dyn Write) -> Result<(), Error>;
 }
 
 impl Recorder for speedscope::Stats {
     fn increment(&mut self, trace: &StackTrace) -> Result<(), Error> {
         Ok(self.record(trace)?)
     }
-    fn write(&self, w: &mut std::fs::File) -> Result<(), Error> {
+    fn write(&self, w: &mut dyn Write) -> Result<(), Error> {
         self.write(w)
     }
 }
@@ -131,7 +131,7 @@ impl Recorder for flamegraph::Flamegraph {
     fn increment(&mut self, trace: &StackTrace) -> Result<(), Error> {
         Ok(self.increment(trace)?)
     }
-    fn write(&self, w: &mut std::fs::File) -> Result<(), Error> {
+    fn write(&self, w: &mut dyn Write) -> Result<(), Error> {
         self.write(w)
     }
 }
@@ -143,7 +143,7 @@ impl Recorder for RawFlamegraph {
         Ok(self.0.increment(trace)?)
     }
 
-    fn write(&self, w: &mut std::fs::File) -> Result<(), Error> {
+    fn write(&self, w: &mut dyn Write) -> Result<(), Error> {
         self.0.write_raw(w)
     }
 }

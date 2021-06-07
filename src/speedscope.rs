@@ -29,7 +29,6 @@ SOFTWARE.
 use std::collections::{HashMap};
 use std::io;
 use std::io::Write;
-use std::fs::File;
 
 use crate::stack_trace;
 use remoteprocess::Tid;
@@ -217,7 +216,7 @@ impl Stats {
         Ok(())
     }
 
-    pub fn write(&self, w: &mut File) -> Result<(), Error> {
+    pub fn write(&self, w: &mut dyn Write) -> Result<(), Error> {
         let json = serde_json::to_string(&SpeedscopeFile::new(&self.samples, &self.frames, &self.thread_name_map))?;
         writeln!(w, "{}", json)?;
         Ok(())
