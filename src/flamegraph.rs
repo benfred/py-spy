@@ -26,9 +26,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
+use std::io::Write;
 use std;
 use std::collections::HashMap;
-use std::fs::File;
 
 
 use failure::Error;
@@ -67,7 +67,7 @@ impl Flamegraph {
         self.counts.iter().map(|(k, v)| format!("{} {}", k, v)).collect()
     }
 
-    pub fn write(&self, w: &File) -> Result<(), Error> {
+    pub fn write(&self, w: &mut dyn Write) -> Result<(), Error> {
         let mut opts =  Options::default();
         opts.direction = Direction::Inverted;
         opts.min_width = 0.1;
@@ -79,8 +79,7 @@ impl Flamegraph {
         Ok(())
     }
 
-    pub fn write_raw(&self, w: &mut File) -> Result<(), Error> {
-        use std::io::Write;
+    pub fn write_raw(&self, w: &mut dyn Write) -> Result<(), Error> {
         for line in self.get_lines() {
             w.write_all(line.as_bytes())?;
             w.write_all(b"\n")?;
