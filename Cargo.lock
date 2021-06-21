@@ -417,9 +417,20 @@ checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
 
 [[package]]
 name = "goblin"
-version = "0.3.0"
+version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c69552f48b18aa6102ce0c82dd9bc9d3f8af5fc0a5797069b1b466b90570e39c"
+checksum = "669cdc3826f69a51d3f8fc3f86de81c2378110254f678b8407977736122057a4"
+dependencies = [
+ "log",
+ "plain",
+ "scroll",
+]
+
+[[package]]
+name = "goblin"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee05c709047abe5eb0571880d2887ac77299c5f0835f8e6b7f4d5404f8962921"
 dependencies = [
  "log",
  "plain",
@@ -788,7 +799,7 @@ dependencies = [
  "ctrlc",
  "env_logger",
  "failure",
- "goblin",
+ "goblin 0.4.1",
  "indicatif",
  "inferno",
  "lazy_static",
@@ -950,7 +961,7 @@ checksum = "c0d23133e0101470829111c52d95c1fd07f4925b9ab59c99a4f9c6034a1648b6"
 dependencies = [
  "addr2line",
  "benfred-read-process-memory",
- "goblin",
+ "goblin 0.3.4",
  "lazy_static",
  "libc",
  "libproc 0.9.1",
