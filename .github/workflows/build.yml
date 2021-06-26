@@ -107,8 +107,8 @@ jobs:
           curl https://sh.rustup.rs -sSf --output rustup.sh
           sh rustup.sh -y --default-toolchain 1.52.1
 
-          $HOME/.cargo/bin/rustup run stable cargo build --release --verbose --workspace
-          $HOME/.cargo/bin/rustup run stable cargo test --release --verbose
+          $HOME/.cargo/bin/rustup run 1.52.1 cargo build --release --verbose --workspace
+          $HOME/.cargo/bin/rustup run 1.52.1 cargo test --release --verbose
 
   test-wheels:
     name: Test Wheels
