@@ -105,10 +105,10 @@ jobs:
           export RUSTUP_IO_THREADS=1
 
           curl https://sh.rustup.rs -sSf --output rustup.sh
-          sh rustup.sh -y --default-toolchain stable
+          sh rustup.sh -y --default-toolchain 1.52.1
 
           $HOME/.cargo/bin/rustup run stable cargo build --release --verbose --workspace
-          $HOME/.cargo/bin/rustup run stable cargo test --release --verbose -- --skip test_spawn_record_children_subprocesses
+          $HOME/.cargo/bin/rustup run stable cargo test --release --verbose
 
   test-wheels:
     name: Test Wheels
