@@ -88,7 +88,6 @@ jobs:
 
   build-freebsd:
     runs-on: macos-10.15
-    name: Build, test, and upload binaries (freebsd-x86_64)
     steps:
     - uses: actions/checkout@v2
     - name: Build
