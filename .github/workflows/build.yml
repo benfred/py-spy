@@ -86,6 +86,31 @@ jobs:
         name: wheels
         path: dist
 
+  build-freebsd:
+    runs-on: macos-10.15
+    name: Build, test, and upload binaries (freebsd-x86_64)
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build
+      uses: vmactions/freebsd-vm@v0.1.4
+      timeout-minutes: 30
+      with:
+        mem: 4096
+        usesh: true
+        prepare: pkg install -y curl bash python
+        run: |
+          set -euo pipefail
+
+          # Workaround for hanging rustup
+          # https://github.com/rust-lang/rustup/issues/2774
+          export RUSTUP_IO_THREADS=1
+
+          curl https://sh.rustup.rs -sSf --output rustup.sh
+          sh rustup.sh -y --default-toolchain stable
+
+          $HOME/.cargo/bin/rustup run stable cargo build --release --verbose --workspace
+          $HOME/.cargo/bin/rustup run stable cargo test --release --verbose -- --skip test_spawn_record_children_subprocesses
+
   test-wheels:
     name: Test Wheels
     needs: [build, build-linux-cross]
