@@ -274,7 +274,7 @@ pub mod tests {
     // and then test out that the above code handles appropiately
     use super::*;
     use remoteprocess::LocalProcess;
-    use python_bindings::v3_7_0::{PyBytesObject, PyVarObject, PyUnicodeObject, PyASCIIObject};
+    use crate::python_bindings::v3_7_0::{PyBytesObject, PyVarObject, PyUnicodeObject, PyASCIIObject};
     use std::ptr::copy_nonoverlapping;
 
     // python stores data after pybytesobject/pyasciiobject. hack by initializing a 4k buffer for testing.

@@ -1,4 +1,4 @@
-use clap::{App, Arg};
+use clap::{App, Arg, crate_description, crate_name, crate_version, arg_enum, value_t};
 use remoteprocess::Pid;
 
 /// Options on how to collect samples from a python process

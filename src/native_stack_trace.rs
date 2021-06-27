@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use failure::Error;
 
 use remoteprocess::{self, Pid};
+use lazy_static::lazy_static;
 use lru::LruCache;
 
 use crate::binary_parser::BinaryInfo;
