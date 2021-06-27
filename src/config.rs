@@ -135,10 +135,19 @@ impl Config {
         let full_filenames = Arg::with_name("full_filenames")
                                 .long("full-filenames")
                                 .help("Show full Python filenames, instead of shortening to show only the package part");
-
         let program = Arg::with_name("python_program")
                     .help("commandline of a python program to run")
                     .multiple(true);
+
+        let idle = Arg::with_name("idle")
+                .short("i")
+                .long("idle")
+                .help("Include stack traces for idle threads");
+
+        let gil = Arg::with_name("gil")
+                .short("g")
+                .long("gil")
+                .help("Only include traces that are holding on to the GIL");
 
         let record = clap::SubCommand::with_name("record")
             .about("Records stack trace information to a flamegraph, speedscope or raw file")
@@ -174,18 +183,12 @@ impl Config {
                 .short("F")
                 .long("function")
                 .help("Aggregate samples by function name instead of by line number"))
-            .arg(Arg::with_name("gil")
-                .short("g")
-                .long("gil")
-                .help("Only include traces that are holding on to the GIL"))
             .arg(Arg::with_name("threads")
                 .short("t")
                 .long("threads")
                 .help("Show thread ids in the output"))
-            .arg(Arg::with_name("idle")
-                .short("i")
-                .long("idle")
-                .help("Include stack traces for idle threads"))
+            .arg(gil.clone())
+            .arg(idle.clone())
             .arg(Arg::with_name("capture")
                 .long("capture")
                 .hidden(true)
@@ -201,7 +204,9 @@ impl Config {
             .arg(pid.clone())
             .arg(rate.clone())
             .arg(subprocesses.clone())
-            .arg(full_filenames.clone());
+            .arg(full_filenames.clone())
+            .arg(gil.clone())
+            .arg(idle.clone());
 
         let dump = clap::SubCommand::with_name("dump")
             .about("Dumps stack traces for a target program to stdout")

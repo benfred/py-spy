@@ -16,14 +16,14 @@ use crate::version::Version;
 pub struct ConsoleViewer {
     #[allow(dead_code)]
     console_config: os_impl::ConsoleConfig,
-    show_idle: bool,
     version: Option<Version>,
     command: String,
     sampling_rate: f64,
     running: Arc<atomic::AtomicBool>,
     options: Arc<Mutex<Options>>,
     stats: Stats,
-    subprocesses: bool
+    subprocesses: bool,
+    config: Config
 }
 
 impl ConsoleViewer {
@@ -66,9 +66,10 @@ impl ConsoleViewer {
         Ok(ConsoleViewer{console_config: os_impl::ConsoleConfig::new()?,
                          version: version.clone(),
                          command: python_command.to_owned(),
-                         show_idle: false, running, options, sampling_rate,
+                         running, options, sampling_rate,
                          subprocesses: config.subprocesses,
-                         stats: Stats::new()})
+                         stats: Stats::new(),
+                         config: config.clone()})
     }
 
     pub fn increment(&mut self, traces: &[StackTrace]) -> Result<(), Error> {
@@ -83,7 +84,11 @@ impl ConsoleViewer {
                 last_pid = Some(trace.pid);
             }
 
-            if !(self.show_idle || trace.active) {
+            if !(self.config.include_idle || trace.active) {
+                continue;
+            }
+
+            if self.config.gil_only && !trace.owns_gil {
                 continue;
             }
 
