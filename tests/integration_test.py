@@ -2,7 +2,6 @@ from __future__ import print_function
 
 import json
 import os
-import platform
 import subprocess
 import sys
 import tempfile
@@ -86,14 +85,20 @@ class TestPyspy(unittest.TestCase):
         if v.major < 3 or v.minor < 6:
             return
 
-        profile = self._sample_process(
-            _get_script("thread_names.py"),
-            ["--threads", "--idle"],
-            include_profile_name=True,
-        )
-        expected_thread_names = set("CustomThreadName-" + str(i) for i in range(10))
-        expected_thread_names.add("MainThread")
-        actual_thread_names = {p[0] for p in profile}
+        for _ in range(3):
+            profile = self._sample_process(
+                _get_script("thread_names.py"),
+                ["--threads", "--idle"],
+                include_profile_name=True,
+            )
+            expected_thread_names = set("CustomThreadName-" + str(i) for i in range(10))
+            expected_thread_names.add("MainThread")
+            actual_thread_names = {p[0] for p in profile}
+            if expected_thread_names == actual_thread_names:
+                break
+        if expected_thread_names != actual_thread_names:
+            print("failed to get thread names", expected_thread_names, actual_thread_names)
+
         assert expected_thread_names == actual_thread_names
 
 

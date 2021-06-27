@@ -12,6 +12,7 @@ use regex::Regex;
 use regex::RegexBuilder;
 
 use failure::{Error, ResultExt};
+use lazy_static::lazy_static;
 use remoteprocess::{Process, ProcessMemory, Pid, Tid};
 use proc_maps::{get_process_maps, MapRange};
 

@@ -34,6 +34,7 @@ use crate::stack_trace;
 use remoteprocess::Tid;
 
 use failure::{Error};
+use serde_derive::{Deserialize, Serialize};
 use serde_json;
 
 /*

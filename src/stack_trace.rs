@@ -4,6 +4,7 @@ use std::sync::Arc;
 use failure::{Error, ResultExt};
 
 use remoteprocess::{ProcessMemory, Pid, Process};
+use serde_derive::Serialize;
 
 use crate::python_interpreters::{InterpreterState, ThreadState, FrameObject, CodeObject, TupleObject};
 use crate::python_data_access::{copy_string, copy_bytes};
@@ -208,8 +209,8 @@ impl ProcessInfo {
 mod tests {
     use super::*;
     use remoteprocess::LocalProcess;
-    use python_bindings::v3_7_0::{PyCodeObject};
-    use python_data_access::tests::to_byteobject;
+    use crate::python_bindings::v3_7_0::{PyCodeObject};
+    use crate::python_data_access::tests::to_byteobject;
 
     #[test]
     fn test_get_line_number() {

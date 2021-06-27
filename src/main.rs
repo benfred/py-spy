@@ -1,38 +1,7 @@
 #[macro_use]
-extern crate clap;
-extern crate console;
-extern crate ctrlc;
-extern crate env_logger;
-#[macro_use]
 extern crate failure;
-extern crate goblin;
-extern crate indicatif;
-extern crate inferno;
-#[macro_use]
-extern crate lazy_static;
-extern crate libc;
 #[macro_use]
 extern crate log;
-extern crate chrono;
-#[cfg(unwind)]
-extern crate lru;
-extern crate memmap;
-extern crate proc_maps;
-extern crate regex;
-extern crate tempfile;
-#[cfg(unix)]
-extern crate termios;
-#[cfg(windows)]
-extern crate winapi;
-extern crate cpp_demangle;
-extern crate rand;
-extern crate rand_distr;
-extern crate serde;
-#[macro_use]
-extern crate serde_derive;
-extern crate serde_json;
-
-extern crate remoteprocess;
 
 mod config;
 mod dump;
