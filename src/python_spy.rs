@@ -233,7 +233,7 @@ impl PythonSpy {
             // which totally breaks the caching we were doing here. Detect this and retry
             if let Some(tid) = os_thread_id {
                 if thread_activity.len() > 0 && !thread_activity.contains_key(&tid) {
-                    info!("clearing away thread id caches, thread {} has exitted", tid);
+                    info!("clearing away thread id caches, thread {} has exited", tid);
                     self.python_thread_ids.clear();
                     self.python_thread_names.clear();
                     os_thread_id = self._get_os_thread_id(python_thread_id, &interp)?;

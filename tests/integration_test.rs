@@ -63,7 +63,7 @@ fn test_thread_reuse() {
     // on linux we had an issue with the pthread -> native thread id caching
     // the problem was that the pthreadids were getting re-used,
     // and this caused errors on native unwind (since the native thread had
-    // exitted). Test that this works with a simple script that creates
+    // exited). Test that this works with a simple script that creates
     // a couple short lived threads, and then profiling with native enabled
     let config = Config{native: true, ..Default::default()};
     let mut runner = TestRunner::new(config, "./tests/scripts/thread_reuse.py");
