@@ -56,8 +56,21 @@ jobs:
         python-version: 3.9
     - name: Build Wheel
       run: |
-        pip install --upgrade wheel pip setuptools
-        python setup.py bdist_wheel
+        pip install --upgrade maturin
+        maturin build --release -o dist
+    - name: Build Wheel - universal2
+      env:
+        DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+        SDKROOT: /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
+        MACOSX_DEPLOYMENT_TARGET: 10.9
+      run: |
+        rustup target add aarch64-apple-darwin
+        pip install --upgrade maturin
+        maturin build --release -o dist --universal2 --no-sdist
+      if: matrix.os == 'macos-latest'
+    - name: Rename Wheels
+      run: |
+        python3 -c "import shutil; import glob; wheels = glob.glob('dist/*.whl'); [shutil.move(wheel, wheel.replace('py3', 'py2.py3')) for wheel in wheels if 'py2' not in wheel]"
     - name: Upload wheels
       uses: actions/upload-artifact@v2
       with:
@@ -79,7 +92,12 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Build
-      run: python3 setup.py bdist_wheel
+      run: |
+        python3 -m pip install --upgrade maturin
+        maturin build --release -o dist --no-sdist --target $RUST_MUSL_CROSS_TARGET
+    - name: Rename Wheels
+      run: |
+        python3 -c "import shutil; import glob; wheels = glob.glob('dist/*.whl'); [shutil.move(wheel, wheel.replace('py3', 'py2.py3')) for wheel in wheels if 'py2' not in wheel]"
     - name: Upload wheels
       uses: actions/upload-artifact@v2
       with:
