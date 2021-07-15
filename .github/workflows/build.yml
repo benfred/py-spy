@@ -68,6 +68,9 @@ jobs:
         pip install --upgrade maturin
         maturin build --release -o dist --universal2 --no-sdist
       if: matrix.os == 'macos-latest'
+    - name: Rename Wheels
+      run: |
+        python3 -c "import shutil; import glob; wheels = glob.glob('dist/*.whl'); [shutil.move(wheel, wheel.replace('py3', 'py2.py3')) for wheel in wheels if 'py2' not in wheel]"
     - name: Upload wheels
       uses: actions/upload-artifact@v2
       with:
@@ -92,6 +95,9 @@ jobs:
       run: |
         python3 -m pip install --upgrade maturin
         maturin build --release -o dist --no-sdist --target $RUST_MUSL_CROSS_TARGET
+    - name: Rename Wheels
+      run: |
+        python3 -c "import shutil; import glob; wheels = glob.glob('dist/*.whl'); [shutil.move(wheel, wheel.replace('py3', 'py2.py3')) for wheel in wheels if 'py2' not in wheel]"
     - name: Upload wheels
       uses: actions/upload-artifact@v2
       with:
