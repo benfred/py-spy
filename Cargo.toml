@@ -13,7 +13,10 @@ edition="2018"
 
 [features]
 default = ["trace_syscalls"]
-trace_syscalls = []
+trace_syscalls = ["syscalls"]
+
+[target.'cfg(target_os = "linux")'.dependencies]
+syscalls = {version="0.3.3", optional=true}
 
 [dependencies]
 clap = {version="2", features=["wrap_help"]}
