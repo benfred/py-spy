@@ -817,6 +817,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
+ "syscalls",
  "tempfile",
  "termios",
  "winapi 0.3.9",
@@ -1117,6 +1118,15 @@ dependencies = [
  "quote",
  "syn",
  "unicode-xid",
+]
+
+[[package]]
+name = "syscalls"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ad4126c98e506c5c2ada914b40c17b57a99f7d7044e35ff631a3504effb28e4"
+dependencies = [
+ "cc",
 ]
 
 [[package]]
