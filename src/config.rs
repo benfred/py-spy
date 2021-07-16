@@ -50,6 +50,8 @@ pub struct Config {
     pub dump_locals: u64,
     #[doc(hidden)]
     pub full_filenames: bool,
+    #[doc(hidden)]
+    pub trace_syscalls: bool,
 }
 
 arg_enum!{
@@ -86,7 +88,7 @@ impl Default for Config {
                duration: RecordDuration::Unlimited, native: false,
                gil_only: false, include_idle: false, include_thread_ids: false,
                hide_progress: false, capture_output: true, dump_json: false, dump_locals: 0, subprocesses: false,
-               full_filenames: false}
+               full_filenames: false, trace_syscalls: false}
     }
 }
 
@@ -112,6 +114,11 @@ impl Config {
                     .short("n")
                     .long("native")
                     .help("Collect stack traces from native extensions written in Cython, C or C++");
+        #[cfg(all(target_os = "linux", feature = "trace_syscalls"))]
+        let trace_syscalls = Arg::with_name("trace_syscalls")
+                    .short("S")
+                    .long("syscalls")
+                    .help("Collect syscall traces (Linux only)");
 
         #[cfg(not(target_os="freebsd"))]
         let nonblocking = Arg::with_name("nonblocking")
@@ -230,6 +237,14 @@ impl Config {
         #[cfg(unwind)]
         let dump = dump.arg(native.clone());
 
+        // add syscall traces if appropiate
+        #[cfg(all(target_os = "linux", feature = "trace_syscalls"))]
+        let record = record.arg(trace_syscalls.clone());
+        #[cfg(all(target_os = "linux", feature = "trace_syscalls"))]
+        let top = top.arg(trace_syscalls.clone());
+        #[cfg(all(target_os = "linux", feature = "trace_syscalls"))]
+        let dump = dump.arg(trace_syscalls.clone());
+
         // Nonblocking isn't an option for freebsd, remove
         #[cfg(not(target_os="freebsd"))]
         let record = record.arg(nonblocking.clone());
@@ -282,6 +297,10 @@ impl Config {
         config.include_idle = matches.occurrences_of("idle") > 0;
         config.gil_only = matches.occurrences_of("gil") > 0;
         config.include_thread_ids = matches.occurrences_of("threads") > 0;
+        #[cfg(all(target_os = "linux", feature = "trace_syscalls"))]
+        {
+            config.trace_syscalls = matches.occurrences_of("trace_syscalls") > 0;
+        }
 
         config.native = matches.occurrences_of("native") > 0;
         config.hide_progress = matches.occurrences_of("hideprogress") > 0;
