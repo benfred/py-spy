@@ -325,9 +325,6 @@ impl Config {
         #[cfg(all(target_os = "linux", feature = "trace_syscalls"))]
         {
             config.trace_syscalls = matches.occurrences_of("trace_syscalls") > 0;
-            if config.trace_syscalls {
-                config.include_idle = true;
-            }
         }
 
         config.native = matches.occurrences_of("native") > 0;
