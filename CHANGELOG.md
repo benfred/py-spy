@@ -1,3 +1,9 @@
+## v0.3.8
+* Add wheels for Apple Silicon [#419](https://github.com/benfred/py-spy/issues/419)
+* Add --gil and --idle options to top view [#406](https://github.com/benfred/py-spy/issues/406)
+* Fix errors parsing python binaries [#407](https://github.com/benfred/py-spy/issues/407)
+* Specify timeunit in speedscope profiles [#294](https://github.com/benfred/py-spy/issues/294)
+
 ## v0.3.7
 * Fix error that sometimes left the profiled program suspended [#390](https://github.com/benfred/py-spy/issues/390)
 * Documentation fixes for README [#391](https://github.com/benfred/py-spy/issues/391), [#393](https://github.com/benfred/py-spy/issues/393)
