@@ -62,7 +62,7 @@ impl Sampler {
                     Ok(traces) => traces,
                     Err(e) => {
                         if spy.process.exe().is_err() {
-                            info!("stopped sampling pid {} because the process exitted", spy.pid);
+                            info!("stopped sampling pid {} because the process exited", spy.pid);
                             break;
                         }
                         sampling_errors = Some(vec![(spy.pid, e)]);
@@ -262,7 +262,7 @@ impl PythonSpyThread {
                 let result = spy.get_stack_traces();
                 if let Err(_) = result {
                     if spy.process.exe().is_err() {
-                        info!("stopped sampling pid {} because the process exitted", spy.pid);
+                        info!("stopped sampling pid {} because the process exited", spy.pid);
                         break;
                     }
                 }
