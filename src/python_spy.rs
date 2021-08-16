@@ -16,7 +16,7 @@ use lazy_static::lazy_static;
 use remoteprocess::{Process, ProcessMemory, Pid, Tid};
 use proc_maps::{get_process_maps, MapRange};
 
-#[cfg(all(target_os="linux", feature="trace_syscalls"))]
+#[cfg(all(target_os="linux", target_arch="x86_64", feature="trace_syscalls"))]
 use syscalls::SyscallNo;
 
 use crate::binary_parser::{parse_binary, BinaryInfo};
@@ -266,7 +266,7 @@ impl PythonSpy {
             }
 
             // Read current syscall (if any)
-            #[cfg(all(target_os = "linux", feature = "trace_syscalls"))]
+            #[cfg(all(target_os="linux", target_arch="x86_64", feature="trace_syscalls"))]
             {
                 if self.config.trace_syscalls {
                     if let Some(tid) = os_thread_id {

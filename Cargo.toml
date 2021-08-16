@@ -15,7 +15,7 @@ edition="2018"
 default = ["trace_syscalls"]
 trace_syscalls = ["syscalls"]
 
-[target.'cfg(target_os = "linux")'.dependencies]
+[target.'cfg(all(target_os="linux", target_arch="x86_64"))'.dependencies]
 syscalls = {version="0.3.3", optional=true}
 
 [dependencies]

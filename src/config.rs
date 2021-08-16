@@ -123,7 +123,7 @@ impl Config {
                     .short("n")
                     .long("native")
                     .help("Collect stack traces from native extensions written in Cython, C or C++");
-        #[cfg(all(target_os = "linux", feature = "trace_syscalls"))]
+        #[cfg(all(target_os="linux", target_arch="x86_64", feature="trace_syscalls"))]
         let trace_syscalls = Arg::with_name("trace_syscalls")
                     .short("S")
                     .long("syscalls")
@@ -257,11 +257,11 @@ impl Config {
         let dump = dump.arg(native.clone());
 
         // add syscall traces if appropiate
-        #[cfg(all(target_os = "linux", feature = "trace_syscalls"))]
+        #[cfg(all(target_os="linux", target_arch="x86_64", feature="trace_syscalls"))]
         let record = record.arg(trace_syscalls.clone());
-        #[cfg(all(target_os = "linux", feature = "trace_syscalls"))]
+        #[cfg(all(target_os="linux", target_arch="x86_64", feature="trace_syscalls"))]
         let top = top.arg(trace_syscalls.clone());
-        #[cfg(all(target_os = "linux", feature = "trace_syscalls"))]
+        #[cfg(all(target_os="linux", target_arch="x86_64", feature="trace_syscalls"))]
         let dump = dump.arg(trace_syscalls.clone());
 
         // Nonblocking isn't an option for freebsd, remove
@@ -322,7 +322,7 @@ impl Config {
         config.include_idle = matches.occurrences_of("idle") > 0;
         config.gil_only = matches.occurrences_of("gil") > 0;
         config.include_thread_ids = matches.occurrences_of("threads") > 0;
-        #[cfg(all(target_os = "linux", feature = "trace_syscalls"))]
+        #[cfg(all(target_os="linux", target_arch="x86_64", feature="trace_syscalls"))]
         {
             config.trace_syscalls = matches.occurrences_of("trace_syscalls") > 0;
         }
