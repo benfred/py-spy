@@ -21,8 +21,18 @@ pip install py-spy
 
 You can also download prebuilt binaries from the [GitHub Releases
 Page](https://github.com/benfred/py-spy/releases). This includes binaries for ARM and FreeBSD,
-which can't be installed using pip. If you're a Rust user, py-spy can also be installed with: ```cargo install py-spy```. On Arch Linux, [py-spy is in AUR](https://aur.archlinux.org/packages/py-spy/) and can be
-installed with ```yay -S py-spy```. On macOS, py-spy is in Homebrew and can be installed with ```brew install py-spy```.
+which can't be installed using pip.
+
+If you're a Rust user, py-spy can also be installed with: ```cargo install py-spy```.
+
+On Arch Linux, [py-spy is in AUR](https://aur.archlinux.org/packages/py-spy/) and can be
+installed with ```yay -S py-spy```.
+
+On macOS, [py-spy is in Homebrew](https://formulae.brew.sh/formula/py-spy#default) and 
+can be installed with ```brew install py-spy```.
+
+On Alpine Linux, [py-spy is in testing repository](https://pkgs.alpinelinux.org/packages?name=py-spy&branch=edge&repo=testing) and
+can be installed with ```apk add py-spy --update-cache --repository http://dl-3.alpinelinux.org/alpine/edge/testing/ --allow-untrusted```.
 
 ## Usage
 
