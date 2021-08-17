@@ -1,4 +1,3 @@
-use log::info;
 use regex::bytes::Regex;
 use std;
 

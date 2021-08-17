@@ -1,3 +1,33 @@
+## v0.3.8
+* Add wheels for Apple Silicon [#419](https://github.com/benfred/py-spy/issues/419)
+* Add --gil and --idle options to top view [#406](https://github.com/benfred/py-spy/issues/406)
+* Fix errors parsing python binaries [#407](https://github.com/benfred/py-spy/issues/407)
+* Specify timeunit in speedscope profiles [#294](https://github.com/benfred/py-spy/issues/294)
+
+## v0.3.7
+* Fix error that sometimes left the profiled program suspended [#390](https://github.com/benfred/py-spy/issues/390)
+* Documentation fixes for README [#391](https://github.com/benfred/py-spy/issues/391), [#393](https://github.com/benfred/py-spy/issues/393)
+
+## v0.3.6
+* Fix profiling inside a venv on windows [#216](https://github.com/benfred/py-spy/issues/216)
+* Detect GIL on Python 3.9.3+, 3.8.9+ [#375](https://github.com/benfred/py-spy/issues/375)
+* Fix getting thread names on python 3.9 [#387](https://github.com/benfred/py-spy/issues/387)
+* Fix getting thread names on ARMv7 [#388](https://github.com/benfred/py-spy/issues/388)
+* Add python integration tests, and test wheels across a range of different python versions [#378](https://github.com/benfred/py-spy/pull/378)
+* Automatically add tests for new versions of python [#379](https://github.com/benfred/py-spy/pull/379)
+
+## v0.3.5
+* Handle case where linux kernel is compiled without ```process_vm_readv``` support  [#22](https://github.com/benfred/py-spy/issues/22)
+* Handle case where /proc/self/ns/mnt is missing [#326](https://github.com/benfred/py-spy/issues/326)
+* Allow attaching to processes where the python binary has been deleted [#109](https://github.com/benfred/py-spy/issues/109)
+* Make '--output' optional [#229](https://github.com/benfred/py-spy/issues/229)
+* Add --full-filenames to allow showing full Python filenames [#363](https://github.com/benfred/py-spy/issues/363)
+* Count "samples" as the number of recorded stacks (per thread) [#365](https://github.com/benfred/py-spy/issues/365)
+* Exit with an error if --gil but we failed to get necessary addrs/offsets [#361](https://github.com/benfred/py-spy/pull/361)
+* Include command/options used to run py-spy in flamegraph output [#293](https://github.com/benfred/py-spy/issues/293)
+* GIL Detection fixes for python 3.9.2/3.8.8 [#362](https://github.com/benfred/py-spy/pull/362)
+* Move to Github Actions for CI
+
 ## v0.3.4
 * Build armv7/aarch64 wheels [#328](https://github.com/benfred/py-spy/issues/328)
 * Detect GIL on Python 3.9 / 3.7.7+ / 3.8.2+

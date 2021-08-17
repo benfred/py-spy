@@ -9,7 +9,7 @@ py-spy is extremely low overhead: it is written in Rust for speed and doesn't ru
 in the same process as the profiled Python program. This means py-spy is safe to use against production Python code.
 
 py-spy works on Linux, OSX, Windows and FreeBSD, and supports profiling all recent versions of the CPython
-interpreter (versions 2.3-2.7 and 3.3-3.8).
+interpreter (versions 2.3-2.7 and 3.3-3.9).
 
 ## Installation
 
@@ -22,7 +22,7 @@ pip install py-spy
 You can also download prebuilt binaries from the [GitHub Releases
 Page](https://github.com/benfred/py-spy/releases). This includes binaries for ARM and FreeBSD,
 which can't be installed using pip. If you're a Rust user, py-spy can also be installed with: ```cargo install py-spy```. On Arch Linux, [py-spy is in AUR](https://aur.archlinux.org/packages/py-spy/) and can be
-installed with ```yay -S py-spy```.
+installed with ```yay -S py-spy```. On macOS, py-spy is in Homebrew and can be installed with ```brew install py-spy```.
 
 ## Usage
 
@@ -144,7 +144,9 @@ OSX always requires running as root, but on Linux it depends on how you are laun
 security settings.
 
 On Linux the default configuration is to require root permissions when attaching to a process that isn't a child.
-For py-spy this means you can profile without root access by getting py-spy to create the process (```py-spy -- python myprogram.py```) but attaching to an existing process by specifying a PID will usually require root (```sudo py-spy --pid 123456```).
+For py-spy this means you can profile without root access by getting py-spy to create the process
+(```py-spy record  -- python myprogram.py```) but attaching to an existing process by specifying a
+PID will usually require root (```sudo py-spy record --pid 123456```).
 You can remove this restriction on Linux by setting the [ptrace_scope sysctl variable](https://wiki.ubuntu.com/SecurityTeam/Roadmap/KernelHardening#ptrace_Protection).
 
 ### How do you detect if a thread is idle or not?

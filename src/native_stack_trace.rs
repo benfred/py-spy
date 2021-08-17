@@ -2,10 +2,8 @@ use std::collections::HashSet;
 use failure::Error;
 
 use cpp_demangle::{DemangleOptions, BorrowedSymbol};
-use failure::format_err;
 use remoteprocess::{self, Pid};
 use lazy_static::lazy_static;
-use log::{debug, info};
 use lru::LruCache;
 
 use crate::binary_parser::BinaryInfo;

@@ -15,7 +15,7 @@ import tempfile
 def build_python(cpython_path, version):
     # TODO: probably easier to use pyenv for this?
     print("Compiling python %s from repo at %s" % (version, cpython_path))
-    install_path = os.path.join(cpython_path, version)
+    install_path = os.path.abspath(os.path.join(cpython_path, version))
 
     ret = os.system(f"""
         cd {cpython_path}
@@ -42,7 +42,7 @@ def calculate_pyruntime_offsets(cpython_path, version, configure=False):
         return ret
 
     if configure:
-        os.system(f"cd {cpython_path} && ./configure prefix=" + os.path.join(cpython_path, version))
+        os.system(f"cd {cpython_path} && ./configure prefix=" + os.path.abspath(os.path.join(cpython_path, version)))
 
     # simple little c program to get the offsets we need from the pyruntime struct
     # (using rust bindgen here is more complicated than necessary)
@@ -105,13 +105,14 @@ def extract_bindings(cpython_path, version, configure=False):
         git checkout {version}
 
         # need to run configure on the current branch to generate pyconfig.h sometimes
-        {("./configure prefix=" + os.path.join(cpython_path, version)) if configure else ""}
+        {("./configure prefix=" + os.path.abspath(os.path.join(cpython_path, version))) if configure else ""}
 
         cat Include/Python.h > bindgen_input.h
         cat Include/frameobject.h >> bindgen_input.h
         cat Objects/dict-common.h >> bindgen_input.h
         echo '#define Py_BUILD_CORE 1\n' >> bindgen_input.h
         cat Include/internal/pycore_pystate.h >> bindgen_input.h
+        cat Include/internal/pycore_interp.h >> bindgen_input.h
 
         bindgen  bindgen_input.h -o bindgen_output.rs \
             --with-derive-default \

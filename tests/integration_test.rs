@@ -8,8 +8,8 @@ struct ScriptRunner {
 }
 
 impl ScriptRunner {
-    fn new(filename: &str) -> ScriptRunner {
-        let child = std::process::Command::new("python").arg(filename).spawn().unwrap();
+    fn new(process_name: &str, filename: &str) -> ScriptRunner {
+        let child = std::process::Command::new(process_name).arg(filename).spawn().unwrap();
         ScriptRunner{child}
     }
 
@@ -32,7 +32,7 @@ struct TestRunner {
 
 impl TestRunner {
     fn new(config: Config, filename: &str) -> TestRunner {
-        let child = ScriptRunner::new(filename);
+        let child = ScriptRunner::new("python", filename);
         std::thread::sleep(std::time::Duration::from_millis(400));
         let spy = PythonSpy::retry_new(child.id(), &config, 20).unwrap();
         TestRunner{child, spy}
@@ -102,12 +102,12 @@ fn test_long_sleep() {
 
     // Make sure the stack trace is what we expect
     assert_eq!(trace.frames[0].name, "longsleep");
-    assert_eq!(trace.frames[0].filename, "./tests/scripts/longsleep.py");
+    assert_eq!(trace.frames[0].short_filename, Some("longsleep.py".to_owned()));
     assert_eq!(trace.frames[0].line, 5);
 
     assert_eq!(trace.frames[1].name, "<module>");
     assert_eq!(trace.frames[1].line, 9);
-    assert_eq!(trace.frames[0].filename, "./tests/scripts/longsleep.py");
+    assert_eq!(trace.frames[1].short_filename, Some("longsleep.py".to_owned()));
 
     assert!(!traces[0].owns_gil);
 
@@ -199,12 +199,12 @@ fn test_unicode() {
     let trace = &traces[0];
 
     assert_eq!(trace.frames[0].name, "function1");
-    assert_eq!(trace.frames[0].filename, "./tests/scripts/unicode💩.py");
+    assert_eq!(trace.frames[0].short_filename, Some("unicode💩.py".to_owned()));
     assert_eq!(trace.frames[0].line, 6);
 
     assert_eq!(trace.frames[1].name, "<module>");
     assert_eq!(trace.frames[1].line, 9);
-    assert_eq!(trace.frames[0].filename, "./tests/scripts/unicode💩.py");
+    assert_eq!(trace.frames[1].short_filename, Some("unicode💩.py".to_owned()));
 
     assert!(!traces[0].owns_gil);
 }
@@ -260,11 +260,7 @@ fn test_local_vars() {
     assert_eq!(local3.name, "local3");
     assert!(!local3.arg);
 
-    #[cfg(target_pointer_width = "64")]
     assert_eq!(local3.repr, Some("123456789123456789".to_owned()));
-
-    #[cfg(target_pointer_width = "32")]
-    assert_eq!(local3.repr, Some("+bigint".to_owned()));
 
     let local4 = &locals[6];
     assert_eq!(local4.name, "local4");
@@ -298,7 +294,7 @@ fn test_subprocesses() {
 
     // We used to not be able to create a sampler object if one of the child processes
     // was in a zombie state. Verify that this works now
-    let process = ScriptRunner::new("./tests/scripts/subprocesses.py");
+    let process = ScriptRunner::new("python", "./tests/scripts/subprocesses.py");
     std::thread::sleep(std::time::Duration::from_millis(1000));
     let config = Config{subprocesses: true, ..Default::default()};
     let sampler = py_spy::sampler::Sampler::new(process.id(), &config).unwrap();
@@ -335,7 +331,7 @@ fn test_subprocesses_zombiechild() {
 
     // We used to not be able to create a sampler object if one of the child processes
     // was in a zombie state. Verify that this works now
-    let process = ScriptRunner::new("./tests/scripts/subprocesses_zombie_child.py");
+    let process = ScriptRunner::new("python", "./tests/scripts/subprocesses_zombie_child.py");
     std::thread::sleep(std::time::Duration::from_millis(200));
     let config = Config{subprocesses: true, ..Default::default()};
     let _sampler = py_spy::sampler::Sampler::new(process.id(), &config).unwrap();
@@ -372,5 +368,20 @@ fn test_negative_linenumber_increment() {
             assert_eq!(trace.frames[1].line, 13);
         },
         _ => panic!("Unknown python major version")
+    }
+}
+
+#[cfg(target_os="linux")]
+#[test]
+fn test_delayed_subprocess() {
+    let process = ScriptRunner::new("bash", "./tests/scripts/delayed_launch.sh");
+    let config = Config{subprocesses: true, ..Default::default()};
+    let sampler = py_spy::sampler::Sampler::new(process.id(), &config).unwrap();
+    for sample in sampler {
+        // should have one trace from the subprocess
+        let traces = sample.traces;
+        assert_eq!(traces.len(), 1);
+        assert!(traces[0].pid != process.id());
+        break;
     }
 }

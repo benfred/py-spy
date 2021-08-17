@@ -1,4 +1,4 @@
-use clap::{App, Arg, arg_enum, crate_name, crate_version, crate_description, value_t};
+use clap::{App, Arg, crate_description, crate_name, crate_version, arg_enum, value_t};
 use log::info;
 use remoteprocess::Pid;
 
@@ -50,6 +50,8 @@ pub struct Config {
     #[doc(hidden)]
     pub dump_locals: u64,
     #[doc(hidden)]
+    pub full_filenames: bool,
+    #[doc(hidden)]
     pub address: Option<String>,
 }
 
@@ -86,8 +88,8 @@ impl Default for Config {
                blocking: LockingStrategy::Lock, show_line_numbers: false, sampling_rate: 100,
                duration: RecordDuration::Unlimited, native: false,
                gil_only: false, include_idle: false, include_thread_ids: false,
-               hide_progress: false, capture_output: true, dump_json: false, dump_locals: 0,
-               subprocesses: false, address: None}
+               hide_progress: false, capture_output: true, dump_json: false, dump_locals: 0, subprocesses: false,
+               full_filenames: false, address: None}
     }
 }
 
@@ -99,7 +101,7 @@ impl Config {
     }
 
     pub fn from_args(args: &[String]) -> clap::Result<Config> {
-        // pid/native/nonblocking/rate/pythonprogram arguments can be
+        // pid/native/nonblocking/rate/python_program/subprocesses/full_filenames arguments can be
         // used across various subcommand - define once here
         let pid = Arg::with_name("pid")
                     .short("p")
@@ -128,20 +130,35 @@ impl Config {
                     .default_value("100")
                     .takes_value(true);
 
-    let subprocesses = Arg::with_name("subprocesses")
-        .short("s")
-        .long("subprocesses")
-        .help("Profile subprocesses of the original process");
+        let subprocesses = Arg::with_name("subprocesses")
+                            .short("s")
+                            .long("subprocesses")
+                            .help("Profile subprocesses of the original process");
 
+        let full_filenames = Arg::with_name("full_filenames")
+                                .long("full-filenames")
+                                .help("Show full Python filenames, instead of shortening to show only the package part");
         let program = Arg::with_name("python_program")
                     .help("commandline of a python program to run")
                     .multiple(true);
+
+        let idle = Arg::with_name("idle")
+                .short("i")
+                .long("idle")
+                .help("Include stack traces for idle threads");
+
+        let gil = Arg::with_name("gil")
+                .short("g")
+                .long("gil")
+                .help("Only include traces that are holding on to the GIL");
 
         let serve = clap::SubCommand::with_name("serve")
             .about("Start a webserver hosting a continous interactive view of the python program")
             .arg(program.clone())
             .arg(pid.clone())
             .arg(rate.clone())
+            .arg(gil.clone())
+            .arg(idle.clone())
             .arg(Arg::with_name("address")
                 .short("a")
                 .long("address")
@@ -155,13 +172,14 @@ impl Config {
             .about("Records stack trace information to a flamegraph, speedscope or raw file")
             .arg(program.clone())
             .arg(pid.clone())
+            .arg(full_filenames.clone())
             .arg(Arg::with_name("output")
                 .short("o")
                 .long("output")
                 .value_name("filename")
                 .help("Output filename")
                 .takes_value(true)
-                .required(true))
+                .required(false))
             .arg(Arg::with_name("format")
                 .short("f")
                 .long("format")
@@ -184,18 +202,12 @@ impl Config {
                 .short("F")
                 .long("function")
                 .help("Aggregate samples by function name instead of by line number"))
-            .arg(Arg::with_name("gil")
-                .short("g")
-                .long("gil")
-                .help("Only include traces that are holding on to the GIL"))
             .arg(Arg::with_name("threads")
                 .short("t")
                 .long("threads")
                 .help("Show thread ids in the output"))
-            .arg(Arg::with_name("idle")
-                .short("i")
-                .long("idle")
-                .help("Include stack traces for idle threads"))
+            .arg(gil.clone())
+            .arg(idle.clone())
             .arg(Arg::with_name("capture")
                 .long("capture")
                 .hidden(true)
@@ -210,11 +222,15 @@ impl Config {
             .arg(program.clone())
             .arg(pid.clone())
             .arg(rate.clone())
-            .arg(subprocesses.clone());
+            .arg(subprocesses.clone())
+            .arg(full_filenames.clone())
+            .arg(gil.clone())
+            .arg(idle.clone());
 
         let dump = clap::SubCommand::with_name("dump")
             .about("Dumps stack traces for a target program to stdout")
             .arg(pid.clone().required(true))
+            .arg(full_filenames.clone())
             .arg(Arg::with_name("locals")
                 .short("l")
                 .long("locals")
@@ -304,6 +320,7 @@ impl Config {
         config.dump_json = matches.occurrences_of("json") > 0;
         config.dump_locals = matches.occurrences_of("locals");
         config.subprocesses = matches.occurrences_of("subprocesses") > 0;
+        config.full_filenames = matches.occurrences_of("full_filenames") > 0;
 
         config.capture_output = config.command == "top" || matches.occurrences_of("capture") > 0;
         if !config.capture_output {

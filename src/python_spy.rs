@@ -12,7 +12,7 @@ use regex::Regex;
 #[cfg(windows)]
 use regex::RegexBuilder;
 
-use failure::{Error, ResultExt, format_err};
+use failure::{Error, ResultExt};
 use lazy_static::lazy_static;
 use remoteprocess::{Process, ProcessMemory, Pid, Tid};
 use proc_maps::{get_process_maps, MapRange};
@@ -21,7 +21,7 @@ use crate::binary_parser::{parse_binary, BinaryInfo};
 use crate::config::{Config, LockingStrategy};
 #[cfg(unwind)]
 use crate::native_stack_trace::NativeStack;
-use crate::python_bindings::{pyruntime, v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0};
+use crate::python_bindings::{pyruntime, v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0, v3_9_5};
 use crate::python_interpreters::{self, InterpreterState, ThreadState};
 use crate::python_threading::thread_name_lookup;
 use crate::stack_trace::{StackTrace, get_stack_traces, get_stack_trace};
@@ -44,6 +44,25 @@ pub struct PythonSpy {
     pub python_thread_names: HashMap<u64, String>,
     #[cfg(target_os="linux")]
     pub dockerized: bool
+}
+
+fn error_if_gil(config: &Config, version: &Version, msg: &str) -> Result<(), Error> {
+    lazy_static! {
+        static ref WARNED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    }
+
+    if config.gil_only {
+        if !WARNED.load(std::sync::atomic::Ordering::Relaxed) {
+            // only print this once
+            eprintln!("Cannot detect GIL holding in version '{}' on the current platform (reason: {})", version, msg);
+            eprintln!("Please open an issue in https://github.com/benfred/py-spy with the Python version and your platform.");
+            WARNED.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        Err(format_err!("Cannot detect GIL holding in version '{}' on the current platform (reason: {})", version, msg))
+    } else {
+        warn!("Unable to detect GIL usage: {}", msg);
+        Ok(())
+    }
 }
 
 impl PythonSpy {
@@ -77,12 +96,12 @@ impl PythonSpy {
                                 addr, offset);
                             addr as usize + offset
                         } else {
-                            warn!("Unknown pyruntime.gilstate.tstate_current offset for version {:?}", version);
+                            error_if_gil(config, &version, "unknown pyruntime.gilstate.tstate_current offset")?;
                             0
                         }
                     },
                     None => {
-                        warn!("Failed to find _PyRuntime symbol - won't be able to detect GIL usage");
+                        error_if_gil(config, &version, "failed to find _PyRuntime symbol")?;
                         0
                     }
                 }
@@ -94,7 +113,7 @@ impl PythonSpy {
                         addr as usize
                     },
                     None => {
-                        warn!("Failed to find _PyThreadState_Current symbol - won't be able to detect GIL usage");
+                        error_if_gil(config, &version, "failed to find _PyThreadState_Current symbol")?;
                         0
                     }
                 }
@@ -168,8 +187,8 @@ impl PythonSpy {
                     _ => self._get_stack_traces::<v3_8_0::_is>()
                 }
             }
-            // currently v3.8 and v3.9 have same ABI, but that will likely change as 3.9 evolves
-            Version{major: 3, minor: 8..=9, ..} => self._get_stack_traces::<v3_8_0::_is>(),
+            Version{major: 3, minor: 8, ..} => self._get_stack_traces::<v3_8_0::_is>(),
+            Version{major: 3, minor: 9, ..} => self._get_stack_traces::<v3_9_5::_is>(),
             _ => Err(format_err!("Unsupported version of Python: {}", self.version)),
         }
     }
@@ -456,6 +475,11 @@ impl PythonSpy {
     /// directory etc. This function looks only includes paths inside a python
     /// package or subpackage, and not the path the package is installed at
     fn shorten_filename(&mut self, filename: &str) -> Option<String> {
+        // if the user requested full filenames, skip shortening
+        if self.config.full_filenames {
+            return Some(filename.to_string());
+        }
+
         // if we have figured out the short filename already, use it
         if let Some(short) = self.short_filenames.get(filename) {
             return short.clone();
@@ -676,7 +700,8 @@ fn check_interpreter_addresses(addrs: &[usize],
                 _ => check::<v3_8_0::_is>(addrs, maps, process)
             }
         },
-        Version{major: 3, minor: 8..=9, ..} => check::<v3_8_0::_is>(addrs, maps, process),
+        Version{major: 3, minor: 8, ..} => check::<v3_8_0::_is>(addrs, maps, process),
+        Version{major: 3, minor: 9, ..} => check::<v3_9_5::_is>(addrs, maps, process),
         _ => Err(format_err!("Unsupported version of Python: {}", version))
     }
 }
@@ -739,7 +764,7 @@ impl PythonProcessInfo {
 
             // TODO: consistent types? u64 -> usize? for map.start etc
             #[allow(unused_mut)]
-            let python_binary = parse_binary(process.pid, &filename, map.start() as u64, map.size() as u64)
+            let python_binary = parse_binary(process.pid, &filename, map.start() as u64, map.size() as u64, true)
                 .and_then(|mut pb| {
                     // windows symbols are stored in separate files (.pdb), load
                     #[cfg(windows)]
@@ -784,7 +809,7 @@ impl PythonProcessInfo {
                 if let Some(filename) = &libpython.filename() {
                     info!("Found libpython binary @ {}", filename);
                     #[allow(unused_mut)]
-                    let mut parsed = parse_binary(process.pid, filename, libpython.start() as u64, libpython.size() as u64)?;
+                    let mut parsed = parse_binary(process.pid, filename, libpython.start() as u64, libpython.size() as u64, false)?;
                     #[cfg(windows)]
                     parsed.symbols.extend(get_windows_python_symbols(process.pid, filename, libpython.start() as u64)?);
                     libpython_binary = Some(parsed);
@@ -814,7 +839,7 @@ impl PythonProcessInfo {
                     if let Some(libpython) = python_dyld_data {
                         info!("Found libpython binary from dyld @ {}", libpython.filename);
 
-                        let mut binary = parse_binary(process.pid, &libpython.filename, libpython.segment.vmaddr, libpython.segment.vmsize)?;
+                        let mut binary = parse_binary(process.pid, &libpython.filename, libpython.segment.vmaddr, libpython.segment.vmsize, false)?;
 
                         // TODO: bss addr offsets returned from parsing binary are wrong
                         // (assumes data section isn't split from text section like done here).
@@ -837,12 +862,8 @@ impl PythonProcessInfo {
         };
 
         #[cfg(target_os="linux")]
-        let dockerized = {
-            let target_ns_filename = format!("/proc/{}/ns/mnt", process.pid);
-            let self_mnt = std::fs::read_link("/proc/self/ns/mnt")?;
-            let target_mnt = std::fs::read_link(&target_ns_filename)?;
-            self_mnt != target_mnt
-        };
+        let dockerized = is_dockerized(process.pid).unwrap_or(false);
+
         Ok(PythonProcessInfo{python_binary, libpython_binary, maps, python_filename,
                              #[cfg(target_os="linux")]
                              dockerized
@@ -865,6 +886,13 @@ impl PythonProcessInfo {
         }
         None
     }
+}
+
+#[cfg(target_os="linux")]
+fn is_dockerized(pid: Pid) -> Result<bool, Error> {
+    let self_mnt = std::fs::read_link("/proc/self/ns/mnt")?;
+    let target_mnt = std::fs::read_link(&format!("/proc/{}/ns/mnt", pid))?;
+    Ok(self_mnt != target_mnt)
 }
 
 // We can't use goblin to parse external symbol files (like in a separate .pdb file) on windows,

@@ -17,7 +17,8 @@ use crate::version::Version;
 
 pub struct Sampler {
     pub version: Option<Version>,
-    rx: Receiver<Sample>,
+    rx: Option<Receiver<Sample>>,
+    sampling_thread: Option<thread::JoinHandle<()>>,
 }
 
 pub struct Sample {
@@ -40,10 +41,10 @@ impl Sampler {
         let (tx, rx): (Sender<Sample>, Receiver<Sample>) = mpsc::channel();
         let (initialized_tx, initialized_rx): (Sender<Result<Version, Error>>, Receiver<Result<Version, Error>>) = mpsc::channel();
         let config = config.clone();
-        thread::spawn(move || {
+        let sampling_thread = thread::spawn(move || {
             // We need to create this object inside the thread here since PythonSpy objects don't
             // have the Send trait implemented on linux
-            let mut spy = match PythonSpy::retry_new(pid, &config, 5) {
+            let mut spy = match PythonSpy::retry_new(pid, &config, 20) {
                 Ok(spy) => {
                     if let Err(_) = initialized_tx.send(Ok(spy.version.clone())) {
                         return;
@@ -78,30 +79,41 @@ impl Sampler {
         });
 
         let version = initialized_rx.recv()??;
-        Ok(Sampler{rx, version: Some(version)})
+        Ok(Sampler{rx: Some(rx), version: Some(version), sampling_thread: Some(sampling_thread)})
     }
 
     /// Creates a new sampler object that samples any python process in the
     /// process or child processes
     fn new_subprocess_sampler(pid: Pid, config: &Config) -> Result<Sampler, Error> {
+        let process = remoteprocess::Process::new(pid)?;
+
         // Initialize a PythonSpy object per child, and build up the process tree
         let mut spies = HashMap::new();
-
+        let mut retries = 10;
         spies.insert(pid, PythonSpyThread::new(pid, None, &config)?);
-        let process = remoteprocess::Process::new(pid)?;
-        for (childpid, parentpid) in process.child_processes()? {
-            // If we can't create the child process, don't worry about it
-            // can happen with zombie child processes etc
-            match PythonSpyThread::new(childpid, Some(parentpid), &config) {
-                Ok(spy)  => { spies.insert(childpid, spy); },
-                Err(e) => { warn!("Failed to open process {}: {}", childpid, e); }
-            }
-        }
 
-        // wait for all the various python spy objects to initialize, and if none
-        // of them initialize appropiately fail right away
-        if spies.values_mut().all(|spy| !spy.wait_initialized()) {
-            return Err(format_err!("No python processes found in process {} or any of its subprocesses", pid));
+        loop {
+            for (childpid, parentpid) in process.child_processes()? {
+                // If we can't create the child process, don't worry about it
+                // can happen with zombie child processes etc
+                match PythonSpyThread::new(childpid, Some(parentpid), &config) {
+                    Ok(spy)  => { spies.insert(childpid, spy); },
+                    Err(e) => { warn!("Failed to open process {}: {}", childpid, e); }
+                }
+            }
+
+            // wait for all the various python spy objects to initialize, and break out of here
+            // if we have one of them started.
+            if spies.values_mut().any(|spy| spy.wait_initialized()) {
+                break;
+            }
+
+            // Otherwise sleep for a short time and retry
+            retries -= 1;
+            if retries == 0 {
+                return Err(format_err!("No python processes found in process {} or any of its subprocesses", pid));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
         }
 
         // Create a new thread to periodically monitor for new child processes, and update
@@ -134,7 +146,7 @@ impl Sampler {
         // Create a new thread to generate samples
         let config = config.clone();
         let (tx, rx): (Sender<Sample>, Receiver<Sample>) = mpsc::channel();
-        std::thread::spawn(move || {
+        let sampling_thread = std::thread::spawn(move || {
             for sleep in Timer::new(config.sampling_rate as f64) {
                 let mut traces = Vec::new();
                 let mut sampling_errors = None;
@@ -190,14 +202,24 @@ impl Sampler {
                 }
             }
         });
-        Ok(Sampler{rx, version: None})
+
+        Ok(Sampler{rx: Some(rx), version: None, sampling_thread: Some(sampling_thread)})
     }
 }
 
 impl Iterator for Sampler {
     type Item = Sample;
     fn next(&mut self) -> Option<Self::Item> {
-        self.rx.recv().ok()
+        self.rx.as_ref().unwrap().recv().ok()
+    }
+}
+
+impl Drop for Sampler {
+    fn drop(&mut self) {
+        self.rx = None;
+        if let Some(t) = self.sampling_thread.take() {
+            t.join().unwrap();
+        }
     }
 }
 

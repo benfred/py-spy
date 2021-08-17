@@ -50,17 +50,29 @@ pub fn copy_long(process: &remoteprocess::Process, addr: usize) -> Result<(i64, 
     // this is PyLongObject for a specific version of python, but this works since it's binary compatible
     // layout across versions we're targetting
     let value = process.copy_pointer(addr as *const crate::python_bindings::v3_7_0::PyLongObject)?;
-    match value.ob_base.ob_size {
-        -1 => Ok((value.ob_digit[0] as i64 * -1, false)),
+    let negative: i64 = if value.ob_base.ob_size < 0 { -1 } else { 1 };
+    let size = value.ob_base.ob_size * (negative as isize);
+    match size {
         0 => Ok((0, false)),
-        1 => Ok((value.ob_digit[0] as i64, false)),
+        1 => Ok((negative * (value.ob_digit[0] as i64), false)),
+
+        #[cfg(target_pointer_width = "64")]
         2 => {
-            let shift: u32 = process.copy_struct(addr + std::mem::size_of_val(&value) - 4)?;
-            Ok((((shift as i64) << 30) + value.ob_digit[0] as i64, false))
+            let digits: [u32; 2] = process.copy_struct(addr + std::mem::size_of_val(&value) - 8)?;
+            let mut ret: i64 = 0;
+            for i in 0..size {
+                ret += (digits[i as usize] as i64) << (30 * i);
+            }
+            Ok((negative * ret, false))
         }
-        -2 => {
-            let shift: u32 = process.copy_struct(addr + std::mem::size_of_val(&value) - 4)?;
-            Ok((-1 * (((shift as i64) << 30) + value.ob_digit[0] as i64), false))
+        #[cfg(target_pointer_width = "32")]
+        2..=4 => {
+            let digits: [u16; 4] = process.copy_struct(addr + std::mem::size_of_val(&value) - 4)?;
+            let mut ret: i64 = 0;
+            for i in 0..size {
+                ret += (digits[i as usize] as i64) << (15 * i);
+            }
+            Ok((negative * ret, false))
         }
         // we don't support arbitrary sized integers yet, signal this by returning that we've overflowed
         _ => Ok((value.ob_base.ob_size as i64, true))

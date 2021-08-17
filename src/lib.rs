@@ -24,6 +24,11 @@
 //!     Ok(())
 //! }
 //! ```
+#[macro_use]
+extern crate failure;
+#[macro_use]
+extern crate log;
+
 pub mod config;
 pub mod binary_parser;
 #[cfg(unwind)]

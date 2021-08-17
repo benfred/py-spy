@@ -133,7 +133,7 @@ fn http_handler(data: &Data, request: &Request) -> Response {
             let html = render_template("file", &template_params);
             try_or_400!(html.map_err(|x| x.compat()))
         },
-        _ =>  { get_404() }
+        _ =>  get_404()
     );
 
     info!("{} - {} '{}' from {} took {:.2?}", response.status_code, request.method(), request.raw_url(), request.remote_addr(), Instant::now() - start);

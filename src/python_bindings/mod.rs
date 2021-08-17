@@ -4,6 +4,7 @@ pub mod v3_5_5;
 pub mod v3_6_6;
 pub mod v3_7_0;
 pub mod v3_8_0;
+pub mod v3_9_5;
 
 // currently the PyRuntime struct used from Python 3.7 on really can't be
 // exposed in a cross platform way using bindgen. PyRuntime has several mutex's
@@ -70,8 +71,8 @@ pub mod pyruntime {
                     _ => Some(1416),
                 }
              },
-             Version{major: 3, minor: 8, patch: 1..=7, ..} => { Some(1416) },
-             Version{major: 3, minor: 9, patch: 0..=1, ..} => { Some(616) },
+             Version{major: 3, minor: 8, ..} => { Some(1416) },
+             Version{major: 3, minor: 9, ..} => { Some(616) },
              _ => None
         }
     }
@@ -88,8 +89,8 @@ pub mod pyruntime {
                     _  => Some(788)
                 }
             },
-            Version{major: 3, minor: 8, patch: 1..=7, ..} => Some(788),
-            Version{major: 3, minor: 9, patch: 0..=1, ..} => Some(352),
+            Version{major: 3, minor: 8, ..} => Some(788),
+            Version{major: 3, minor: 9, ..} => Some(352),
             _ => None
         }
     }
@@ -128,8 +129,8 @@ pub mod pyruntime {
                     _  => Some(1368)
                 }
              },
-            Version{major: 3, minor: 8, patch: 1..=7, ..} => Some(1368),
-            Version{major: 3, minor: 9, patch: 0..=1, ..} => Some(568),
+            Version{major: 3, minor: 8, ..} => Some(1368),
+            Version{major: 3, minor: 9, ..} => Some(568),
             _ => None
         }
     }
@@ -151,8 +152,8 @@ pub mod pyruntime {
                     _ => Some(1296)
                 }
             },
-            Version{major: 3, minor: 8, patch: 1..=7, ..} => Some(1296),
-            Version{major: 3, minor: 9, patch: 0..=1, ..} => Some(496),
+            Version{major: 3, minor: 8, ..} => Some(1296),
+            Version{major: 3, minor: 9, ..} => Some(496),
             _ => None
         }
     }
@@ -170,8 +171,8 @@ pub mod pyruntime {
                     _ => Some(1224)
                 }
             },
-            Version{major: 3, minor: 8, patch: 1..=7, ..} => Some(1224),
-            Version{major: 3, minor: 9, patch: 0..=1, ..} => Some(424),
+            Version{major: 3, minor: 8, ..} => Some(1224),
+            Version{major: 3, minor: 9, ..} => Some(424),
             _ => None
         }
     }
