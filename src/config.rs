@@ -1,5 +1,4 @@
-use clap::{App, Arg, crate_description, crate_name, crate_version, arg_enum, value_t};
-use log::info;
+use clap::{App, AppSettings, Arg, crate_description, crate_name, crate_version, arg_enum, value_t};
 use remoteprocess::Pid;
 
 /// Options on how to collect samples from a python process
@@ -241,6 +240,13 @@ impl Config {
                 .long("json")
                 .help("Format output as JSON"));
 
+        let completions = clap::SubCommand::with_name("completions")
+            .about("Generate shell completions")
+            .setting(AppSettings::Hidden)
+            .arg(Arg::with_name("shell")
+                .possible_values(&clap::Shell::variants())
+                .help("Shell type"));
+
         // add native unwinding if appropiate
         #[cfg(unwind)]
         let serve = serve.arg(native.clone());
@@ -262,7 +268,11 @@ impl Config {
         #[cfg(not(target_os="freebsd"))]
         let dump = dump.arg(nonblocking.clone());
 
+<<<<<<< HEAD
         let app = App::new(crate_name!())
+=======
+        let mut app = App::new(crate_name!())
+>>>>>>> master
             .version(crate_version!())
             .about(crate_description!())
             .setting(clap::AppSettings::InferSubcommands)
@@ -276,7 +286,8 @@ impl Config {
         let matches = app.subcommand(record)
             .subcommand(top)
             .subcommand(dump)
-            .get_matches_from_safe(args)?;
+            .subcommand(completions);
+        let matches = app.clone().get_matches_from_safe(args)?;
         info!("Command line args: {:?}", matches);
 
         let mut config = Config::default();
@@ -300,6 +311,11 @@ impl Config {
             "serve" => {
                 config.sampling_rate = value_t!(matches, "rate", u64)?;
                 config.address = matches.value_of("address").map(|x| x.to_string()) ;
+            }
+            "completions" => {
+                let shell = value_t!(matches.value_of("shell"), clap::Shell).unwrap_or_else(|e| e.exit());
+                app.gen_completions_to(crate_name!(), shell, &mut std::io::stdout());
+                std::process::exit(0);
             }
             _ => {}
         }

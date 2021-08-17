@@ -266,7 +266,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
         r.store(false, Ordering::SeqCst);
     })?;
 
-    let mut exit_message = "Stopped sampling because process exitted";
+    let mut exit_message = "Stopped sampling because process exited";
     let mut last_late_message = std::time::Instant::now();
 
     for mut sample in sampler {
