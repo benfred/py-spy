@@ -268,22 +268,15 @@ impl Config {
         #[cfg(not(target_os="freebsd"))]
         let dump = dump.arg(nonblocking.clone());
 
-<<<<<<< HEAD
-        let app = App::new(crate_name!())
-=======
         let mut app = App::new(crate_name!())
->>>>>>> master
             .version(crate_version!())
             .about(crate_description!())
             .setting(clap::AppSettings::InferSubcommands)
             .setting(clap::AppSettings::SubcommandRequiredElseHelp)
             .global_setting(clap::AppSettings::DeriveDisplayOrder)
-            .global_setting(clap::AppSettings::UnifiedHelpMessage);
-
-        #[cfg(feature="serve")]
-        let app = app.subcommand(serve);
-
-        let matches = app.subcommand(record)
+            .global_setting(clap::AppSettings::UnifiedHelpMessage)
+            .subcommand(serve)
+            .subcommand(record)
             .subcommand(top)
             .subcommand(dump)
             .subcommand(completions);
