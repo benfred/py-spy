@@ -8,6 +8,7 @@ use serde_derive::Serialize;
 
 use crate::python_interpreters::{InterpreterState, ThreadState, FrameObject, CodeObject, TupleObject};
 use crate::python_data_access::{copy_string, copy_bytes};
+use crate::config::LineNo;
 
 /// Call stack for a single python thread
 #[derive(Debug, Clone, Serialize)]
@@ -63,14 +64,14 @@ pub struct ProcessInfo {
 }
 
 /// Given an InterpreterState, this function returns a vector of stack traces for each thread
-pub fn get_stack_traces<I>(interpreter: &I, process: &Process) -> Result<Vec<StackTrace>, Error>
+pub fn get_stack_traces<I>(interpreter: &I, process: &Process, lineno: LineNo) -> Result<Vec<StackTrace>, Error>
         where I: InterpreterState {
     // TODO: deprecate this method
     let mut ret = Vec::new();
     let mut threads = interpreter.head();
     while !threads.is_null() {
         let thread = process.copy_pointer(threads).context("Failed to copy PyThreadState")?;
-        ret.push(get_stack_trace(&thread, process, false)?);
+        ret.push(get_stack_trace(&thread, process, false, lineno)?);
         // This seems to happen occasionally when scanning BSS addresses for valid interpeters
         if ret.len() > 4096 {
             return Err(format_err!("Max thread recursion depth reached"));
@@ -81,7 +82,7 @@ pub fn get_stack_traces<I>(interpreter: &I, process: &Process) -> Result<Vec<Sta
 }
 
 /// Gets a stack trace for an individual thread
-pub fn get_stack_trace<T>(thread: &T, process: &Process, copy_locals: bool) -> Result<StackTrace, Error>
+pub fn get_stack_trace<T>(thread: &T, process: &Process, copy_locals: bool, lineno: LineNo) -> Result<StackTrace, Error>
         where T: ThreadState {
     // TODO: just return frames here? everything else probably should be returned out of scope
     let mut frames = Vec::new();
@@ -93,15 +94,19 @@ pub fn get_stack_trace<T>(thread: &T, process: &Process, copy_locals: bool) -> R
         let filename = copy_string(code.filename(), process).context("Failed to copy filename")?;
         let name = copy_string(code.name(), process).context("Failed to copy function name")?;
 
-        let line = match get_line_number(&code, frame.lasti(), process) {
-            Ok(line) => line,
-            Err(e) => {
-                // Failling to get the line number really shouldn't be fatal here, but
-                // can happen in extreme cases (https://github.com/benfred/py-spy/issues/164)
-                // Rather than fail set the linenumber to 0. This is used by the native extensions
-                // to indicate that we can't load a line number and it should be handled gracefully
-                warn!("Failed to get line number from {}.{}: {}", filename, name, e);
-                0
+        let line = match lineno {
+            LineNo::NoLine => 0,
+            LineNo::FirstLineNo => code.first_lineno(),
+            LineNo::LastInstruction => match get_line_number(&code, frame.lasti(), process) {
+               Ok(line) => line,
+                Err(e) => {
+                    // Failling to get the line number really shouldn't be fatal here, but
+                    // can happen in extreme cases (https://github.com/benfred/py-spy/issues/164)
+                    // Rather than fail set the linenumber to 0. This is used by the native extensions
+                    // to indicate that we can't load a line number and it should be handled gracefully
+                    warn!("Failed to get line number from {}.{}: {}", filename, name, e);
+                    0
+                }
             }
         };
 

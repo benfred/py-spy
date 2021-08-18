@@ -50,6 +50,8 @@ pub struct Config {
     pub dump_locals: u64,
     #[doc(hidden)]
     pub full_filenames: bool,
+    #[doc(hidden)]
+    pub lineno: LineNo,
 }
 
 arg_enum!{
@@ -76,6 +78,13 @@ pub enum RecordDuration {
     Seconds(u64)
 }
 
+#[derive(Debug, Clone, Eq, PartialEq, Copy)]
+pub enum LineNo {
+    NoLine,
+    FirstLineNo,
+    LastInstruction
+}
+
 impl Default for Config {
     /// Initializes a new Config object with default parameters
     #[allow(dead_code)]
@@ -86,7 +95,7 @@ impl Default for Config {
                duration: RecordDuration::Unlimited, native: false,
                gil_only: false, include_idle: false, include_thread_ids: false,
                hide_progress: false, capture_output: true, dump_json: false, dump_locals: 0, subprocesses: false,
-               full_filenames: false}
+               full_filenames: false, lineno: LineNo::LastInstruction }
     }
 }
 
@@ -182,7 +191,10 @@ impl Config {
             .arg(Arg::with_name("function")
                 .short("F")
                 .long("function")
-                .help("Aggregate samples by function name instead of by line number"))
+                .help("Aggregate samples by function's first line number, instead of current line number"))
+            .arg(Arg::with_name("nolineno")
+                .long("nolineno")
+                .help("Do not show line numbers"))
             .arg(Arg::with_name("threads")
                 .short("t")
                 .long("threads")
@@ -291,7 +303,7 @@ impl Config {
         config.python_program = matches.values_of("python_program").map(|vals| {
             vals.map(|v| v.to_owned()).collect()
         });
-        config.show_line_numbers = matches.occurrences_of("function") == 0;
+        config.show_line_numbers = matches.occurrences_of("nolineno") == 0;
         config.include_idle = matches.occurrences_of("idle") > 0;
         config.gil_only = matches.occurrences_of("gil") > 0;
         config.include_thread_ids = matches.occurrences_of("threads") > 0;
@@ -302,6 +314,11 @@ impl Config {
         config.dump_locals = matches.occurrences_of("locals");
         config.subprocesses = matches.occurrences_of("subprocesses") > 0;
         config.full_filenames = matches.occurrences_of("full_filenames") > 0;
+        config.lineno = if matches.occurrences_of("nolineno") > 0 { LineNo::NoLine } else if matches.occurrences_of("function") > 0 { LineNo::FirstLineNo } else { LineNo::LastInstruction };
+        if matches.occurrences_of("nolineno") > 0 && matches.occurrences_of("function") > 0 {
+            eprintln!("--function & --nolinenos can't be used together");
+            std::process::exit(1);
+        }
 
         config.capture_output = config.command != "record" || matches.occurrences_of("capture") > 0;
         if !config.capture_output {

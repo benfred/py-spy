@@ -18,7 +18,7 @@ use proc_maps::{get_process_maps, MapRange};
 
 
 use crate::binary_parser::{parse_binary, BinaryInfo};
-use crate::config::{Config, LockingStrategy};
+use crate::config::{Config, LockingStrategy, LineNo};
 #[cfg(unwind)]
 use crate::native_stack_trace::NativeStack;
 use crate::python_bindings::{pyruntime, v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0, v3_9_5};
@@ -223,7 +223,7 @@ impl PythonSpy {
         while !threads.is_null() {
             // Get the stack trace of the python thread
             let thread = self.process.copy_pointer(threads).context("Failed to copy PyThreadState")?;
-            let mut trace = get_stack_trace(&thread, &self.process, self.config.dump_locals > 0)?;
+            let mut trace = get_stack_trace(&thread, &self.process, self.config.dump_locals > 0, self.config.lineno)?;
 
             // Try getting the native thread id
             let python_thread_id = thread.thread_id();
@@ -678,7 +678,7 @@ fn check_interpreter_addresses(addrs: &[usize],
                     };
 
                     // as a final sanity check, try getting the stack_traces, and only return if this works
-                    if thread.interp() as usize == addr && get_stack_traces(&interp, process).is_ok() {
+                    if thread.interp() as usize == addr && get_stack_traces(&interp, process, LineNo::NoLine).is_ok() {
                         return Ok(addr);
                     }
                 }
