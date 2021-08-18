@@ -101,7 +101,9 @@ pub fn parse_binary(_pid: remoteprocess::Pid, filename: &str, addr: u64, size: u
                     header.p_flags & goblin::elf::program_header::PF_X != 0)
                 .ok_or_else(|| format_err!("Failed to find executable PT_LOAD program header in {}", filename))?;
 
-            let offset = offset - program_header.p_vaddr;
+            // p_vaddr may be larger than the map address in case when the header has an offset and
+            // the map address is relatively small. In this case we can default to 0.
+            let offset = offset.checked_sub(program_header.p_vaddr).unwrap_or(0);
 
             for sym in elf.syms.iter() {
                 let name = elf.strtab[sym.st_name].to_string();

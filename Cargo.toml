@@ -26,7 +26,7 @@ log = "0.4"
 lru = "0.6"
 regex = "1"
 tempfile = "3.0.3"
-proc-maps = "0.1.7"
+proc-maps = "0.1.9"
 memmap = "0.7.0"
 cpp_demangle = "0.3"
 serde = {version="1.0", features=["rc"]}
