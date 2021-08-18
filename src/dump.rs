@@ -48,10 +48,10 @@ pub fn print_traces(pid: Pid, config: &Config) -> Result<(), Error> {
                 let mut shown_locals = false;
                 for local in locals {
                     if local.arg && !shown_args {
-                        println!("        {}:", style("Arguments:").dim());
+                        println!("        {}", style("Arguments:").dim());
                         shown_args = true;
                     } else if !local.arg && !shown_locals {
-                        println!("        {}:", style("Locals:").dim());
+                        println!("        {}", style("Locals:").dim());
                         shown_locals = true;
                     }
 
