@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import re
 import tempfile
 import unittest
 from collections import defaultdict, namedtuple
@@ -93,7 +94,8 @@ class TestPyspy(unittest.TestCase):
             )
             expected_thread_names = set("CustomThreadName-" + str(i) for i in range(10))
             expected_thread_names.add("MainThread")
-            actual_thread_names = {p[0] for p in profile}
+            name_re = re.compile(r"\"(.*)\"")
+            actual_thread_names = {name_re.search(p[0]).groups()[0] for p in profile}
             if expected_thread_names == actual_thread_names:
                 break
         if expected_thread_names != actual_thread_names:
