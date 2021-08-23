@@ -130,17 +130,8 @@ enum ValueUnit {
 impl SpeedscopeFile {
   pub fn new(samples: &HashMap<(Pid, Tid), Vec<Vec<usize>>>, frames: &Vec<Frame>,
              thread_name_map: &HashMap<(Pid, Tid), String>, sample_rate: u64) -> SpeedscopeFile {
-    SpeedscopeFile {
-      // This is always the same
-      schema: "https://www.speedscope.app/file-format-schema.json".to_string(),
 
-      active_profile_index: None,
-
-      name: Some("py-spy profile".to_string()),
-
-      exporter: Some(format!("py-spy@{}", env!("CARGO_PKG_VERSION"))),
-
-      profiles: samples.iter().map(|(thread_id, samples)| {
+    let mut profiles: Vec<Profile> = samples.iter().map(|(thread_id, samples)| {
         let end_value = samples.len();
         // we sample at 100 Hz, so scale the end value and weights to match the time unit
         let scaled_end_value = end_value as f64 / sample_rate as f64;
@@ -155,8 +146,17 @@ impl SpeedscopeFile {
             samples: samples.clone(),
             weights
         }
-      }).collect(),
+      }).collect();
 
+    profiles.sort_by(|a, b| a.name.cmp(&b.name));
+
+    SpeedscopeFile {
+      // This is always the same
+      schema: "https://www.speedscope.app/file-format-schema.json".to_string(),
+      active_profile_index: None,
+      name: Some("py-spy profile".to_string()),
+      exporter: Some(format!("py-spy@{}", env!("CARGO_PKG_VERSION"))),
+      profiles: profiles,
       shared: Shared {
           frames: frames.clone()
       }
