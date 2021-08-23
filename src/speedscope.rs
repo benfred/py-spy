@@ -31,7 +31,7 @@ use std::io;
 use std::io::Write;
 
 use crate::stack_trace;
-use remoteprocess::Tid;
+use remoteprocess::{Tid, Pid};
 
 use failure::{Error};
 use serde_derive::{Deserialize, Serialize};
@@ -128,7 +128,8 @@ enum ValueUnit {
 }
 
 impl SpeedscopeFile {
-  pub fn new(samples: &HashMap<Tid, Vec<Vec<usize>>>, frames: &Vec<Frame>, thread_name_map: &HashMap<Tid, String>, sample_rate: u64) -> SpeedscopeFile {
+  pub fn new(samples: &HashMap<(Pid, Tid), Vec<Vec<usize>>>, frames: &Vec<Frame>,
+             thread_name_map: &HashMap<(Pid, Tid), String>, sample_rate: u64) -> SpeedscopeFile {
     SpeedscopeFile {
       // This is always the same
       schema: "https://www.speedscope.app/file-format-schema.json".to_string(),
@@ -176,10 +177,10 @@ impl Frame {
 }
 
 pub struct Stats {
-    samples: HashMap<Tid, Vec<Vec<usize>>>,
+    samples: HashMap<(Pid, Tid), Vec<Vec<usize>>>,
     frames: Vec<Frame>,
     frame_to_index: HashMap<stack_trace::Frame, usize>,
-    thread_name_map: HashMap<Tid, String>,
+    thread_name_map: HashMap<(Pid, Tid), String>,
     config: Config,
 }
 
@@ -210,16 +211,18 @@ impl Stats {
         }).collect();
         frame_indices.reverse();
 
-        self.samples.entry(stack.thread_id as Tid).or_insert_with(|| {
+        let key = (stack.pid as Pid, stack.thread_id as Tid);
+
+        self.samples.entry(key).or_insert_with(|| {
             vec![]
         }).push(frame_indices);
         let subprocesses = self.config.subprocesses;
-        self.thread_name_map.entry(stack.thread_id as Tid).or_insert_with(|| {
+        self.thread_name_map.entry(key).or_insert_with(|| {
             let thread_name = stack.thread_name.as_ref().map_or_else(|| "".to_string(), |x| x.clone());
             if subprocesses {
                 format!("Process {} Thread {} \"{}\"", stack.pid, stack.format_threadid(), thread_name)
             } else {
-                format!("{} \"{}\"", stack.format_threadid(), thread_name)
+                format!("Thread {} \"{}\"", stack.format_threadid(), thread_name)
             }
         });
 
