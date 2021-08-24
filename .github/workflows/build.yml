@@ -37,9 +37,9 @@ jobs:
           ln -sf ci/Vagrantfile Vagrantfile
           vagrant up ${{ matrix.box }}
       - name: Build
-        run: vagrant ssh ${{ matrix.box }} -- "cd /vagrant; cargo build --verbose"
+        run: vagrant ssh ${{ matrix.box }} -- "cd /vagrant; source $HOME/.cargo/env; cargo build --verbose"
       - name: Test
-        run: vagrant ssh ${{ matrix.box }} -- "cd /vagrant; cargo test"
+        run: vagrant ssh ${{ matrix.box }} -- "cd /vagrant; source $HOME/.cargo/env; cargo test"
 
 
   build-linux-armv7:
