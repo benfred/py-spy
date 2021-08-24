@@ -31,9 +31,8 @@ Vagrant.configure("2") do |config|
   config.vm.provision "shell", inline: <<-SHELL
     pkg bootstrap
     pkg install -y curl python llvm
-  SHELL
-
-  config.vm.provision "shell", privileged: false, inline: <<-SHELL
-    curl https://sh.rustup.rs -sSf | sh -s -- -y
+    su runner <<EOF
+    curl https://sh.rustup.rs -sSf | sh -s -- -y;
+    EOF
   SHELL
 end
