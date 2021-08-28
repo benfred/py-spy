@@ -15,15 +15,11 @@ env:
 jobs:
   build-freebsd-amd64:
     runs-on: macos-latest
-
     strategy:
       matrix:
         box:
           - fbsd_13_0
-          # there seems to be an issue in curl https://github.com/curl/curl/issues/7400
-          # that causes this to fail frequently. commenting out for now
-          # - fbsd_12_2
-
+          - fbsd_12_2
     steps:
       - name: Cache vagrant boxes
         id: cache-vagrant-boxes
