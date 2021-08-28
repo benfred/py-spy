@@ -15,13 +15,11 @@ env:
 jobs:
   build-freebsd-amd64:
     runs-on: macos-latest
-
     strategy:
       matrix:
         box:
           - fbsd_13_0
           - fbsd_12_2
-
     steps:
       - name: Cache vagrant boxes
         id: cache-vagrant-boxes
@@ -36,7 +34,6 @@ jobs:
           vagrant up ${{ matrix.box }}
       - name: Build
         run: vagrant ssh ${{ matrix.box }} -- "bash /vagrant/ci/test_freebsd.sh"
-
 
   build-linux-armv7:
     runs-on: [self-hosted, linux, arm]
