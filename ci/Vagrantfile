@@ -28,8 +28,13 @@ Vagrant.configure("2") do |config|
     rsync__exclude: ".git/",
     rsync__auto: true
 
-  config.vm.provision "shell", inline: <<-SHELL
+  config.vm.provision "shell", inline: <<~SHELL
     pkg bootstrap
-    pkg install -y rust python llvm
+    pkg install -y curl python llvm
+    su vagrant <<EOF
+    # we seem to be broken on rust 1.53 and 1.54 https://github.com/benfred/py-spy/pull/407
+    # so force using 1.52.1
+    curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain 1.52.1;
+    EOF
   SHELL
 end
