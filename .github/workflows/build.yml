@@ -37,10 +37,7 @@ jobs:
           ln -sf ci/Vagrantfile Vagrantfile
           vagrant up ${{ matrix.box }}
       - name: Build
-        run: vagrant ssh ${{ matrix.box }} -- "cd /vagrant; source $HOME/.cargo/env; cargo build --verbose"
-      - name: Test
-        run: vagrant ssh ${{ matrix.box }} -- "cd /vagrant; source $HOME/.cargo/env; cargo test"
-
+        run: vagrant ssh ${{ matrix.box }} -- "bash /vagrant/ci/test_freebsd.sh"
 
   build-linux-armv7:
     runs-on: [self-hosted, linux, arm]
