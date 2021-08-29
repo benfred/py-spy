@@ -152,6 +152,12 @@ impl StackTrace {
 
 /// Returns the line number from a PyCodeObject (given the lasti index from a PyFrameObject)
 fn get_line_number<C: CodeObject, P: ProcessMemory>(code: &C, lasti: i32, process: &P) -> Result<i32, Error> {
+    let lnotab = code.lnotab();
+    if lnotab.is_null() {
+        // python v3.10 doesn't have line number support yet - just return 0
+        return Ok(0);
+    }
+
     let table = copy_bytes(code.lnotab(), process).context("Failed to copy line number table")?;
 
     // unpack the line table. format is specified here:
