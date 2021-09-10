@@ -1,3 +1,10 @@
+## v0.3.9
+* Add a subcommand to generate shell completions [#427](https://github.com/benfred/py-spy/issues/427)
+* Allow attaching co_firstlineno to frame name [#428](https://github.com/benfred/py-spy/issues/428)
+* Fix speedscope time interval [#434](https://github.com/benfred/py-spy/issues/434)
+* Fix profiling on FreeBSD [#431](https://github.com/benfred/py-spy/issues/431)
+* Use GitHub actions for FreeBSD CI [#433](https://github.com/benfred/py-spy/issues/433)
+
 ## v0.3.8
 * Add wheels for Apple Silicon [#419](https://github.com/benfred/py-spy/issues/419)
 * Add --gil and --idle options to top view [#406](https://github.com/benfred/py-spy/issues/406)
