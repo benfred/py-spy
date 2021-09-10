@@ -262,21 +262,6 @@ Since the calls we use to read memory from are not atomic, and we have to issue 
 means that occasionally we get errors when sampling. This can show up as an increased error rate when sampling, or as
 partial stack frames being included in the output.
 
-### How are you distributing Rust executable binaries over PyPI?
-
-Ok, so no-one has ever actually asked me this - but I wanted to share since it's a pretty terrible hack
-that might be useful to other people.
-
-I really wanted to distribute this package over PyPI, since installing with pip will make this much easier
-for most Python programmers to get installed on their system. Unfortunately, [installing executables as python
-scripts isn't something that setuptools supports](https://github.com/pypa/setuptools/issues/210).
-
-To get around this I'm using setuptools_rust package to build the py-spy
-binary, and then overriding the [distutils install command](https://github.com/benfred/py-spy/blob/772f24086c30521b4d4af5065aa09da4f9d559ae/setup.py#L44-L83)
-to copy the built binary into the python scripts folder. By doing this with prebuilt wheels for supported
-platforms means that we can install py-spy with pip, and not require a Rust compiler on the machine that
-this is being installed onto.
-
 ### Does py-spy support 32-bit Windows? Integrate with PyPy? Work with USC2 versions of Python2?
 
 Not yet =).
