@@ -178,7 +178,9 @@ impl NativeStack {
                 // Figure out the merge type by looking at the function name, frames that
                 // are used in evaluating python code are ignored, aside from PyEval_EvalFrame*
                 // which is replaced by the function from the python stack
-                let mut tokens = function.split("_").filter(|&x| x.len() > 0);
+                // note: we're splitting on both _ and . to handle symbols like
+                // _PyEval_EvalFrameDefault.cold.2962
+                let mut tokens = function.split(&['_', '.'][..]).filter(|&x| x.len() > 0);
                 match tokens.next() {
                     Some("PyEval") => {
                         match tokens.next() {
