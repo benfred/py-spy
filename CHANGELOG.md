@@ -1,3 +1,7 @@
+## v0.3.10
+* Add support for profiling Python v3.10 [#425](https://github.com/benfred/py-spy/pull/425)
+* Fix issue with native profiling on Linux with Anaconda [#447](https://github.com/benfred/py-spy/pull/447)
+
 ## v0.3.9
 * Add a subcommand to generate shell completions [#427](https://github.com/benfred/py-spy/issues/427)
 * Allow attaching co_firstlineno to frame name [#428](https://github.com/benfred/py-spy/issues/428)
