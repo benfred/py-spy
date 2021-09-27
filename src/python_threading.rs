@@ -64,6 +64,7 @@ pub fn thread_name_lookup(process: &PythonSpy) -> Option<HashMap<u64, String>> {
         Version{major: 3, minor: 7, ..} => _thread_name_lookup::<v3_7_0::_is>(&process),
         Version{major: 3, minor: 8, ..} => _thread_name_lookup::<v3_8_0::_is>(&process),
         Version{major: 3, minor: 9, ..} => _thread_name_lookup::<v3_9_5::_is>(&process),
+        Version{major: 3, minor: 10, ..} => _thread_name_lookup::<v3_9_5::_is>(&process),
         _ => return None
     };
     err.ok()

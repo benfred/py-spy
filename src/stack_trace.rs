@@ -98,7 +98,7 @@ pub fn get_stack_trace<T>(thread: &T, process: &Process, copy_locals: bool, line
             LineNo::NoLine => 0,
             LineNo::FirstLineNo => code.first_lineno(),
             LineNo::LastInstruction => match get_line_number(&code, frame.lasti(), process) {
-               Ok(line) => line,
+                Ok(line) => line,
                 Err(e) => {
                     // Failling to get the line number really shouldn't be fatal here, but
                     // can happen in extreme cases (https://github.com/benfred/py-spy/issues/164)
@@ -152,32 +152,10 @@ impl StackTrace {
 
 /// Returns the line number from a PyCodeObject (given the lasti index from a PyFrameObject)
 fn get_line_number<C: CodeObject, P: ProcessMemory>(code: &C, lasti: i32, process: &P) -> Result<i32, Error> {
-    let table = copy_bytes(code.lnotab(), process).context("Failed to copy line number table")?;
-
-    // unpack the line table. format is specified here:
-    // https://github.com/python/cpython/blob/master/Objects/lnotab_notes.txt
-    let size = table.len();
-    let mut i = 0;
-    let mut line_number: i32 = code.first_lineno();
-    let mut bytecode_address: i32 = 0;
-    while (i + 1) < size {
-        bytecode_address += i32::from(table[i]);
-        if bytecode_address > lasti {
-            break;
-        }
-
-        let mut increment = i32::from(table[i + 1]);
-        // Handle negative line increments in the line number table - as shown here:
-        // https://github.com/python/cpython/blob/143a97f6/Objects/lnotab_notes.txt#L48-L49
-        if increment >= 0x80 {
-            increment -= 0x100;
-        }
-        line_number += increment;
-        i += 2;
-    }
-
-    Ok(line_number)
+    let table = copy_bytes(code.line_table(), process).context("Failed to copy line number table")?;
+    Ok(code.get_line_number(lasti, &table))
 }
+
 
 fn get_locals<C: CodeObject, F: FrameObject, P: ProcessMemory>(code: &C, frameptr: *const F, frame: &F, process: &P)
         -> Result<Vec<LocalVariable>, Error> {
