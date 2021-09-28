@@ -397,7 +397,7 @@ fn pyspy_main() -> Result<(), Error> {
             }
         }
 
-        // kill it so we don't have dangling processess
+        // kill it so we don't have dangling processes
         if command.kill().is_err() {
             // I don't actually care if we failed to kill ... most times process is already done
             // eprintln!("Error killing child process {}", e);

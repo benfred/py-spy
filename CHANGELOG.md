@@ -96,7 +96,7 @@
 * Show OS threadids in dump [#57](https://github.com/benfred/py-spy/issues/57)
 * Drop root permissions when starting new process [#116](https://github.com/benfred/py-spy/issues/116)
 * Support building for ARM processors [#89](https://github.com/benfred/py-spy/issues/89)
-* Python 3.8 compatability
+* Python 3.8 compatibility
 * Fix issues profiling functions with more than 4000 lines [#164](https://github.com/benfred/py-spy/issues/164)
 
 ## v0.1.11

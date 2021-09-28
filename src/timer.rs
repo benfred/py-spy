@@ -5,7 +5,7 @@ use winapi::um::timeapi;
 use rand;
 use rand_distr::{Exp, Distribution};
 
-/// Timer is an iterator that sleeps an appropiate amount of time between iterations
+/// Timer is an iterator that sleeps an appropriate amount of time between iterations
 /// so that we can sample the process a certain number of times a second.
 /// We're using an irregular sampling strategy to avoid aliasing effects that can happen
 /// if the target process runs code at a similar schedule as the profiler:
@@ -47,7 +47,7 @@ impl Iterator for Timer {
         // the amount of time from the previous line).
         self.desired += Duration::from_nanos(nanos as u64);
 
-        // sleep if appropiate, or warn if we are behind in sampling
+        // sleep if appropriate, or warn if we are behind in sampling
         if self.desired > elapsed {
             std::thread::sleep(self.desired - elapsed);
             Some(Ok(self.desired - elapsed))
