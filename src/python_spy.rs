@@ -203,7 +203,7 @@ impl PythonSpy {
             thread_activity.insert(threadid, thread.active()?);
         }
 
-        // Lock the process if appropiate. Note we have to lock AFTER getting the thread
+        // Lock the process if appropriate. Note we have to lock AFTER getting the thread
         // activity status from the OS (otherwise each thread would report being inactive always).
         // This has the potential for race conditions (in that the thread activity could change
         // between getting the status and locking the thread, but seems unavoidable right now
@@ -289,7 +289,7 @@ impl PythonSpy {
 
             traces.push(trace);
 
-            // This seems to happen occasionally when scanning BSS addresses for valid interpeters
+            // This seems to happen occasionally when scanning BSS addresses for valid interpreters
             if traces.len() > 4096 {
                 return Err(format_err!("Max thread recursion depth reached"));
             }
@@ -688,7 +688,7 @@ fn check_interpreter_addresses(addrs: &[usize],
         Err(format_err!("Failed to find a python interpreter in the .data section"))
     }
 
-    // different versions have different layouts, check as appropiate
+    // different versions have different layouts, check as appropriate
     match version {
         Version{major: 2, minor: 3..=7, ..} => check::<v2_7_15::_is>(addrs, maps, process),
         Version{major: 3, minor: 3, ..} => check::<v3_3_7::_is>(addrs, maps, process),
@@ -776,7 +776,7 @@ impl PythonProcessInfo {
                             .map_err(|err| err.into())
                     }
 
-                    // For OSX, need to adjust main binary symbols by substracting _mh_execute_header
+                    // For OSX, need to adjust main binary symbols by subtracting _mh_execute_header
                     // (which we've added to by map.start already, so undo that here)
                     #[cfg(target_os = "macos")]
                     {
@@ -988,7 +988,7 @@ mod tests {
         assert!(is_python_lib("/usr/local/lib/libpython3.8m.so"));
         assert!(is_python_lib("/usr/lib/libpython2.7u.so"));
 
-        // don't blindly match libraries with pytohn in the name (boost_python etc)
+        // don't blindly match libraries with python in the name (boost_python etc)
         assert!(!is_python_lib("/usr/lib/libboost_python.so"));
         assert!(!is_python_lib("/usr/lib/x86_64-linux-gnu/libboost_python-py27.so.1.58.0"));
         assert!(!is_python_lib("/usr/lib/libboost_python-py35.so"));

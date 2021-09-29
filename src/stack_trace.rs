@@ -72,7 +72,7 @@ pub fn get_stack_traces<I>(interpreter: &I, process: &Process, lineno: LineNo) -
     while !threads.is_null() {
         let thread = process.copy_pointer(threads).context("Failed to copy PyThreadState")?;
         ret.push(get_stack_trace(&thread, process, false, lineno)?);
-        // This seems to happen occasionally when scanning BSS addresses for valid interpeters
+        // This seems to happen occasionally when scanning BSS addresses for valid interpreters
         if ret.len() > 4096 {
             return Err(format_err!("Max thread recursion depth reached"));
         }

@@ -154,7 +154,7 @@ impl NativeStack {
         if check_python {
             if let Some(ref function) = frame.function {
                 // We want to include some internal python functions. For example, calls like time.sleep
-                // or os.kill etc are implemented as builtins in the interpeter and filtering them out
+                // or os.kill etc are implemented as builtins in the interpreter and filtering them out
                 // is misleading. Create a set of whitelisted python function prefixes to include
                 lazy_static! {
                     static ref WHITELISTED_PREFIXES: HashSet<&'static str> = {

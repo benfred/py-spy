@@ -126,7 +126,7 @@ impl Config {
         let nonblocking = Arg::with_name("nonblocking")
                     .long("nonblocking")
                     .help("Don't pause the python process when collecting samples. Setting this option will reduce \
-                          the perfomance impact of sampling, but may lead to inaccurate results");
+                          the performance impact of sampling, but may lead to inaccurate results");
 
         let rate = Arg::with_name("rate")
                     .short("r")
@@ -241,7 +241,7 @@ impl Config {
                 .possible_values(&clap::Shell::variants())
                 .help("Shell type"));
 
-        // add native unwinding if appropiate
+        // add native unwinding if appropriate
         #[cfg(unwind)]
         let record = record.arg(native.clone());
         #[cfg(unwind)]

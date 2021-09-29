@@ -180,7 +180,7 @@ impl Sampler {
                 // Annotate each trace with the process info
                 for trace in traces.iter_mut() {
                     let pid = trace.pid;
-                    // Annotate each trace with the process info for the curren
+                    // Annotate each trace with the process info for the current
                     let process = process_info.entry(pid).or_insert_with(|| {
                         get_process_info(pid, &spies).map(|p| Arc::new(*p))
                     });
