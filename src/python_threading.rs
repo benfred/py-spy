@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use failure::Error;
 
-use crate::python_bindings::{v3_6_6, v3_7_0, v3_8_0, v3_9_5};
+use crate::python_bindings::{v3_6_6, v3_7_0, v3_8_0, v3_9_5, v3_10_0};
 use crate::python_interpreters::{InterpreterState, Object, TypeObject};
 use crate::python_spy::PythonSpy;
 use crate::python_data_access::{copy_string, copy_long, DictIterator};
