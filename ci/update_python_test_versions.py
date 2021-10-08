@@ -15,7 +15,7 @@ def get_github_python_versions():
     raw_versions = [v["version"] for v in versions_json]
     versions = []
     for version_str in raw_versions:
-        if "-" in version_str and version_str != "3.10.0-rc.2":
+        if "-" in version_str:
             continue
 
         major, minor, patch = parse_version(version_str)
