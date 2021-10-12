@@ -273,7 +273,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
             } else {
                 format!("Collected {} samples", samples)
             };
-            progress.set_message(&msg);
+            progress.set_message(msg);
         }
         progress.inc(1);
     }
