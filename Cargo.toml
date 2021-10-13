@@ -15,7 +15,7 @@ edition="2018"
 clap = {version="2", features=["wrap_help"]}
 console = "0.14"
 ctrlc = "3"
-indicatif = "0.15"
+indicatif = "0.16"
 env_logger = "0.9"
 failure = "0.1.8"
 goblin = "0.4.1"
@@ -23,7 +23,7 @@ inferno = "0.10.6"
 lazy_static = "1.4.0"
 libc = "0.2"
 log = "0.4"
-lru = "0.6"
+lru = "0.7"
 regex = "1"
 tempfile = "3.0.3"
 proc-maps = "0.1.9"
@@ -34,7 +34,7 @@ serde_derive = "1.0"
 serde_json = "1.0"
 rand = "0.8"
 rand_distr = "0.4"
-remoteprocess = {version="0.4.4", features=["unwind"]}
+remoteprocess = {version="0.4.6", features=["unwind"]}
 chrono = "0.4.19"
 
 [target.'cfg(unix)'.dependencies]
