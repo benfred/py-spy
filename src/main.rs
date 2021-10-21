@@ -415,8 +415,26 @@ fn main() {
         #[cfg(unix)]
         {
         if permission_denied(&err) {
-            eprintln!("Permission Denied: Try running again with elevated permissions by going 'sudo env \"PATH=$PATH\" !!'");
-            std::process::exit(1);
+            // Got a permission denied error, if we're not running as root - ask to use sudo
+            if unsafe { libc::geteuid() } != 0 {
+                eprintln!("Permission Denied: Try running again with elevated permissions by going 'sudo env \"PATH=$PATH\" !!'");
+                std::process::exit(1);
+            }
+
+            // We got a permission denied error running as root, check to see if we're running
+            // as docker, and if so ask the user to check the SYS_PTRACE capability is added
+            // Otherwise, fall through to the generic error handling
+            #[cfg(target_os="linux")]
+            if let Ok(cgroups) = std::fs::read_to_string("/proc/self/cgroup") {
+                if cgroups.contains("/docker/") {
+                    eprintln!("Permission Denied");
+                    eprintln!("\nIt looks like you are running in a docker container. Please make sure \
+                        you started your container with the SYS_PTRACE capability. See \
+                        https://github.com/benfred/py-spy#how-do-i-run-py-spy-in-docker for \
+                        more details");
+                    std::process::exit(1);
+                }
+            }
         }
         }
 
