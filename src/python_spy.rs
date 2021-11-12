@@ -34,7 +34,7 @@ pub struct PythonSpy {
     pub version: Version,
     pub interpreter_address: usize,
     pub threadstate_address: usize,
-    pub python_filename: String,
+    pub python_filename: std::path::PathBuf,
     pub version_string: String,
     pub config: Config,
     #[cfg(unwind)]
@@ -558,7 +558,7 @@ fn get_python_version(python_info: &PythonProcessInfo, process: &remoteprocess::
 
     // the python_filename might have the version encoded in it (/usr/bin/python3.5 etc).
     // try reading that in (will miss patch level on python, but that shouldn't matter)
-    info!("Trying to get version from path: {}", python_info.python_filename);
+    info!("Trying to get version from path: {}", python_info.python_filename.display());
     let path = Path::new(&python_info.python_filename);
     if let Some(python) = path.file_name() {
         if let Some(python) = python.to_str() {
@@ -716,7 +716,7 @@ pub struct PythonProcessInfo {
     // be in a libpython.so file instead of the executable. support that.
     libpython_binary: Option<BinaryInfo>,
     maps: Vec<MapRange>,
-    python_filename: String,
+    python_filename: std::path::PathBuf,
     #[cfg(target_os="linux")]
     dockerized: bool,
 }
@@ -728,6 +728,7 @@ impl PythonProcessInfo {
 
         #[cfg(windows)]
         let filename = filename.to_lowercase();
+
         #[cfg(windows)]
         let is_python_bin = |pathname: &str| pathname.to_lowercase() == filename;
 
@@ -740,16 +741,19 @@ impl PythonProcessInfo {
         for map in &maps {
             debug!("map: {:016x}-{:016x} {}{}{} {}", map.start(), map.start() + map.size(),
                 if map.is_read() {'r'} else {'-'}, if map.is_write() {'w'} else {'-'}, if map.is_exec() {'x'} else {'-'},
-                map.filename().as_ref().unwrap_or(&"".to_owned()));
+                map.filename().unwrap_or(&std::path::PathBuf::from("")).display());
         }
 
         // parse the main python binary
         let (python_binary, python_filename) = {
             // Get the memory address for the executable by matching against virtual memory maps
             let map = maps.iter()
-                .find(|m| if let Some(pathname) = &m.filename() {
-                    is_python_bin(pathname) && m.is_exec()
-                } else {
+                .find(|m| {
+                    if let Some(pathname) = m.filename() {
+                        if let Some(pathname) = pathname.to_str() {
+                            return is_python_bin(pathname) && m.is_exec();
+                        }
+                    }
                     false
                 });
 
@@ -763,6 +767,8 @@ impl PythonProcessInfo {
                     &maps[0]
                 }
             };
+
+            let filename = std::path::PathBuf::from(filename);
 
             // TODO: consistent types? u64 -> usize? for map.start etc
             #[allow(unused_mut)]
@@ -800,16 +806,19 @@ impl PythonProcessInfo {
         // likewise handle libpython for python versions compiled with --enabled-shared
         let libpython_binary = {
             let libmap = maps.iter()
-                .find(|m| if let Some(ref pathname) = &m.filename() {
-                    is_python_lib(pathname) && m.is_exec()
-                } else {
+                .find(|m| {
+                    if let Some(pathname) = m.filename() {
+                        if let Some(pathname) = pathname.to_str() {
+                            return is_python_lib(pathname) && m.is_exec();
+                        }
+                    }
                     false
                 });
 
             let mut libpython_binary: Option<BinaryInfo> = None;
             if let Some(libpython) = libmap {
                 if let Some(filename) = &libpython.filename() {
-                    info!("Found libpython binary @ {}", filename);
+                    info!("Found libpython binary @ {}", filename.display());
                     #[allow(unused_mut)]
                     let mut parsed = parse_binary(process.pid, filename, libpython.start() as u64, libpython.size() as u64, false)?;
                     #[cfg(windows)]

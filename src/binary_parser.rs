@@ -26,7 +26,7 @@ impl BinaryInfo {
 }
 
 /// Uses goblin to parse a binary file, returns information on symbols/bss/adjusted offset etc
-pub fn parse_binary(_pid: remoteprocess::Pid, filename: &str, addr: u64, size: u64, _is_bin: bool) -> Result<BinaryInfo, Error> {
+pub fn parse_binary(_pid: remoteprocess::Pid, filename: &Path, addr: u64, size: u64, _is_bin: bool) -> Result<BinaryInfo, Error> {
     // on linux the process could be running in docker, access the filename through procfs
     // if filename is the binary executable (not libpython) - take it from /proc/pid/exe, which works
     // across namespaces just like /proc/pid/root, and also if the file was deleted.
@@ -34,7 +34,7 @@ pub fn parse_binary(_pid: remoteprocess::Pid, filename: &str, addr: u64, size: u
     let filename = &if _is_bin {
         format!("/proc/{}/exe", _pid)
     } else {
-        format!("/proc/{}/root{}", _pid, filename)
+        format!("/proc/{}/root{}", _pid, filename.display())
     };
 
     let offset = addr;
@@ -42,7 +42,7 @@ pub fn parse_binary(_pid: remoteprocess::Pid, filename: &str, addr: u64, size: u
     let mut symbols = HashMap::new();
 
     // Read in the filename
-    let file = File::open(Path::new(filename))?;
+    let file = File::open(filename)?;
     let buffer = unsafe { Mmap::map(&file)? };
 
     // Use goblin to parse the binary
