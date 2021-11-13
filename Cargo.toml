@@ -13,7 +13,7 @@ edition="2018"
 
 [dependencies]
 clap = {version="2", features=["wrap_help"]}
-console = "0.14"
+console = "0.15"
 ctrlc = "3"
 indicatif = "0.16"
 env_logger = "0.9"
