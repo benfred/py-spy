@@ -768,11 +768,11 @@ impl PythonProcessInfo {
                 }
             };
 
-            let filepath = std::path::PathBuf::from(filename);
+            let filename = std::path::PathBuf::from(filename);
 
             // TODO: consistent types? u64 -> usize? for map.start etc
             #[allow(unused_mut)]
-            let python_binary = parse_binary(process.pid, &filepath, map.start() as u64, map.size() as u64, true)
+            let python_binary = parse_binary(process.pid, &filename, map.start() as u64, map.size() as u64, true)
                 .and_then(|mut pb| {
                     // windows symbols are stored in separate files (.pdb), load
                     #[cfg(windows)]
@@ -800,7 +800,7 @@ impl PythonProcessInfo {
                     Ok(pb)
                 });
 
-            (python_binary, filepath.clone())
+            (python_binary, filename.clone())
         };
 
         // likewise handle libpython for python versions compiled with --enabled-shared
@@ -822,7 +822,9 @@ impl PythonProcessInfo {
                     #[allow(unused_mut)]
                     let mut parsed = parse_binary(process.pid, filename, libpython.start() as u64, libpython.size() as u64, false)?;
                     #[cfg(windows)]
-                    parsed.symbols.extend(get_windows_python_symbols(process.pid, filename, libpython.start() as u64)?);
+                    if let Some(filename) = filename.to_str() {
+                        parsed.symbols.extend(get_windows_python_symbols(process.pid, filename, libpython.start() as u64)?);
+                    }
                     libpython_binary = Some(parsed);
                 }
             }
@@ -916,7 +918,7 @@ fn is_dockerized(pid: Pid) -> Result<bool, Error> {
 // So use the win32 api to load up the couple of symbols we need on windows. Note:
 // we still can get export's from the PE file
 #[cfg(windows)]
-pub fn get_windows_python_symbols(pid: Pid, filename: &str, offset: u64) -> std::io::Result<HashMap<String, u64>> {
+pub fn get_windows_python_symbols(pid: Pid, filename: &Path, offset: u64) -> std::io::Result<HashMap<String, u64>> {
     use proc_maps::win_maps::SymbolLoader;
 
     let handler = SymbolLoader::new(pid)?;

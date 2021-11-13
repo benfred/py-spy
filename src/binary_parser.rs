@@ -31,7 +31,7 @@ pub fn parse_binary(_pid: remoteprocess::Pid, filename: &Path, addr: u64, size: 
     // if filename is the binary executable (not libpython) - take it from /proc/pid/exe, which works
     // across namespaces just like /proc/pid/root, and also if the file was deleted.
     #[cfg(target_os="linux")]
-    let filename = std::path::PathBuf::from(&if _is_bin {
+    let filename = &std::path::PathBuf::from(&if _is_bin {
         format!("/proc/{}/exe", _pid)
     } else {
         format!("/proc/{}/root{}", _pid, filename.display())
