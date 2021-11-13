@@ -822,9 +822,7 @@ impl PythonProcessInfo {
                     #[allow(unused_mut)]
                     let mut parsed = parse_binary(process.pid, filename, libpython.start() as u64, libpython.size() as u64, false)?;
                     #[cfg(windows)]
-                    if let Some(filename) = filename.to_str() {
-                        parsed.symbols.extend(get_windows_python_symbols(process.pid, filename, libpython.start() as u64)?);
-                    }
+                    parsed.symbols.extend(get_windows_python_symbols(process.pid, filename, libpython.start() as u64)?);
                     libpython_binary = Some(parsed);
                 }
             }
