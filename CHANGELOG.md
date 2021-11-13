@@ -1,3 +1,9 @@
+## v0.3.11
+
+* Update dependencies [#463](https://github.com/benfred/py-spy/pull/463), [#457](https://github.com/benfred/py-spy/pull/463)
+* Warn about SYS_PTRACE when running in docker [#459](https://github.com/benfred/py-spy/pull/459)
+* Fix spelling mistakes [#453](https://github.com/benfred/py-spy/pull/453)
+
 ## v0.3.10
 * Add support for profiling Python v3.10 [#425](https://github.com/benfred/py-spy/pull/425)
 * Fix issue with native profiling on Linux with Anaconda [#447](https://github.com/benfred/py-spy/pull/447)
