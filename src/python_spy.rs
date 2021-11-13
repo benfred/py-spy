@@ -768,11 +768,11 @@ impl PythonProcessInfo {
                 }
             };
 
-            let filename = std::path::PathBuf::from(filename);
+            let filepath = std::path::PathBuf::from(filename);
 
             // TODO: consistent types? u64 -> usize? for map.start etc
             #[allow(unused_mut)]
-            let python_binary = parse_binary(process.pid, &filename, map.start() as u64, map.size() as u64, true)
+            let python_binary = parse_binary(process.pid, &filepath, map.start() as u64, map.size() as u64, true)
                 .and_then(|mut pb| {
                     // windows symbols are stored in separate files (.pdb), load
                     #[cfg(windows)]
@@ -800,7 +800,7 @@ impl PythonProcessInfo {
                     Ok(pb)
                 });
 
-            (python_binary, filename.clone())
+            (python_binary, filepath.clone())
         };
 
         // likewise handle libpython for python versions compiled with --enabled-shared
@@ -840,15 +840,21 @@ impl PythonProcessInfo {
                         let segname = unsafe { std::ffi::CStr::from_ptr(dyld.segment.segname.as_ptr()) };
                         debug!("dyld: {:016x}-{:016x} {:10} {}",
                             dyld.segment.vmaddr, dyld.segment.vmaddr + dyld.segment.vmsize,
-                            segname.to_string_lossy(), dyld.filename);
+                            segname.to_string_lossy(), dyld.filename.display());
                     }
 
                     let python_dyld_data = dyld_infos.iter()
-                        .find(|m| is_python_framework(&m.filename) &&
-                                  m.segment.segname[0..7] == [95, 95, 68, 65, 84, 65, 0]);
+                        .find(|m| {
+                            if let Some(filename) = m.filename.to_str() {
+                                return is_python_framework(filename) &&
+                                      m.segment.segname[0..7] == [95, 95, 68, 65, 84, 65, 0];
+                            }
+                            false
+                        });
+
 
                     if let Some(libpython) = python_dyld_data {
-                        info!("Found libpython binary from dyld @ {}", libpython.filename);
+                        info!("Found libpython binary from dyld @ {}", libpython.filename.display());
 
                         let mut binary = parse_binary(process.pid, &libpython.filename, libpython.segment.vmaddr, libpython.segment.vmsize, false)?;
 
