@@ -256,7 +256,7 @@ impl Config {
         #[cfg(unwind)]
         let dump = dump.arg(native.clone());
 
-        // add syscall traces if appropiate
+        // add syscall traces if appropriate
         #[cfg(all(target_os="linux", target_arch="x86_64", feature="trace_syscalls"))]
         let record = record.arg(trace_syscalls.clone());
         #[cfg(all(target_os="linux", target_arch="x86_64", feature="trace_syscalls"))]
