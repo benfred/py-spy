@@ -135,8 +135,8 @@ impl Config {
                     .long("pid")
                     .value_name("pid")
                     .help("PID of a running python program to spy on")
-                    .takes_value(true)
-                    .required_unless_present("python_program");
+                    .takes_value(true);
+
         #[cfg(unwind)]
         let native = Arg::new("native")
                     .short('n')
@@ -182,7 +182,7 @@ impl Config {
         let record = App::new("record")
             .about("Records stack trace information to a flamegraph, speedscope or raw file")
             .arg(program.clone())
-            .arg(pid.clone())
+            .arg(pid.clone().required_unless_present("python_program"))
             .arg(full_filenames.clone())
             .arg(Arg::new("output")
                 .short('o')
@@ -234,7 +234,7 @@ impl Config {
         let top = App::new("top")
             .about("Displays a top like view of functions consuming CPU")
             .arg(program.clone())
-            .arg(pid.clone())
+            .arg(pid.clone().required_unless_present("python_program"))
             .arg(rate.clone())
             .arg(subprocesses.clone())
             .arg(full_filenames.clone())
@@ -304,10 +304,22 @@ impl Config {
                 };
                 config.format = Some(matches.value_of_t("format")?);
                 config.filename = matches.value_of("output").map(|f| f.to_owned());
+                config.show_line_numbers = matches.occurrences_of("nolineno") == 0;
+                config.lineno = if matches.occurrences_of("nolineno") > 0 { LineNo::NoLine } else if matches.occurrences_of("function") > 0 { LineNo::FirstLineNo } else { LineNo::LastInstruction };
+                config.include_thread_ids = matches.occurrences_of("threads") > 0;
+                if matches.occurrences_of("nolineno") > 0 && matches.occurrences_of("function") > 0 {
+                    eprintln!("--function & --nolinenos can't be used together");
+                    std::process::exit(1);
+                }
+                config.hide_progress = matches.occurrences_of("hideprogress") > 0;
             },
             "top" => {
                 config.sampling_rate = matches.value_of_t("rate")?;
-            }
+            },
+            "dump" => {
+                config.dump_json = matches.occurrences_of("json") > 0;
+                config.dump_locals = matches.occurrences_of("locals");
+            },
             "completions" => {
                 let shell = matches.value_of_t::<clap_complete::Shell>("shell")?;
                 let app_name = app.get_name().to_string();
@@ -316,29 +328,26 @@ impl Config {
             }
             _ => {}
         }
+
+        match subcommand {
+            "record" | "top" => {
+                config.python_program = matches.values_of("python_program").map(|vals| {
+                    vals.map(|v| v.to_owned()).collect()
+                });
+                config.gil_only = matches.occurrences_of("gil") > 0;
+                config.include_idle = matches.occurrences_of("idle") > 0;
+                config.subprocesses = matches.occurrences_of("subprocesses") > 0;
+            },
+            _ => {}
+        }
+
         config.command = subcommand.to_owned();
 
         // options that can be shared between subcommands
         config.pid = matches.value_of("pid").map(|p| p.parse().expect("invalid pid"));
-        config.python_program = matches.values_of("python_program").map(|vals| {
-            vals.map(|v| v.to_owned()).collect()
-        });
-        config.show_line_numbers = matches.occurrences_of("nolineno") == 0;
-        config.include_idle = matches.occurrences_of("idle") > 0;
-        config.gil_only = matches.occurrences_of("gil") > 0;
-        config.include_thread_ids = matches.occurrences_of("threads") > 0;
 
         config.native = matches.occurrences_of("native") > 0;
-        config.hide_progress = matches.occurrences_of("hideprogress") > 0;
-        config.dump_json = matches.occurrences_of("json") > 0;
-        config.dump_locals = matches.occurrences_of("locals");
-        config.subprocesses = matches.occurrences_of("subprocesses") > 0;
         config.full_filenames = matches.occurrences_of("full_filenames") > 0;
-        config.lineno = if matches.occurrences_of("nolineno") > 0 { LineNo::NoLine } else if matches.occurrences_of("function") > 0 { LineNo::FirstLineNo } else { LineNo::LastInstruction };
-        if matches.occurrences_of("nolineno") > 0 && matches.occurrences_of("function") > 0 {
-            eprintln!("--function & --nolinenos can't be used together");
-            std::process::exit(1);
-        }
 
         config.capture_output = config.command != "record" || matches.occurrences_of("capture") > 0;
         if !config.capture_output {
