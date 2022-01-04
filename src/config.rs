@@ -345,10 +345,10 @@ impl Config {
 
         // options that can be shared between subcommands
         config.pid = matches.value_of("pid").map(|p| p.parse().expect("invalid pid"));
-
-        #[cfg(unwind)] 
-        config.native = matches.occurrences_of("native") > 0;
         config.full_filenames = matches.occurrences_of("full_filenames") > 0;
+        if cfg!(unwind) {
+            config.native = matches.occurrences_of("native") > 0;
+        }
 
         config.capture_output = config.command != "record" || matches.occurrences_of("capture") > 0;
         if !config.capture_output {
