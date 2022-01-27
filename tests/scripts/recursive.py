@@ -1,8 +1,8 @@
-def recurse(x):
+def recursive(x):
     if x == 0:
         return
-    recurse(x-1)
+    recursive(x-1)
 
 
 while True:
-    recurse(20)
+    recursive(20)
