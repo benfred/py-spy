@@ -283,6 +283,8 @@ impl Config {
         #[cfg(unwind)]
         let serve = serve.arg(native.clone());
         #[cfg(unwind)]
+        let serve = serve.arg(native.clone());
+        #[cfg(unwind)]
         let record = record.arg(native.clone());
         #[cfg(unwind)]
         let top = top.arg(native.clone());
