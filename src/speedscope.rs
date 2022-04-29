@@ -29,14 +29,15 @@ SOFTWARE.
 use std::collections::{HashMap};
 use std::io;
 use std::io::Write;
-use std::fs::File;
 
 use crate::stack_trace;
-use remoteprocess::Tid;
+use remoteprocess::{Tid, Pid};
 
 use failure::{Error};
+use serde_derive::{Deserialize, Serialize};
 use serde_json;
-use serde_derive::{Serialize, Deserialize};
+
+use crate::config::Config;
 
 /*
  * This file contains code to export rbspy profiles for use in https://speedscope.app
@@ -56,7 +57,7 @@ use serde_derive::{Serialize, Deserialize};
  * structure.
  */
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct SpeedscopeFile {
     #[serde(rename = "$schema")]
     schema: String,
@@ -71,7 +72,7 @@ struct SpeedscopeFile {
     name: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct Profile {
     #[serde(rename = "type")]
     profile_type: ProfileType,
@@ -110,7 +111,7 @@ enum ProfileType {
     Sampled,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 enum ValueUnit {
     #[serde(rename = "bytes")]
     Bytes,
@@ -127,33 +128,35 @@ enum ValueUnit {
 }
 
 impl SpeedscopeFile {
-  pub fn new(samples: &HashMap<Tid, Vec<Vec<usize>>>, frames: &Vec<Frame>, thread_name_map: &HashMap<Tid, String>) -> SpeedscopeFile {
-    let end_value = samples.len();
+  pub fn new(samples: &HashMap<(Pid, Tid), Vec<Vec<usize>>>, frames: &Vec<Frame>,
+             thread_name_map: &HashMap<(Pid, Tid), String>, sample_rate: u64) -> SpeedscopeFile {
 
-    SpeedscopeFile {
-      // This is always the same
-      schema: "https://www.speedscope.app/file-format-schema.json".to_string(),
-
-      active_profile_index: None,
-
-      name: Some("py-spy profile".to_string()),
-
-      exporter: Some(format!("py-spy@{}", env!("CARGO_PKG_VERSION"))),
-
-      profiles: samples.iter().map(|(thread_id, samples)| {
-        let weights: Vec<f64> = (&samples).iter().map(|_s| 1_f64).collect();
+    let mut profiles: Vec<Profile> = samples.iter().map(|(thread_id, samples)| {
+        let end_value = samples.len();
+        // we sample at 100 Hz, so scale the end value and weights to match the time unit
+        let scaled_end_value = end_value as f64 / sample_rate as f64;
+        let weights: Vec<f64> = (&samples).iter().map(|_s| 1_f64 / sample_rate as f64).collect();
 
         Profile {
             profile_type: ProfileType::Sampled,
             name: thread_name_map.get(thread_id).map_or_else(|| "py-spy".to_string(), |x| x.clone()),
-            unit: ValueUnit::None,
+            unit: ValueUnit::Seconds,
             start_value: 0.0,
-            end_value: end_value as f64,
+            end_value: scaled_end_value,
             samples: samples.clone(),
             weights
         }
-      }).collect(),
+      }).collect();
 
+    profiles.sort_by(|a, b| a.name.cmp(&b.name));
+
+    SpeedscopeFile {
+      // This is always the same
+      schema: "https://www.speedscope.app/file-format-schema.json".to_string(),
+      active_profile_index: None,
+      name: Some("py-spy profile".to_string()),
+      exporter: Some(format!("py-spy@{}", env!("CARGO_PKG_VERSION"))),
+      profiles: profiles,
       shared: Shared {
           frames: frames.clone()
       }
@@ -174,26 +177,26 @@ impl Frame {
 }
 
 pub struct Stats {
-    samples: HashMap<Tid, Vec<Vec<usize>>>,
+    samples: HashMap<(Pid, Tid), Vec<Vec<usize>>>,
     frames: Vec<Frame>,
     frame_to_index: HashMap<stack_trace::Frame, usize>,
-    thread_name_map: HashMap<Tid, String>,
-    show_line_numbers: bool
+    thread_name_map: HashMap<(Pid, Tid), String>,
+    config: Config,
 }
 
 impl Stats {
-    pub fn new(show_line_numbers: bool) -> Stats {
+    pub fn new(config: &Config) -> Stats {
         Stats {
             samples: HashMap::new(),
             frames: vec![],
             frame_to_index: HashMap::new(),
             thread_name_map: HashMap::new(),
-            show_line_numbers
+            config: config.clone(),
         }
     }
 
     pub fn record(&mut self, stack: &stack_trace::StackTrace) -> Result<(), io::Error> {
-        let show_line_numbers = self.show_line_numbers;
+        let show_line_numbers = self.config.show_line_numbers;
         let mut frame_indices: Vec<usize> = stack.frames.iter().map(|frame| {
             let frames = &mut self.frames;
             let mut key = frame.clone();
@@ -208,19 +211,73 @@ impl Stats {
         }).collect();
         frame_indices.reverse();
 
-        self.samples.entry(stack.thread_id as Tid).or_insert_with(|| {
+        let key = (stack.pid as Pid, stack.thread_id as Tid);
+
+        self.samples.entry(key).or_insert_with(|| {
             vec![]
         }).push(frame_indices);
-        self.thread_name_map.entry(stack.thread_id as Tid).or_insert_with(|| {
-            stack.thread_name.as_ref().map_or_else(|| "py-spy".to_string(), |x| x.clone())
+        let subprocesses = self.config.subprocesses;
+        self.thread_name_map.entry(key).or_insert_with(|| {
+            let thread_name = stack.thread_name.as_ref().map_or_else(|| "".to_string(), |x| x.clone());
+            if subprocesses {
+                format!("Process {} Thread {} \"{}\"", stack.pid, stack.format_threadid(), thread_name)
+            } else {
+                format!("Thread {} \"{}\"", stack.format_threadid(), thread_name)
+            }
         });
 
         Ok(())
     }
 
-    pub fn write(&self, w: &mut File) -> Result<(), Error> {
-        let json = serde_json::to_string(&SpeedscopeFile::new(&self.samples, &self.frames, &self.thread_name_map))?;
+    pub fn write(&self, w: &mut dyn Write) -> Result<(), Error> {
+        let json = serde_json::to_string(&SpeedscopeFile::new(&self.samples, &self.frames, &self.thread_name_map, self.config.sampling_rate))?;
         writeln!(w, "{}", json)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Cursor, Read, Seek, SeekFrom};
+
+    #[test]
+    fn test_speedscope_units() {
+        let sample_rate = 100;
+        let config = Config{show_line_numbers: true, sampling_rate: sample_rate, ..Default::default()};
+        let mut stats = Stats::new(&config);
+        let mut cursor = Cursor::new(Vec::new());
+
+        let frame = stack_trace::Frame {
+            name: String::from("test"),
+            filename: String::from("test.py"),
+            module: None,
+            short_filename: None,
+            line: 0,
+            locals: None,
+        };
+
+        let trace = stack_trace::StackTrace {
+            pid: 1,
+            thread_id: 1,
+            thread_name: None,
+            os_thread_id: None,
+            active: true,
+            owns_gil: false,
+            frames: vec![frame],
+            process_info: None,
+        };
+
+        stats.record(&trace).unwrap();
+        stats.write(&mut cursor).unwrap();
+
+        cursor.seek(SeekFrom::Start(0)).unwrap();
+        let mut s = String::new();
+        let read = cursor.read_to_string(&mut s).unwrap();
+        assert!(read > 0);
+        let trace: SpeedscopeFile = serde_json::from_str(&s).unwrap();
+
+        assert_eq!(trace.profiles[0].unit, ValueUnit::Seconds);
+        assert_eq!(trace.profiles[0].end_value, 1.0 / sample_rate as f64);
     }
 }

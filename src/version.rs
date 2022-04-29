@@ -1,4 +1,3 @@
-use log::info;
 use regex::bytes::Regex;
 use std;
 
@@ -17,7 +16,7 @@ pub struct Version {
 impl Version {
     pub fn scan_bytes(data: &[u8]) -> Result<Version, Error> {
         lazy_static! {
-            static ref RE: Regex = Regex::new(r"((2|3)\.(3|4|5|6|7|8|9)\.(\d{1,2}))((a|b|c|rc)\d{1,2})?\+? (.{1,64})").unwrap();
+            static ref RE: Regex = Regex::new(r"((2|3)\.(3|4|5|6|7|8|9|10)\.(\d{1,2}))((a|b|c|rc)\d{1,2})?\+? (.{1,64})").unwrap();
         }
 
         if let Some(cap) = RE.captures_iter(data).next() {
@@ -67,6 +66,9 @@ mod tests {
 
         let version = Version::scan_bytes(b"Python 3.7.0rc1 (v3.7.0rc1:dfad352267, Jul 20 2018, 13:27:54)").unwrap();
         assert_eq!(version, Version{major: 3, minor: 7, patch: 0, release_flags: "rc1".to_owned()});
+
+        let version = Version::scan_bytes(b"Python 3.10.0rc1 (tags/v3.10.0rc1, Aug 28 2021, 18:25:40)").unwrap();
+        assert_eq!(version, Version{major: 3, minor: 10, patch: 0, release_flags: "rc1".to_owned()});
 
         let version = Version::scan_bytes(b"1.7.0rc1 (v1.7.0rc1:dfad352267, Jul 20 2018, 13:27:54)");
         assert!(version.is_err(), "don't match unsupported ");

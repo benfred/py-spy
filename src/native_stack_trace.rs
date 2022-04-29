@@ -2,10 +2,8 @@ use std::collections::HashSet;
 use failure::Error;
 
 use cpp_demangle::{DemangleOptions, BorrowedSymbol};
-use failure::format_err;
 use remoteprocess::{self, Pid};
 use lazy_static::lazy_static;
-use log::{debug, info};
 use lru::LruCache;
 
 use crate::binary_parser::BinaryInfo;
@@ -134,7 +132,7 @@ impl NativeStack {
                 }
             } else if python_frame_index == frames.len() + 1 {
                 // if we have seen exactly one more python frame in the native stack than the python stack - let it go.
-                // (can happen when the python stack has been unwound, but haven't exitted the PyEvalFrame function
+                // (can happen when the python stack has been unwound, but haven't exited the PyEvalFrame function
                 // yet)
                 info!("Have {} native and {} python threads in stack - allowing for now",
                     python_frame_index, frames.len());
@@ -156,7 +154,7 @@ impl NativeStack {
         if check_python {
             if let Some(ref function) = frame.function {
                 // We want to include some internal python functions. For example, calls like time.sleep
-                // or os.kill etc are implemented as builtins in the interpeter and filtering them out
+                // or os.kill etc are implemented as builtins in the interpreter and filtering them out
                 // is misleading. Create a set of whitelisted python function prefixes to include
                 lazy_static! {
                     static ref WHITELISTED_PREFIXES: HashSet<&'static str> = {
@@ -180,7 +178,9 @@ impl NativeStack {
                 // Figure out the merge type by looking at the function name, frames that
                 // are used in evaluating python code are ignored, aside from PyEval_EvalFrame*
                 // which is replaced by the function from the python stack
-                let mut tokens = function.split("_").filter(|&x| x.len() > 0);
+                // note: we're splitting on both _ and . to handle symbols like
+                // _PyEval_EvalFrameDefault.cold.2962
+                let mut tokens = function.split(&['_', '.'][..]).filter(|&x| x.len() > 0);
                 match tokens.next() {
                     Some("PyEval") => {
                         match tokens.next() {

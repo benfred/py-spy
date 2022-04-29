@@ -9,7 +9,7 @@ use goblin::Object;
 use memmap::Mmap;
 
 pub struct BinaryInfo {
-    pub filename: String,
+    pub filename: std::path::PathBuf,
     pub symbols: HashMap<String, u64>,
     pub bss_addr: u64,
     pub bss_size: u64,
@@ -26,17 +26,23 @@ impl BinaryInfo {
 }
 
 /// Uses goblin to parse a binary file, returns information on symbols/bss/adjusted offset etc
-pub fn parse_binary(_pid: remoteprocess::Pid, filename: &str, addr: u64, size: u64) -> Result<BinaryInfo, Error> {
+pub fn parse_binary(_pid: remoteprocess::Pid, filename: &Path, addr: u64, size: u64, _is_bin: bool) -> Result<BinaryInfo, Error> {
     // on linux the process could be running in docker, access the filename through procfs
+    // if filename is the binary executable (not libpython) - take it from /proc/pid/exe, which works
+    // across namespaces just like /proc/pid/root, and also if the file was deleted.
     #[cfg(target_os="linux")]
-    let filename = &format!("/proc/{}/root{}", _pid, filename);
+    let filename = &std::path::PathBuf::from(&if _is_bin {
+        format!("/proc/{}/exe", _pid)
+    } else {
+        format!("/proc/{}/root{}", _pid, filename.display())
+    });
 
     let offset = addr;
 
     let mut symbols = HashMap::new();
 
     // Read in the filename
-    let file = File::open(Path::new(filename))?;
+    let file = File::open(filename)?;
     let buffer = unsafe { Mmap::map(&file)? };
 
     // Use goblin to parse the binary
@@ -51,7 +57,7 @@ pub fn parse_binary(_pid: remoteprocess::Pid, filename: &str, addr: u64, size: u
                             Ok(arch) => arch.is_64(),
                             Err(_) => false
                         }
-                    ).ok_or_else(|| format_err!("Failed to find 64 bit arch in FAT archive in {}", filename))??;
+                    ).ok_or_else(|| format_err!("Failed to find 64 bit arch in FAT archive in {}", filename.display()))??;
                     let bytes = &buffer[arch.offset as usize..][..arch.size as usize];
                     goblin::mach::MachO::parse(bytes, 0)?
                 }
@@ -86,16 +92,18 @@ pub fn parse_binary(_pid: remoteprocess::Pid, filename: &str, addr: u64, size: u
             let bss_header = elf.section_headers
                 .iter()
                 .find(|ref header| header.sh_type == goblin::elf::section_header::SHT_NOBITS)
-                .ok_or_else(|| format_err!("Failed to find BSS section header in {}", filename))?;
+                .ok_or_else(|| format_err!("Failed to find BSS section header in {}", filename.display()))?;
 
             let program_header = elf.program_headers
                 .iter()
                 .find(|ref header|
                     header.p_type == goblin::elf::program_header::PT_LOAD &&
                     header.p_flags & goblin::elf::program_header::PF_X != 0)
-                .ok_or_else(|| format_err!("Failed to find executable PT_LOAD program header in {}", filename))?;
+                .ok_or_else(|| format_err!("Failed to find executable PT_LOAD program header in {}", filename.display()))?;
 
-            let offset = offset - program_header.p_vaddr;
+            // p_vaddr may be larger than the map address in case when the header has an offset and
+            // the map address is relatively small. In this case we can default to 0.
+            let offset = offset.checked_sub(program_header.p_vaddr).unwrap_or(0);
 
             for sym in elf.syms.iter() {
                 let name = elf.strtab[sym.st_name].to_string();
@@ -123,7 +131,7 @@ pub fn parse_binary(_pid: remoteprocess::Pid, filename: &str, addr: u64, size: u
             pe.sections
                 .iter()
                 .find(|ref section| section.name.starts_with(b".data"))
-                .ok_or_else(|| format_err!("Failed to find .data section in PE binary of {}", filename))
+                .ok_or_else(|| format_err!("Failed to find .data section in PE binary of {}", filename.display()))
                 .map(|data_section| {
                     let bss_addr = u64::from(data_section.virtual_address) + offset;
                     let bss_size = u64::from(data_section.virtual_size);

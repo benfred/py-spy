@@ -9,6 +9,7 @@ use remoteprocess::{ProcessMemory, Pid, Process};
 
 use crate::python_interpreters::{InterpreterState, ThreadState, FrameObject, CodeObject, TupleObject};
 use crate::python_data_access::{copy_string, copy_bytes};
+use crate::config::LineNo;
 
 /// Call stack for a single python thread
 #[derive(Debug, Clone, Serialize, Hash, Eq, PartialEq)]
@@ -64,15 +65,15 @@ pub struct ProcessInfo {
 }
 
 /// Given an InterpreterState, this function returns a vector of stack traces for each thread
-pub fn get_stack_traces<I>(interpreter: &I, process: &Process) -> Result<Vec<StackTrace>, Error>
+pub fn get_stack_traces<I>(interpreter: &I, process: &Process, lineno: LineNo) -> Result<Vec<StackTrace>, Error>
         where I: InterpreterState {
     // TODO: deprecate this method
     let mut ret = Vec::new();
     let mut threads = interpreter.head();
     while !threads.is_null() {
         let thread = process.copy_pointer(threads).context("Failed to copy PyThreadState")?;
-        ret.push(get_stack_trace(&thread, process, false)?);
-        // This seems to happen occasionally when scanning BSS addresses for valid interpeters
+        ret.push(get_stack_trace(&thread, process, false, lineno)?);
+        // This seems to happen occasionally when scanning BSS addresses for valid interpreters
         if ret.len() > 4096 {
             return Err(format_err!("Max thread recursion depth reached"));
         }
@@ -82,7 +83,7 @@ pub fn get_stack_traces<I>(interpreter: &I, process: &Process) -> Result<Vec<Sta
 }
 
 /// Gets a stack trace for an individual thread
-pub fn get_stack_trace<T>(thread: &T, process: &Process, copy_locals: bool) -> Result<StackTrace, Error>
+pub fn get_stack_trace<T>(thread: &T, process: &Process, copy_locals: bool, lineno: LineNo) -> Result<StackTrace, Error>
         where T: ThreadState {
     // TODO: just return frames here? everything else probably should be returned out of scope
     let mut frames = Vec::new();
@@ -94,15 +95,19 @@ pub fn get_stack_trace<T>(thread: &T, process: &Process, copy_locals: bool) -> R
         let filename = copy_string(code.filename(), process).context("Failed to copy filename")?;
         let name = copy_string(code.name(), process).context("Failed to copy function name")?;
 
-        let line = match get_line_number(&code, frame.lasti(), process) {
-            Ok(line) => line,
-            Err(e) => {
-                // Failling to get the line number really shouldn't be fatal here, but
-                // can happen in extreme cases (https://github.com/benfred/py-spy/issues/164)
-                // Rather than fail set the linenumber to 0. This is used by the native extensions
-                // to indicate that we can't load a line number and it should be handled gracefully
-                warn!("Failed to get line number from {}.{}: {}", filename, name, e);
-                0
+        let line = match lineno {
+            LineNo::NoLine => 0,
+            LineNo::FirstLineNo => code.first_lineno(),
+            LineNo::LastInstruction => match get_line_number(&code, frame.lasti(), process) {
+                Ok(line) => line,
+                Err(e) => {
+                    // Failling to get the line number really shouldn't be fatal here, but
+                    // can happen in extreme cases (https://github.com/benfred/py-spy/issues/164)
+                    // Rather than fail set the linenumber to 0. This is used by the native extensions
+                    // to indicate that we can't load a line number and it should be handled gracefully
+                    warn!("Failed to get line number from {}.{}: {}", filename, name, e);
+                    0
+                }
             }
         };
 
@@ -161,32 +166,10 @@ impl Frame {
 
 /// Returns the line number from a PyCodeObject (given the lasti index from a PyFrameObject)
 fn get_line_number<C: CodeObject, P: ProcessMemory>(code: &C, lasti: i32, process: &P) -> Result<i32, Error> {
-    let table = copy_bytes(code.lnotab(), process).context("Failed to copy line number table")?;
-
-    // unpack the line table. format is specified here:
-    // https://github.com/python/cpython/blob/master/Objects/lnotab_notes.txt
-    let size = table.len();
-    let mut i = 0;
-    let mut line_number: i32 = code.first_lineno();
-    let mut bytecode_address: i32 = 0;
-    while (i + 1) < size {
-        bytecode_address += i32::from(table[i]);
-        if bytecode_address > lasti {
-            break;
-        }
-
-        let mut increment = i32::from(table[i + 1]);
-        // Handle negative line increments in the line number table - as shown here:
-        // https://github.com/python/cpython/blob/143a97f6/Objects/lnotab_notes.txt#L48-L49
-        if increment >= 0x80 {
-            increment -= 0x100;
-        }
-        line_number += increment;
-        i += 2;
-    }
-
-    Ok(line_number)
+    let table = copy_bytes(code.line_table(), process).context("Failed to copy line number table")?;
+    Ok(code.get_line_number(lasti, &table))
 }
+
 
 fn get_locals<C: CodeObject, F: FrameObject, P: ProcessMemory>(code: &C, frameptr: *const F, frame: &F, process: &P)
         -> Result<Vec<LocalVariable>, Error> {

@@ -4,6 +4,8 @@ pub mod v3_5_5;
 pub mod v3_6_6;
 pub mod v3_7_0;
 pub mod v3_8_0;
+pub mod v3_9_5;
+pub mod v3_10_0;
 
 // currently the PyRuntime struct used from Python 3.7 on really can't be
 // exposed in a cross platform way using bindgen. PyRuntime has several mutex's
@@ -17,17 +19,26 @@ pub mod pyruntime {
 
     // There aren't any OS specific members of PyRuntime before pyinterpreters.head,
     // so these offsets should be valid for all OS'es
-    #[cfg(target_pointer_width = "32")]
+    #[cfg(target_arch = "x86")]
     pub fn get_interp_head_offset(version: &Version) -> usize {
         match version {
             Version{major: 3, minor: 8, patch: 0, ..} => {
                 match version.release_flags.as_ref() {
                     "a1" | "a2" => 16,
-                    _ => 20
+                    "a3" | "a4" => 20,
+                    _ => 24
                 }
             },
-            Version{major: 3, minor: 8..=9, ..} => 20,
+            Version{major: 3, minor: 8..=10, ..} => 24,
             _ => 16
+        }
+    }
+
+    #[cfg(target_arch = "arm")]
+    pub fn get_interp_head_offset(version: &Version) -> usize {
+        match version {
+            Version{major: 3, minor: 7, ..} => 20,
+            _ => 28
         }
     }
 
@@ -40,7 +51,7 @@ pub mod pyruntime {
                     _ => 32
                 }
             },
-            Version{major: 3, minor: 8..=9, ..} => 32,
+            Version{major: 3, minor: 8..=10, ..} => 32,
             _ => 24
         }
     }
@@ -52,7 +63,7 @@ pub mod pyruntime {
     pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
         match version {
              Version{major: 3, minor: 7, patch: 0..=3, ..} => Some(1440),
-             Version{major: 3, minor: 7, patch: 4..=7, ..} => Some(1528),
+             Version{major: 3, minor: 7, ..} => Some(1528),
              Version{major: 3, minor: 8, patch: 0, ..} => {
                  match version.release_flags.as_ref() {
                     "a1" => Some(1432),
@@ -61,15 +72,16 @@ pub mod pyruntime {
                     _ => Some(1416),
                 }
              },
-             Version{major: 3, minor: 8, patch: 1..=2, ..} => { Some(1416) },
+             Version{major: 3, minor: 8, ..} => { Some(1416) },
+             Version{major: 3, minor: 9..=10, ..} => { Some(616) },
              _ => None
         }
     }
 
-    #[cfg(all(target_os="linux", target_pointer_width = "32"))]
+    #[cfg(all(target_os="linux", target_arch="x86"))]
     pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
         match version {
-            Version{major: 3, minor: 7, patch: 0..=6, ..} => Some(796),
+             Version{major: 3, minor: 7, ..} => Some(796),
              Version{major: 3, minor: 8, patch: 0, ..} => {
                  match version.release_flags.as_ref() {
                     "a1" => Some(792),
@@ -78,16 +90,38 @@ pub mod pyruntime {
                     _  => Some(788)
                 }
             },
-            Version{major: 3, minor: 8, patch: 1..=2, ..} => Some(788),
+            Version{major: 3, minor: 8, ..} => Some(788),
+            Version{major: 3, minor: 9..=10, ..} => Some(352),
             _ => None
         }
     }
 
-    #[cfg(all(target_os="linux", target_pointer_width = "64"))]
+    #[cfg(all(target_os="linux", target_arch="arm"))]
+    pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
+        match version {
+            Version{major: 3, minor: 7, ..} => Some(828),
+            Version{major: 3, minor: 8, ..} => Some(804),
+            Version{major: 3, minor: 9..=10, ..} => Some(364),
+            _ => None
+        }
+    }
+
+    #[cfg(all(target_os="linux", target_arch="aarch64"))]
+    pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
+        match version {
+            Version{major: 3, minor: 7, patch: 0..=3, ..} => Some(1408),
+            Version{major: 3, minor: 7, ..} => Some(1496),
+            Version{major: 3, minor: 8, ..} => Some(1384),
+            Version{major: 3, minor: 9..=10, ..} => Some(584),
+            _ => None
+        }
+    }
+
+    #[cfg(all(target_os="linux", target_arch="x86_64"))]
     pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
         match version {
             Version{major: 3, minor: 7, patch: 0..=3, ..} => Some(1392),
-            Version{major: 3, minor: 7, patch: 4..=7, ..} => Some(1480),
+            Version{major: 3, minor: 7, ..} => Some(1480),
             Version{major: 3, minor: 8, patch: 0, ..} => {
                 match version.release_flags.as_ref() {
                     "a1" => Some(1384),
@@ -96,9 +130,15 @@ pub mod pyruntime {
                     _  => Some(1368)
                 }
              },
-            Version{major: 3, minor: 8, patch: 1..=2, ..} => Some(1368),
+            Version{major: 3, minor: 8, ..} => Some(1368),
+            Version{major: 3, minor: 9..=10, ..} => Some(568),
             _ => None
         }
+    }
+
+    #[cfg(all(target_os="linux", any(target_arch="powerpc64", target_arch="powerpc", target_arch="mips")))]
+    pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
+        None
     }
 
     #[cfg(windows)]
@@ -113,7 +153,8 @@ pub mod pyruntime {
                     _ => Some(1296)
                 }
             },
-            Version{major: 3, minor: 8, patch: 1..=2, ..} => Some(1296),
+            Version{major: 3, minor: 8, ..} => Some(1296),
+            Version{major: 3, minor: 9..=10, ..} => Some(496),
             _ => None
         }
     }
@@ -131,7 +172,8 @@ pub mod pyruntime {
                     _ => Some(1224)
                 }
             },
-            Version{major: 3, minor: 8, patch: 1..=2, ..} => Some(1224),
+            Version{major: 3, minor: 8, ..} => Some(1224),
+            Version{major: 3, minor: 9..=10, ..} => Some(424),
             _ => None
         }
     }

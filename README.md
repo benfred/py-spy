@@ -1,7 +1,6 @@
 py-spy: Sampling profiler for Python programs
 =====
-[![Build Status](https://travis-ci.org/benfred/py-spy.svg?branch=master)](https://travis-ci.org/benfred/py-spy)
-[![Windows Build status](https://ci.appveyor.com/api/projects/status/x0jwd5ygaybsa0md?svg=true)](https://ci.appveyor.com/project/benfred/py-spy)
+[![Build Status](https://github.com/benfred/py-spy/workflows/Build/badge.svg?branch=master)](https://github.com/benfred/py-spy/actions?query=branch%3Amaster)
 [![FreeBSD Build Status](https://api.cirrus-ci.com/github/benfred/py-spy.svg)](https://cirrus-ci.com/github/benfred/py-spy)
 
 py-spy is a sampling profiler for Python programs. It lets you visualize what your Python
@@ -10,7 +9,7 @@ py-spy is extremely low overhead: it is written in Rust for speed and doesn't ru
 in the same process as the profiled Python program. This means py-spy is safe to use against production Python code.
 
 py-spy works on Linux, OSX, Windows and FreeBSD, and supports profiling all recent versions of the CPython
-interpreter (versions 2.3-2.7 and 3.3-3.8).
+interpreter (versions 2.3-2.7 and 3.3-3.10).
 
 ## Installation
 
@@ -21,9 +20,18 @@ pip install py-spy
 ```
 
 You can also download prebuilt binaries from the [GitHub Releases
-Page](https://github.com/benfred/py-spy/releases). This includes binaries for ARM and FreeBSD,
-which can't be installed using pip. If you're a Rust user, py-spy can also be installed with: ```cargo install py-spy```. On Arch Linux, [py-spy is in AUR](https://aur.archlinux.org/packages/py-spy/) and can be
+Page](https://github.com/benfred/py-spy/releases).
+
+If you're a Rust user, py-spy can also be installed with: ```cargo install py-spy```.
+
+On macOS, [py-spy is in Homebrew](https://formulae.brew.sh/formula/py-spy#default) and 
+can be installed with ```brew install py-spy```.
+
+On Arch Linux, [py-spy is in AUR](https://aur.archlinux.org/packages/py-spy/) and can be
 installed with ```yay -S py-spy```.
+
+On Alpine Linux, [py-spy is in testing repository](https://pkgs.alpinelinux.org/packages?name=py-spy&branch=edge&repo=testing) and
+can be installed with ```apk add py-spy --update-cache --repository http://dl-3.alpinelinux.org/alpine/edge/testing/ --allow-untrusted```.
 
 ## Usage
 
@@ -56,7 +64,7 @@ showing thread-ids, profiling subprocesses and more.
 ### top
 
 Top shows a live view of what functions are taking the most time in your python program, similar
-to the unix [top](https://linux.die.net/man/1/top) command. Running py-spy with:
+to the Unix [top](https://linux.die.net/man/1/top) command. Running py-spy with:
 
 ``` bash
 py-spy top --pid 12345
@@ -96,10 +104,7 @@ While there are many other python profiling projects, almost all of them require
 the profiled program in some way. Usually, the profiling code runs inside of the target python process,
 which will slow down and change how the program operates. This means it's not generally safe
 to use these profilers for debugging issues in production services since they will usually have
-a noticeable impact on performance. The only other Python profiler
-that runs totally in a separate process is [pyflame](https://github.com/uber/pyflame), which profiles
- remote python processes by using the ptrace system call. While pyflame is a great project,
- it doesn't support Python 3.7 yet and doesn't work on OSX, Windows or FreeBSD.
+a noticeable impact on performance.
 
 ### How does py-spy work?
 
@@ -110,9 +115,9 @@ or the [ReadProcessMemory](https://msdn.microsoft.com/en-us/library/windows/desk
 on Windows.
 
 Figuring out the call stack of the Python program is done by looking at the global PyInterpreterState variable
- to get all the Python threads running in the interpreter, and then iterating over each PyFrameObject in each thread
- to get the call stack. Since the Python ABI changes between versions, we use rust's [bindgen](https://github.com/rust-lang-nursery/rust-bindgen) to generate different rust structures for each Python interpreter
- class we care about and use these generated structs to figure out the memory layout in the Python program.
+to get all the Python threads running in the interpreter, and then iterating over each PyFrameObject in each thread
+to get the call stack. Since the Python ABI changes between versions, we use rust's [bindgen](https://github.com/rust-lang-nursery/rust-bindgen) to generate different rust structures for each Python interpreter
+class we care about and use these generated structs to figure out the memory layout in the Python program.
 
 Getting the memory address of the Python Interpreter can be a little tricky due to [Address Space Layout Randomization](https://en.wikipedia.org/wiki/Address_space_layout_randomization). If the target python interpreter ships
 with symbols it is pretty easy to figure out the memory address of the interpreter by dereferencing the
@@ -126,7 +131,7 @@ and check if the layout of that address is what we expect.
 
 Yes! py-spy supports profiling native python extensions written in languages like C/C++ or Cython,
 on x86_64 Linux and Windows. You can enable this mode by passing ```--native``` on the
-commandline. For best results, you should compile your Python extension with symbols. Also worth
+command line. For best results, you should compile your Python extension with symbols. Also worth
 noting for Cython programs is that py-spy needs the generated C or C++ file in order to return line
 numbers of the original .pyx file.  Read the [blog post](https://www.benfrederickson.com/profiling-native-python-extensions-with-py-spy/)
 for more information.
@@ -148,8 +153,10 @@ OSX always requires running as root, but on Linux it depends on how you are laun
 security settings.
 
 On Linux the default configuration is to require root permissions when attaching to a process that isn't a child.
-For py-spy this means you can profile without root access by getting py-spy to create the process (```py-spy -- python myprogram.py```) but attaching to an existing process by specifying a PID will usually require root (```sudo py-spy --pid 123456```).
-You can remove this restriction on linux by setting the [ptrace_scope sysctl variable](https://wiki.ubuntu.com/SecurityTeam/Roadmap/KernelHardening#ptrace_Protection).
+For py-spy this means you can profile without root access by getting py-spy to create the process
+(```py-spy record  -- python myprogram.py```) but attaching to an existing process by specifying a
+PID will usually require root (```sudo py-spy record --pid 123456```).
+You can remove this restriction on Linux by setting the [ptrace_scope sysctl variable](https://wiki.ubuntu.com/SecurityTeam/Roadmap/KernelHardening#ptrace_Protection).
 
 ### How do you detect if a thread is idle or not?
 
@@ -166,7 +173,7 @@ marked as active. First off, we have to get this thread activity information bef
 program, because getting this from a paused program will cause it to always return that this is
 idle. This means there is a potential race condition, where we get the thread activity and
 then the thread is in a different state when we get the stack trace. Querying the OS for thread
-activity also isn't implemented yet for FreeBSD and i686/ARM processors on linux. On windows,
+activity also isn't implemented yet for FreeBSD and i686/ARM processors on Linux. On Windows,
 calls that are blocked on IO also won't be marked as idle yet, for instance when reading input
 from stdin. Finally, on some Linux calls the ptrace attach that we are using may cause idle threads
 to wake up momentarily, causing false positives when reading from procfs. For these reasons, 
@@ -255,26 +262,11 @@ Since the calls we use to read memory from are not atomic, and we have to issue 
 means that occasionally we get errors when sampling. This can show up as an increased error rate when sampling, or as
 partial stack frames being included in the output.
 
-### How are you distributing Rust executable binaries over PyPI?
-
-Ok, so no-one has ever actually asked me this - but I wanted to share since it's a pretty terrible hack
-that might be useful to other people.
-
-I really wanted to distribute this package over PyPI, since installing with pip will make this much easier
-for most Python programmers to get installed on their system. Unfortunately, [installing executables as python
-scripts isn't something that setuptools supports](https://github.com/pypa/setuptools/issues/210).
-
-To get around this I'm using setuptools_rust package to build the py-spy
-binary, and then overriding the [distutils install command](https://github.com/benfred/py-spy/blob/772f24086c30521b4d4af5065aa09da4f9d559ae/setup.py#L44-L83)
-to copy the built binary into the python scripts folder. By doing this with prebuilt wheels for supported
-platforms means that we can install py-spy with pip, and not require a Rust compiler on the machine that
-this is being installed onto.
-
 ### Does py-spy support 32-bit Windows? Integrate with PyPy? Work with USC2 versions of Python2?
 
 Not yet =).
 
-If there are features you'd like to see in py-spy either thumb up the [appropiate
+If there are features you'd like to see in py-spy either thumb up the [appropriate
 issue](https://github.com/benfred/py-spy/issues?q=is%3Aissue+is%3Aopen+sort%3Areactions-%2B1-desc) or create a new one that describes what functionality is missing. 
 
 

@@ -1,0 +1,17 @@
+Vagrant.configure("2") do |config|
+  config.vm.define "fbsd_12_2" do |fbsd_12_2|
+    fbsd_12_2.vm.box = "rbspy/FreeBSD-12.2-STABLE"
+  end
+
+  config.vm.synced_folder ".", "/vagrant", type: "rsync",
+    rsync__exclude: [".git", ".vagrant.d"]
+
+  config.vm.provision "shell", inline: <<~SHELL
+    pkg install -y python
+  SHELL
+
+  config.vm.provider "virtualbox" do |v|
+    v.memory = 4096
+    v.cpus = 2
+  end
+end
