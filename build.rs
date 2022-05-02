@@ -15,7 +15,14 @@ fn main() {
     if env::var("CARGO_FEATURE_SERVE").is_ok() {
         // Rest of this generates a js bundle of our visualizations using npm / rollup
         let visualization_dir = Path::new("src").join("web_viewer").join("visualizations");
-        Command::new("npm").args(&["install"])
+
+        #[cfg(windows)]
+        let npm_command = "npm.exe";
+
+        #[cfg(not(windows))]
+        let npm_command = "npm";
+        
+        Command::new(npm_command).args(&["install"])
                            .current_dir(&visualization_dir)
                            .status().expect("Failed to call npm install");
 
