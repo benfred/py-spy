@@ -16,6 +16,7 @@ mod python_spy;
 mod python_data_access;
 mod python_threading;
 mod stack_trace;
+
 mod console_viewer;
 mod flamegraph;
 mod speedscope;
@@ -23,6 +24,8 @@ mod sampler;
 mod timer;
 mod utils;
 mod version;
+#[cfg(feature="serve")]
+mod web_viewer;
 
 use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -30,7 +33,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use console::style;
-use failure::Error;
+use log::{info, warn};
+use failure::{Error, format_err};
 
 use stack_trace::{StackTrace, Frame};
 use console_viewer::ConsoleViewer;
@@ -79,6 +83,73 @@ fn sample_console(pid: remoteprocess::Pid,
     if !config.subprocesses {
         println!("\nprocess {} ended", pid);
     }
+    Ok(())
+}
+
+#[cfg(feature="serve")]
+fn sample_serve(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error> {
+    let sampler = sampler::Sampler::new(pid, config)?;
+
+    let display = match remoteprocess::Process::new(pid)?.cmdline() {
+        Ok(cmdline) => cmdline.join(" "),
+        Err(_) => format!("Pid {}", pid)
+    };
+
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
+    ctrlc::set_handler(move || {
+        r.store(false, Ordering::SeqCst);
+    }).expect("Error setting Ctrl-C handler");
+
+    let start = std::time::Instant::now();
+
+    let version = match sampler.version.as_ref() {
+        Some(version) => format!("{}", version),
+        _ => "".to_owned()
+    };
+
+    // if we're not showing a progress bar, it's probably because we've spawned the process and
+    // are displaying its stderr/stdout. In that case add a prefix to our println messages so
+    // that we can distinguish
+    let lede = if config.hide_progress {
+        format!("{}{} ", style("py-spy").bold().green(), style(">").dim())
+    } else {
+        "".to_owned()
+    };
+    let mut last_late_message = std::time::Instant::now();
+
+    let address = config.address.as_ref().expect("need server address for serving results");
+
+    let mut collector = web_viewer::TraceCollector::new(&display, &version, config)?;
+    let addr = web_viewer::start_server(address, &collector)?;
+    println!("{}Serving requests at {}\n", lede, style(format!("http://{}/", addr)).bold().underlined());
+
+    for sample in sampler {
+        if let Some(delay) = sample.late {
+            if delay > Duration::from_secs(1) {
+                let now = std::time::Instant::now();
+                if now - last_late_message > Duration::from_secs(1) {
+                    last_late_message = now;
+                    println!("{}{:.2?} behind in sampling, results may be inaccurate. Try reducing the sampling rate", lede, delay)
+                }
+            }
+        }
+
+        collector.increment(sample)?;
+        if !running.load(Ordering::SeqCst) {
+            break;
+        }
+    }
+
+    if running.load(Ordering::SeqCst) {
+        println!("\n{}process {} ended (elapsed: {:?}", lede, pid, std::time::Instant::now() - start);
+        println!("{}Press Control-C to stop serving", lede);
+        collector.notify_exitted();
+        while running.load(Ordering::SeqCst) {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
     Ok(())
 }
 
@@ -312,6 +383,10 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
 
 fn run_spy_command(pid: remoteprocess::Pid, config: &config::Config) -> Result<(), Error> {
     match config.command.as_ref() {
+        "serve" => {
+            #[cfg(feature="serve")]
+            sample_serve(pid, config)?;
+        },
         "dump" =>  {
             dump::print_traces(pid, config)?;
         },

@@ -1,17 +1,18 @@
 use std;
 use std::sync::Arc;
 
-use failure::{Error, ResultExt};
+use log::warn;
+use failure::{Error, ResultExt, format_err};
+use serde_derive::Serialize;
 
 use remoteprocess::{ProcessMemory, Pid, Process};
-use serde_derive::Serialize;
 
 use crate::python_interpreters::{InterpreterState, ThreadState, FrameObject, CodeObject, TupleObject};
 use crate::python_data_access::{copy_string, copy_bytes};
 use crate::config::LineNo;
 
 /// Call stack for a single python thread
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Hash, Eq, PartialEq)]
 pub struct StackTrace {
     /// The process id than generated this stack trace
     pub pid: Pid,
@@ -56,7 +57,7 @@ pub struct LocalVariable {
     pub repr: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Hash, Eq, PartialEq)]
 pub struct ProcessInfo {
     pub pid:  Pid,
     pub command_line: String,
@@ -146,6 +147,19 @@ impl StackTrace {
         match self.os_thread_id {
             Some(tid) => format!("{}", tid),
             None => format!("{:#X}", self.thread_id)
+        }
+    }
+}
+
+impl Frame {
+    pub fn format(&self, line_numbers: bool) -> String {
+        let filename = match &self.short_filename { Some(f) => &f, None => &self.filename };
+        if line_numbers && self.line > 0 {
+            format!("{} ({}:{})", self.name, filename, self.line)
+        } else if filename.len() > 0 {
+            format!("{} ({})", self.name, filename)
+        } else {
+            self.name.clone()
         }
     }
 }

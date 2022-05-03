@@ -1,8 +1,8 @@
-use lazy_static::lazy_static;
 use regex::bytes::Regex;
 use std;
 
-use failure::{Error};
+use lazy_static::lazy_static;
+use failure::{Error, format_err};
 
 
 #[derive(Debug, PartialEq, Eq, Clone)]
