@@ -27,7 +27,7 @@ fn main() {
                            .status().expect("Failed to call npm install");
 
         let build_target = format!("build:{}", env::var("PROFILE").unwrap());
-        Command::new("npm").args(&["run", &build_target])
+        Command::new(npm_command).args(&["run", &build_target])
                               .current_dir(&visualization_dir)
                               .status().expect("Failed to run npm run build");
 
