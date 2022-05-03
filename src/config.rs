@@ -1,4 +1,4 @@
-use clap::{App, ArgEnum, AppSettings, Arg, crate_description, crate_name, crate_version, PossibleValue};
+use clap::{ArgEnum, Arg, Command, crate_description, crate_name, crate_version, PossibleValue};
 use remoteprocess::Pid;
 
 /// Options on how to collect samples from a python process
@@ -179,7 +179,7 @@ impl Config {
                 .long("gil")
                 .help("Only include traces that are holding on to the GIL");
 
-        let record = App::new("record")
+        let record = Command::new("record")
             .about("Records stack trace information to a flamegraph, speedscope or raw file")
             .arg(program.clone())
             .arg(pid.clone().required_unless_present("python_program"))
@@ -231,7 +231,7 @@ impl Config {
                 .hide(true)
                 .help("Hides progress bar (useful for showing error output on record)"));
 
-        let top = App::new("top")
+        let top = Command::new("top")
             .about("Displays a top like view of functions consuming CPU")
             .arg(program.clone())
             .arg(pid.clone().required_unless_present("python_program"))
@@ -241,7 +241,7 @@ impl Config {
             .arg(gil.clone())
             .arg(idle.clone());
 
-        let dump = App::new("dump")
+        let dump = Command::new("dump")
             .about("Dumps stack traces for a target program to stdout")
             .arg(pid.clone().required(true))
             .arg(full_filenames.clone())
@@ -255,9 +255,9 @@ impl Config {
                 .long("json")
                 .help("Format output as JSON"));
 
-        let completions = App::new("completions")
+        let completions = Command::new("completions")
             .about("Generate shell completions")
-            .setting(AppSettings::Hidden)
+            .hide(true)
             .arg(Arg::new("shell")
                 .possible_values(clap_complete::Shell::possible_values())
                 .help("Shell type"));
@@ -278,11 +278,12 @@ impl Config {
         #[cfg(not(target_os="freebsd"))]
         let dump = dump.arg(nonblocking.clone());
 
-        let mut app = App::new(crate_name!())
+        let mut app = Command::new(crate_name!())
             .version(crate_version!())
             .about(crate_description!())
-            .setting(clap::AppSettings::InferSubcommands)
-            .setting(clap::AppSettings::SubcommandRequiredElseHelp)
+            .subcommand_required(true)
+            .infer_subcommands(true)
+            .arg_required_else_help(true)
             .global_setting(clap::AppSettings::DeriveDisplayOrder)
             .subcommand(record)
             .subcommand(top)
