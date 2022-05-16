@@ -1,3 +1,5 @@
+# Release notes are now being hosted in Github Releases: https://github.com/benfred/py-spy/releases
+
 ## v0.3.11
 
 * Update dependencies [#463](https://github.com/benfred/py-spy/pull/463), [#457](https://github.com/benfred/py-spy/pull/463)
