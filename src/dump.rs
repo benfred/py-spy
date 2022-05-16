@@ -1,4 +1,4 @@
-use console::style;
+use console::{Term, style};
 use failure::Error;
 
 use crate::config::Config;
@@ -6,7 +6,7 @@ use crate::python_spy::PythonSpy;
 
 use remoteprocess::Pid;
 
-pub fn print_traces(pid: Pid, config: &Config) -> Result<(), Error> {
+pub fn print_traces(pid: Pid, config: &Config, parent: Option<Pid>) -> Result<(), Error> {
     let mut process = PythonSpy::new(pid, config)?;
     if config.dump_json {
         let traces = process.get_stack_traces()?;
@@ -18,9 +18,17 @@ pub fn print_traces(pid: Pid, config: &Config) -> Result<(), Error> {
         style(process.pid).bold().yellow(),
         process.process.cmdline()?.join(" "));
 
-    println!("Python v{} ({})\n",
+    println!("Python v{} ({})",
         style(&process.version).bold(),
         style(process.process.exe()?).dim());
+
+    if let Some(parentpid) = parent {
+        let parentprocess = remoteprocess::Process::new(parentpid)?;
+        println!("Parent Process {}: {}",
+            style(parentpid).bold().yellow(),
+            parentprocess.cmdline()?.join(" "));
+    }
+    println!("");
 
     let traces = process.get_stack_traces()?;
 
@@ -57,6 +65,21 @@ pub fn print_traces(pid: Pid, config: &Config) -> Result<(), Error> {
 
                     let repr = local.repr.as_ref().map(String::as_str).unwrap_or("?");
                     println!("            {}: {}", local.name, repr);
+                }
+            }
+        }
+
+        if config.subprocesses {
+            for (childpid, parentpid) in process.process.child_processes().expect("failed to get subprocesses") {
+                let term = Term::stdout();
+                let (_, width) = term.size();
+
+                println!("\n{}", &style("-".repeat(width as usize)).dim());
+                // child_processes() returns the whole process tree, since we're recursing here
+                // though we could end up printing grandchild processes multiple times. Limit down
+                // to just once
+                if parentpid == pid {
+                    print_traces(childpid, &config, Some(parentpid))?;
                 }
             }
         }
