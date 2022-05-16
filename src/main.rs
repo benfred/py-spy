@@ -313,7 +313,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
 fn run_spy_command(pid: remoteprocess::Pid, config: &config::Config) -> Result<(), Error> {
     match config.command.as_ref() {
         "dump" =>  {
-            dump::print_traces(pid, config)?;
+            dump::print_traces(pid, config, None)?;
         },
         "record" => {
             record_samples(pid, config)?;

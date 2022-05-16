@@ -253,7 +253,8 @@ impl Config {
             .arg(Arg::new("json")
                 .short('j')
                 .long("json")
-                .help("Format output as JSON"));
+                .help("Format output as JSON"))
+            .arg(subprocesses.clone());
 
         let completions = Command::new("completions")
             .about("Generate shell completions")
@@ -337,11 +338,11 @@ impl Config {
                 });
                 config.gil_only = matches.occurrences_of("gil") > 0;
                 config.include_idle = matches.occurrences_of("idle") > 0;
-                config.subprocesses = matches.occurrences_of("subprocesses") > 0;
             },
             _ => {}
         }
 
+        config.subprocesses = matches.occurrences_of("subprocesses") > 0;
         config.command = subcommand.to_owned();
 
         // options that can be shared between subcommands
