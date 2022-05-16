@@ -886,7 +886,7 @@ dependencies = [
 
 [[package]]
 name = "py-spy"
-version = "0.3.11"
+version = "0.3.12"
 dependencies = [
  "chrono",
  "clap 3.1.15",
