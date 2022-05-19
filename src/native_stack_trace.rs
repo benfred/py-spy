@@ -22,10 +22,11 @@ pub struct NativeStack {
     #[allow(dead_code)]
     process: remoteprocess::Process,
     symbol_cache: LruCache<u64, remoteprocess::StackFrame>,
+    native_unfiltered: bool,
 }
 
 impl NativeStack {
-    pub fn new(pid: Pid, python: Option<BinaryInfo>, libpython: Option<BinaryInfo>) -> Result<NativeStack, Error> {
+    pub fn new(pid: Pid, python: Option<BinaryInfo>, libpython: Option<BinaryInfo>, native_unfiltered: bool) -> Result<NativeStack, Error> {
         let cython_maps = cython::SourceMaps::new();
 
         let process = remoteprocess::Process::new(pid)?;
@@ -36,7 +37,8 @@ impl NativeStack {
                               python,
                               libpython,
                               process,
-                              symbol_cache: LruCache::new(65536)
+                              symbol_cache: LruCache::new(65536),
+                              native_unfiltered: native_unfiltered,
                               });
     }
 
@@ -189,6 +191,7 @@ impl NativeStack {
                             _ => MergeType::Ignore
                         }
                     },
+                    _ if self.native_unfiltered =>  MergeType::MergeNativeFrame,
                     Some(prefix) if WHITELISTED_PREFIXES.contains(prefix) => MergeType::MergeNativeFrame,
                     _ => MergeType::Ignore
                 }

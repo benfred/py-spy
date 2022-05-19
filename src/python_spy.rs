@@ -124,7 +124,7 @@ impl PythonSpy {
 
         #[cfg(unwind)]
         let native = if config.native {
-            Some(NativeStack::new(pid, python_info.python_binary, python_info.libpython_binary)?)
+            Some(NativeStack::new(pid, python_info.python_binary, python_info.libpython_binary, config.native_unfiltered)?)
         } else {
             None
         };

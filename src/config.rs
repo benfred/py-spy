@@ -52,6 +52,8 @@ pub struct Config {
     pub full_filenames: bool,
     #[doc(hidden)]
     pub lineno: LineNo,
+    #[doc(hidden)]
+    pub native_unfiltered: bool,
 }
 
 #[allow(non_camel_case_types)]
@@ -116,7 +118,7 @@ impl Default for Config {
                duration: RecordDuration::Unlimited, native: false,
                gil_only: false, include_idle: false, include_thread_ids: false,
                hide_progress: false, capture_output: true, dump_json: false, dump_locals: 0, subprocesses: false,
-               full_filenames: false, lineno: LineNo::LastInstruction }
+               full_filenames: false, lineno: LineNo::LastInstruction, native_unfiltered: false }
     }
 }
 
@@ -142,6 +144,11 @@ impl Config {
                     .short('n')
                     .long("native")
                     .help("Collect stack traces from native extensions written in Cython, C or C++");
+
+        #[cfg(unwind)]
+        let native_unfiltered = Arg::new("native_unfiltered")
+                    .long("native-unfiltered")
+                    .help("Do not filter libpython native functions.");
 
         #[cfg(not(target_os="freebsd"))]
         let nonblocking = Arg::new("nonblocking")
@@ -265,11 +272,11 @@ impl Config {
 
         // add native unwinding if appropriate
         #[cfg(unwind)]
-        let record = record.arg(native.clone());
+        let record = record.arg(native.clone()).arg(native_unfiltered.clone());
         #[cfg(unwind)]
-        let top = top.arg(native.clone());
+        let top = top.arg(native.clone()).arg(native_unfiltered.clone());
         #[cfg(unwind)]
-        let dump = dump.arg(native.clone());
+        let dump = dump.arg(native.clone()).arg(native_unfiltered.clone());
 
         // Nonblocking isn't an option for freebsd, remove
         #[cfg(not(target_os="freebsd"))]
@@ -350,6 +357,7 @@ impl Config {
         config.full_filenames = matches.occurrences_of("full_filenames") > 0;
         if cfg!(unwind) {
             config.native = matches.occurrences_of("native") > 0;
+            config.native_unfiltered = matches.occurrences_of("native_unfiltered") > 0;
         }
 
         config.capture_output = config.command != "record" || matches.occurrences_of("capture") > 0;
