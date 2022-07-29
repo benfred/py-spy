@@ -4,7 +4,7 @@ source ~/.bash_profile
 
 set -e
 
-python -v
+python --version
 cargo --version
 
 export CARGO_HOME="/vagrant/.cargo"
