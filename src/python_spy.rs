@@ -21,7 +21,7 @@ use crate::binary_parser::{parse_binary, BinaryInfo};
 use crate::config::{Config, LockingStrategy, LineNo};
 #[cfg(unwind)]
 use crate::native_stack_trace::NativeStack;
-use crate::python_bindings::{pyruntime, v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0, v3_9_5, v3_10_0};
+use crate::python_bindings::{pyruntime, v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0, v3_9_5, v3_10_0, v3_11_0};
 use crate::python_interpreters::{self, InterpreterState, ThreadState};
 use crate::python_threading::thread_name_lookup;
 use crate::stack_trace::{StackTrace, get_stack_traces, get_stack_trace};
@@ -190,6 +190,7 @@ impl PythonSpy {
             Version{major: 3, minor: 8, ..} => self._get_stack_traces::<v3_8_0::_is>(),
             Version{major: 3, minor: 9, ..} => self._get_stack_traces::<v3_9_5::_is>(),
             Version{major: 3, minor: 10, ..} => self._get_stack_traces::<v3_10_0::_is>(),
+            Version{major: 3, minor: 11, ..} => self._get_stack_traces::<v3_11_0::_is>(),
             _ => Err(format_err!("Unsupported version of Python: {}", self.version)),
         }
     }
@@ -704,6 +705,7 @@ fn check_interpreter_addresses(addrs: &[usize],
         Version{major: 3, minor: 8, ..} => check::<v3_8_0::_is>(addrs, maps, process),
         Version{major: 3, minor: 9, ..} => check::<v3_9_5::_is>(addrs, maps, process),
         Version{major: 3, minor: 10, ..} => check::<v3_10_0::_is>(addrs, maps, process),
+        Version{major: 3, minor: 11, ..} => check::<v3_11_0::_is>(addrs, maps, process),
         _ => Err(format_err!("Unsupported version of Python: {}", version))
     }
 }
