@@ -4,6 +4,7 @@ source ~/.bash_profile
 
 set -e
 
+rustup update
 python -v
 cargo --version
 
