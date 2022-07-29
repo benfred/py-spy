@@ -3,7 +3,7 @@ use std;
 use std::collections::{BTreeMap, HashMap};
 use regex::Regex;
 
-use failure::Error;
+use anyhow::Error;
 use lazy_static::lazy_static;
 
 use crate::utils::resolve_filename;

@@ -1,5 +1,5 @@
 #[macro_use]
-extern crate failure;
+extern crate anyhow;
 #[macro_use]
 extern crate log;
 
@@ -30,7 +30,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use console::style;
-use failure::Error;
+use anyhow::Error;
 
 use stack_trace::{StackTrace, Frame};
 use console_viewer::ConsoleViewer;
@@ -40,7 +40,7 @@ use chrono::{SecondsFormat, Local};
 
 #[cfg(unix)]
 fn permission_denied(err: &Error) -> bool {
-    err.iter_chain().any(|cause| {
+    err.chain().any(|cause| {
         if let Some(ioerror) = cause.downcast_ref::<std::io::Error>() {
             ioerror.kind() == std::io::ErrorKind::PermissionDenied
         } else if let Some(remoteprocess::Error::IOError(ioerror)) = cause.downcast_ref::<remoteprocess::Error>() {
@@ -439,12 +439,11 @@ fn main() {
         }
 
         eprintln!("Error: {}", err);
-        for (i, suberror) in err.iter_chain().enumerate() {
+        for (i, suberror) in err.chain().enumerate() {
             if i > 0 {
                 eprintln!("Reason: {}", suberror);
             }
         }
-        eprintln!("{}", err.backtrace());
         std::process::exit(1);
     }
 }
