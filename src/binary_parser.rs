@@ -124,7 +124,9 @@ pub fn parse_binary(_pid: remoteprocess::Pid, filename: &Path, addr: u64, size: 
         Object::PE(pe) => {
             for export in pe.exports {
                 if let Some(name) = export.name {
-                    symbols.insert(name.to_string(), export.offset as u64 + offset as u64);
+                    if let Some(export_offset) = export.offset {
+                        symbols.insert(name.to_string(), export_offset as u64 + offset as u64);
+                    }
                 }
             }
 

@@ -109,8 +109,10 @@ jobs:
     timeout-minutes: 30
     strategy:
       matrix:
-        box:
-          - fbsd_12_2
+        include:
+          - box: fbsd_13_1
+            release: FreeBSD-13.1-STABLE
+            url: https://github.com/rbspy/freebsd-vagrant-box/releases/download/20220703/fbsd_13_1.box
     steps:
       - uses: actions/checkout@v2
       - name: Cache Vagrant box
@@ -129,17 +131,21 @@ jobs:
             ${{ matrix.box }}-cargo-
       - name: Set up VM
         run: |
+          brew install vagrant
+          vagrant plugin install vagrant-vbguest
+          vagrant plugin install vagrant-scp
+
           ln -sf ci/Vagrantfile Vagrantfile
-          if [ ! -d ~/.vagrant.d/boxes/rbspy-VAGRANTSLASH-FreeBSD-12.2-STABLE ]; then
-            vagrant box add rbspy/FreeBSD-12.2-STABLE https://github.com/rbspy/freebsd-vagrant-box/releases/download/20211124/fbsd_12_2.box
+
+          if [ ! -d ~/.vagrant.d/boxes/rbspy-VAGRANTSLASH-${{ matrix.release }} ]; then
+            vagrant box add --no-tty rbspy/${{ matrix.release }} ${{ matrix.url }}
           fi
           vagrant up ${{ matrix.box }}
       - name: Build and test
         run: vagrant ssh ${{ matrix.box }} -- bash /vagrant/ci/test_freebsd.sh
       - name: Retrieve build artifacts for caching purposes
         run: |
-          vagrant ssh-config --host "default" > config.txt
-          scp -F config.txt default:/vagrant/build-artifacts.tar .
+          vagrant scp ${{ matrix.box }}:/vagrant/build-artifacts.tar build-artifacts.tar
           ls -ahl build-artifacts.tar
       - name: Prepare binary for upload
         run: |
