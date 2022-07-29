@@ -109,10 +109,10 @@ jobs:
     timeout-minutes: 30
     strategy:
       matrix:
-        - box: fbsd_13_1
-          release: FreeBSD-13.1-STABLE
-          url: https://github.com/rbspy/freebsd-vagrant-box/releases/download/20220703/fbsd_13_1.box
-
+        include:
+          - box: fbsd_13_1
+            release: FreeBSD-13.1-STABLE
+            url: https://github.com/rbspy/freebsd-vagrant-box/releases/download/20220703/fbsd_13_1.box
     steps:
       - uses: actions/checkout@v2
       - name: Cache Vagrant box
