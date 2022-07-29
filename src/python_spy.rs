@@ -11,7 +11,7 @@ use regex::Regex;
 #[cfg(windows)]
 use regex::RegexBuilder;
 
-use failure::{Error, ResultExt};
+use anyhow::{Error, Result, Context};
 use lazy_static::lazy_static;
 use remoteprocess::{Process, ProcessMemory, Pid, Tid};
 use proc_maps::{get_process_maps, MapRange};

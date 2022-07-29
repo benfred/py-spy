@@ -6,8 +6,8 @@ use std::io::{Read, Write};
 use std::sync::{Mutex, Arc, atomic};
 use std::thread;
 
+use anyhow::Error;
 use console::{Term, style};
-use failure::Error;
 
 use crate::config::Config;
 use crate::stack_trace::{StackTrace, Frame};

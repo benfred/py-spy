@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::path::Path;
 
-use failure::Error;
+use anyhow::Error;
 use goblin;
 use goblin::Object;
 use memmap::Mmap;
