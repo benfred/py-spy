@@ -8,6 +8,7 @@ Vagrant.configure("2") do |config|
 
   config.vm.provision "shell", inline: <<~SHELL
     pkg install -y python
+    rustup update
   SHELL
 
   config.vm.provider "virtualbox" do |v|
