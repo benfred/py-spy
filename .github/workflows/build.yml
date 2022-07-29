@@ -109,8 +109,10 @@ jobs:
     timeout-minutes: 30
     strategy:
       matrix:
-        box:
-          - fbsd_13_1
+        - box: fbsd_13_1
+          release: FreeBSD-13.1-STABLE
+          url: https://github.com/rbspy/freebsd-vagrant-box/releases/download/20220703/fbsd_13_1.box
+
     steps:
       - uses: actions/checkout@v2
       - name: Cache Vagrant box
@@ -130,8 +132,9 @@ jobs:
       - name: Set up VM
         run: |
           ln -sf ci/Vagrantfile Vagrantfile
-          if [ ! -d ~/.vagrant.d/boxes/rbspy-VAGRANTSLASH-FreeBSD-13.1-STABLE ]; then
-            vagrant box add rbspy/FreeBSD-12.2-STABLE https://github.com/rbspy/freebsd-vagrant-box/releases/download/20211124/fbsd_13_1.box
+
+          if [ ! -d ~/.vagrant.d/boxes/rbspy-VAGRANTSLASH-${{ matrix.release }} ]; then
+            vagrant box add --no-tty rbspy/${{ matrix.release }} ${{ matrix.url }}
           fi
           vagrant up ${{ matrix.box }}
       - name: Build and test
