@@ -88,7 +88,7 @@ impl PythonSpy {
 
         // lets us figure out which thread has the GIL
          let threadstate_address = match version {
-             Version{major: 3, minor: 7..=10, ..} => {
+             Version{major: 3, minor: 7..=11, ..} => {
                 match python_info.get_symbol("_PyRuntime") {
                     Some(&addr) => {
                         if let Some(offset) = pyruntime::get_tstate_current_offset(&version) {
@@ -229,27 +229,34 @@ impl PythonSpy {
 
             // Try getting the native thread id
             let python_thread_id = thread.thread_id();
-            let mut os_thread_id = self._get_os_thread_id(python_thread_id, &interp)?;
 
-            // linux can see issues where pthread_ids get recycled for new OS threads,
-            // which totally breaks the caching we were doing here. Detect this and retry
-            if let Some(tid) = os_thread_id {
-                if thread_activity.len() > 0 && !thread_activity.contains_key(&tid) {
-                    info!("clearing away thread id caches, thread {} has exited", tid);
-                    self.python_thread_ids.clear();
-                    self.python_thread_names.clear();
-                    os_thread_id = self._get_os_thread_id(python_thread_id, &interp)?;
+            trace.os_thread_id = thread.native_thread_id();
+
+            if trace.os_thread_id.is_none() {
+                let mut os_thread_id = self._get_os_thread_id(python_thread_id, &interp)?;
+
+                // linux can see issues where pthread_ids get recycled for new OS threads,
+                // which totally breaks the caching we were doing here. Detect this and retry
+                if let Some(tid) = os_thread_id {
+                    if thread_activity.len() > 0 && !thread_activity.contains_key(&tid) {
+                        info!("clearing away thread id caches, thread {} has exited", tid);
+                        self.python_thread_ids.clear();
+                        self.python_thread_names.clear();
+                        os_thread_id = self._get_os_thread_id(python_thread_id, &interp)?;
+                    }
                 }
+
+                trace.os_thread_id = os_thread_id.map(|id| id as u64);
             }
 
-            trace.os_thread_id = os_thread_id.map(|id| id as u64);
             trace.thread_name = self._get_python_thread_name(python_thread_id);
             trace.owns_gil = trace.thread_id == gil_thread_id;
 
             // Figure out if the thread is sleeping from the OS if possible
             trace.active = true;
-            if let Some(id) = os_thread_id {
-                if let Some(active) = thread_activity.get(&id) {
+            if let Some(id) = trace.os_thread_id {
+                let id = id as Tid;
+                if let Some(active) = thread_activity.get(&id as _) {
                     trace.active = *active;
                 }
             }
@@ -269,8 +276,8 @@ impl PythonSpy {
             {
                 if self.config.native {
                     if let Some(native) = self.native.as_mut() {
-                        let thread_id = os_thread_id.ok_or_else(|| format_err!("failed to get os threadid"))?;
-                        let os_thread = remoteprocess::Thread::new(thread_id)?;
+                        let thread_id = trace.os_thread_id.ok_or_else(|| format_err!("failed to get os threadid"))?;
+                        let os_thread = remoteprocess::Thread::new(thread_id as Tid)?;
                         trace.frames = native.merge_native_thread(&trace.frames, &os_thread)?
                     }
                 }
@@ -582,7 +589,7 @@ fn get_interpreter_address(python_info: &PythonProcessInfo,
     // get the address of the main PyInterpreterState object from loaded symbols if we can
     // (this tends to be faster than scanning through the bss section)
     match version {
-        Version{major: 3, minor: 7..=10, ..} => {
+        Version{major: 3, minor: 7..=11, ..} => {
             if let Some(&addr) = python_info.get_symbol("_PyRuntime") {
                 let addr = process.copy_struct(addr as usize + pyruntime::get_interp_head_offset(&version))?;
 
