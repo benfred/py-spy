@@ -52,13 +52,17 @@ def calculate_pyruntime_offsets(cpython_path, version, configure=False):
         #define Py_BUILD_CORE 1
         #include "Include/Python.h"
         #include "Include/internal/pystate.h"
+        #include "Include/internal/pycore_interp.h"
 
         int main(int argc, const char * argv[]) {
             size_t interp_head = offsetof(_PyRuntimeState, interpreters.head);
-            printf("pub static INTERP_HEAD_OFFSET: usize = %i;\n", interp_head);
+            printf("pub static INTERP_HEAD_OFFSET: usize = %zu;\n", interp_head);
 
             size_t tstate_current = offsetof(_PyRuntimeState, gilstate.tstate_current);
-            printf("pub static TSTATE_CURRENT: usize = %i;\n", tstate_current);
+            printf("pub static TSTATE_CURRENT: usize = %zu;\n", tstate_current);
+
+            size_t gc_collecting = offsetof(PyInterpreterState, gc.collecting);
+            printf("pub static gc_collecting: usize = %zu;\n", gc_collecting);
         }
     """
 

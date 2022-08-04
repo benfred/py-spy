@@ -41,6 +41,8 @@ pub struct Config {
     #[doc(hidden)]
     pub gil_only: bool,
     #[doc(hidden)]
+    pub no_gc: bool,
+    #[doc(hidden)]
     pub hide_progress: bool,
     #[doc(hidden)]
     pub capture_output: bool,
@@ -114,7 +116,7 @@ impl Default for Config {
                command: String::from("top"),
                blocking: LockingStrategy::Lock, show_line_numbers: false, sampling_rate: 100,
                duration: RecordDuration::Unlimited, native: false,
-               gil_only: false, include_idle: false, include_thread_ids: false,
+               gil_only: false, no_gc: false, include_idle: false, include_thread_ids: false,
                hide_progress: false, capture_output: true, dump_json: false, dump_locals: 0, subprocesses: false,
                full_filenames: false, lineno: LineNo::LastInstruction }
     }
@@ -179,6 +181,10 @@ impl Config {
                 .long("gil")
                 .help("Only include traces that are holding on to the GIL");
 
+        let nogc = Arg::new("no-gc")
+                .long("no-gc")
+                .help("Exclude traces that are running garbage collection");
+
         let record = Command::new("record")
             .about("Records stack trace information to a flamegraph, speedscope or raw file")
             .arg(program.clone())
@@ -221,6 +227,7 @@ impl Config {
                 .long("threads")
                 .help("Show thread ids in the output"))
             .arg(gil.clone())
+            .arg(nogc.clone())
             .arg(idle.clone())
             .arg(Arg::new("capture")
                 .long("capture")
@@ -307,6 +314,7 @@ impl Config {
                 config.format = Some(matches.value_of_t("format")?);
                 config.filename = matches.value_of("output").map(|f| f.to_owned());
                 config.show_line_numbers = matches.occurrences_of("nolineno") == 0;
+                config.no_gc = matches.occurrences_of("no-gc") > 0;
                 config.lineno = if matches.occurrences_of("nolineno") > 0 { LineNo::NoLine } else if matches.occurrences_of("function") > 0 { LineNo::FirstLineNo } else { LineNo::LastInstruction };
                 config.include_thread_ids = matches.occurrences_of("threads") > 0;
                 if matches.occurrences_of("nolineno") > 0 && matches.occurrences_of("function") > 0 {

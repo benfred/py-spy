@@ -34,6 +34,7 @@ pub struct PythonSpy {
     pub version: Version,
     pub interpreter_address: usize,
     pub threadstate_address: usize,
+    pub gc_collecting_address: usize,
     pub python_filename: std::path::PathBuf,
     pub version_string: String,
     pub config: Config,
@@ -120,6 +121,15 @@ impl PythonSpy {
              }
          };
 
+        // Get the address for the PyInterpreterState.gc.collecting value
+        // (note that we can't get this directly from the PyInterpreterState bindings because
+        // of the mutex member that occurs before it - which has a different size/definition
+        // on each OS =(
+        let gc_collecting_address = match pyruntime::get_gc_collecting_offset(&version) {
+            Some(offset) => offset + interpreter_address,
+            None => 0
+        };
+
         let version_string = format!("python{}.{}", version.major, version.minor);
 
         #[cfg(unwind)]
@@ -129,7 +139,9 @@ impl PythonSpy {
             None
         };
 
-        Ok(PythonSpy{pid, process, version, interpreter_address, threadstate_address,
+        Ok(PythonSpy{pid, process, version, interpreter_address,
+                     threadstate_address,
+                     gc_collecting_address,
                      python_filename: python_info.python_filename,
                      version_string,
                      #[cfg(unwind)]
