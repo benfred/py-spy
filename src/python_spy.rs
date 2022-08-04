@@ -230,8 +230,12 @@ impl PythonSpy {
             // Try getting the native thread id
             let python_thread_id = thread.thread_id();
 
+            // python 3.11+ has the native thread id directly on the PyThreadState object,
+            // so use that if available
             trace.os_thread_id = thread.native_thread_id();
 
+            // for older versions of python, try using OS specific code to get the native
+            // thread id (doesn' work on freebsd, or on arm/i686 processors on linux)
             if trace.os_thread_id.is_none() {
                 let mut os_thread_id = self._get_os_thread_id(python_thread_id, &interp)?;
 
@@ -262,7 +266,7 @@ impl PythonSpy {
             }
 
             // fallback to using a heuristic if we think the thread is still active
-            // Note that on linux the  OS thread activity can only be gotten on x86_64
+            // Note that on linux the OS thread activity can only be gotten on x86_64
             // processors and even then seems to be wrong occasionally in thinking 'select'
             // calls are active (which seems related to the thread locking code,
             // this problem doesn't seem to happen with the --nonblocking option)
