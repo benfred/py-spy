@@ -304,7 +304,7 @@ impl CodeObject for v3_11_0::PyCodeObject {
 	//      #define _PyInterpreterFrame_LASTI(IF) ((int)((IF)->prev_instr - _PyCode_CODE((IF)->f_code)))
 	//	#define _PyCode_CODE(CO) ((_Py_CODEUNIT *)(CO)->co_code_adaptive)
    
-	let co_code_adaptive = &self.co_code_adaptive as *const i8 as *const v3_11_0::_Py_CODEUNIT;
+	let co_code_adaptive = &self.co_code_adaptive as *const _ as *const v3_11_0::_Py_CODEUNIT;
         let lasti = unsafe { co_code_adaptive.offset_from(prev_instr as * const v3_11_0::_Py_CODEUNIT) };
 
 	// TODO: figure out if this lasti translation is still needed after changes above
