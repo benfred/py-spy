@@ -114,7 +114,7 @@ class TestPyspy(unittest.TestCase):
 
         # TODO: while this will verify that at least one sample was spent in GC,
         # its still not a very compelling test
-        assert("samples were spent in garbage collection" in output)
+        assert(b"samples were spent in garbage collection" in output)
 
 
 def _get_script(name):
