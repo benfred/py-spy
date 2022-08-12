@@ -86,60 +86,106 @@ pub fn copy_int(process: &remoteprocess::Process, addr: usize) -> Result<i64, Er
 }
 
 /// Allows iteration of a python dictionary. Only supports python 3.6+ right now
+
 pub struct DictIterator<'a> {
     process: &'a remoteprocess::Process,
     entries_addr: usize,
+    kind: u8,
     index: usize,
     entries: usize,
     values: usize
 }
 
 impl<'a> DictIterator<'a> {
-    pub fn from(process: &'a remoteprocess::Process, addr: usize) -> Result<DictIterator, Error> {
-        // Getting this going generically is tricky: there is a lot of variation on how dictionaries are handled
-        // instead this just focuses on a single version, which works for python 3.6/3.7/3.8
-        let dict: crate::python_bindings::v3_7_0::PyDictObject = process.copy_struct(addr)?;
-        let keys = process.copy_pointer(dict.ma_keys)?;
-        let index_size = match keys.dk_size {
-            0..=0xff => 1,
-            0..=0xffff => 2,
-            #[cfg(target_pointer_width = "64")]
-            0..=0xffffffff => 4,
-            #[cfg(target_pointer_width = "64")]
-            _ => 8,
-            #[cfg(not(target_pointer_width = "64"))]
-            _ => 4
-        };
-        let byteoffset = (keys.dk_size * index_size) as usize;
-        let entries_addr = dict.ma_keys as usize + byteoffset + std::mem::size_of_val(&keys);
-        Ok(DictIterator{process, entries_addr, index: 0, entries: keys.dk_nentries as usize, values: dict.ma_values as usize})
+    pub fn from_managed_dict(process: &'a remoteprocess::Process, version: &'a Version, addr: usize, tp_addr: usize) -> Result<DictIterator<'a>, Error> {
+        // Handles logic of _PyObject_ManagedDictPointer in python 3.11
+        let values_addr: usize = process.copy_struct(addr - 4 * std::mem::size_of::<usize>())?;
+        let dict_addr: usize = process.copy_struct(addr - 3 * std::mem::size_of::<usize>())?;
+
+        if values_addr != 0 {
+            let ht: crate::python_bindings::v3_11_0::PyHeapTypeObject = process.copy_struct(tp_addr)?;
+            let keys: crate::python_bindings::v3_11_0::PyDictKeysObject = process.copy_struct(ht.ht_cached_keys as usize)?;
+            let entries_addr = ht.ht_cached_keys as usize + (1 << keys.dk_log2_index_bytes) + std::mem::size_of_val(&keys);
+            Ok(DictIterator{process, entries_addr, index: 0, kind: keys.dk_kind, entries: keys.dk_nentries as usize, values: values_addr})
+        } else if dict_addr != 0 {
+            DictIterator::from(process, version, dict_addr)
+        } else {
+            Err(format_err!("neither values or dict is set in managed dict"))
+        }
+    }
+
+    pub fn from(process: &'a remoteprocess::Process, version: &'a Version, addr: usize) -> Result<DictIterator<'a>, Error> {
+         match version {
+            Version{major: 3, minor: 11, ..} => {
+                let dict: crate::python_bindings::v3_11_0::PyDictObject = process.copy_struct(addr)?;
+                let keys = process.copy_pointer(dict.ma_keys)?;
+                let entries_addr = dict.ma_keys as usize + (1 << keys.dk_log2_index_bytes) + std::mem::size_of_val(&keys);
+                Ok(DictIterator{process, entries_addr, index: 0, kind: keys.dk_kind, entries: keys.dk_nentries as usize, values: dict.ma_values as usize})
+            },
+            _ =>  {
+                let dict: crate::python_bindings::v3_7_0::PyDictObject = process.copy_struct(addr)?;
+                // Getting this going generically is tricky: there is a lot of variation on how dictionaries are handled
+                // instead this just focuses on a single version, which works for python
+                // 3.6/3.7/3.8/3.9/3.10
+                let keys = process.copy_pointer(dict.ma_keys)?;
+                let index_size = match keys.dk_size {
+                    0..=0xff => 1,
+                    0..=0xffff => 2,
+                    #[cfg(target_pointer_width = "64")]
+                    0..=0xffffffff => 4,
+                    #[cfg(target_pointer_width = "64")]
+                    _ => 8,
+                    #[cfg(not(target_pointer_width = "64"))]
+                    _ => 4
+                };
+                let byteoffset = (keys.dk_size * index_size) as usize;
+                let entries_addr = dict.ma_keys as usize + byteoffset + std::mem::size_of_val(&keys);
+                Ok(DictIterator{process, entries_addr, index: 0, kind: 0, entries: keys.dk_nentries as usize, values: dict.ma_values as usize})
+            }
+        }
     }
 }
 
 impl<'a> Iterator for DictIterator<'a> {
     type Item = Result<(usize, usize), Error>;
+
     fn next(&mut self) -> Option<Self::Item> {
         while self.index < self.entries {
-            let addr = self.index* std::mem::size_of::<crate::python_bindings::v3_7_0::PyDictKeyEntry>() + self.entries_addr;
+            let index = self.index;
             self.index += 1;
-            let entry: Result<crate::python_bindings::v3_7_0::PyDictKeyEntry, remoteprocess::Error> = self.process.copy_struct(addr);
+
+            // get the addresses of the key/value for the current index
+            let entry = match self.kind {
+                0 => {
+                    let addr = index * std::mem::size_of::<crate::python_bindings::v3_7_0::PyDictKeyEntry>() + self.entries_addr;
+                    let ret = self.process.copy_struct::<crate::python_bindings::v3_7_0::PyDictKeyEntry>(addr);
+                    ret.map(|entry| (entry.me_key as usize, entry.me_value as usize))
+                },
+                _ => {
+                    // Python 3.11 added a PyDictUnicodeEntry , which uses the hash from the Unicode key rather than recalculate
+                    let addr = index * std::mem::size_of::<crate::python_bindings::v3_11_0::PyDictUnicodeEntry>() + self.entries_addr;
+                    let ret = self.process.copy_struct::<crate::python_bindings::v3_11_0::PyDictUnicodeEntry>(addr);
+                    ret.map(|entry| (entry.me_key as usize, entry.me_value as usize))
+                }
+            };
+
             match entry {
-                Ok(entry) => {
-                    if entry.me_key.is_null() {
+                Ok((key, value)) => {
+                    if key == 0 {
                         continue;
                     }
 
                     let value = if self.values != 0 {
-                        let valueaddr = self.values + (self.index - 1) * std::mem::size_of::<* mut crate::python_bindings::v3_7_0::PyObject>();
+                        let valueaddr = self.values + index * std::mem::size_of::<* mut crate::python_bindings::v3_7_0::PyObject>();
                         match self.process.copy_struct(valueaddr) {
                             Ok(addr) => addr,
                             Err(e) => { return Some(Err(e.into())); }
                         }
                     } else {
-                        entry.me_value as usize
+                        value
                     };
 
-                    return Some(Ok((entry.me_key as usize, value)))
+                    return Some(Ok((key, value)))
                 },
                 Err(e) => {
                     return Some(Err(e.into()))
@@ -151,6 +197,7 @@ impl<'a> Iterator for DictIterator<'a> {
     }
 }
 
+pub const PY_TPFLAGS_MANAGED_DICT: usize =  1 << 4;
 const PY_TPFLAGS_INT_SUBCLASS: usize =     1 << 23;
 const PY_TPFLAGS_LONG_SUBCLASS: usize =    1 << 24;
 const PY_TPFLAGS_LIST_SUBCLASS: usize =    1 << 25;
@@ -209,7 +256,7 @@ pub fn format_variable<I>(process: &remoteprocess::Process, version: &Version, a
         if version.major == 3 && version.minor >= 6 {
             let mut values = Vec::new();
             let mut remaining = max_length - 2;
-            for entry in DictIterator::from(process, addr)? {
+            for entry in DictIterator::from(process, version, addr)? {
                 let (key, value) = entry?;
                 let key = format_variable::<I>(process, version, key, remaining)?;
                 let value = format_variable::<I>(process, version, value, remaining)?;

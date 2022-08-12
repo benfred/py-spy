@@ -601,6 +601,39 @@ impl Default for _typeobject {
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
+pub struct _specialization_cache {
+    pub getitem: *mut PyObject,
+}
+impl Default for _specialization_cache {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _heaptypeobject {
+    pub ht_type: PyTypeObject,
+    pub as_async: PyAsyncMethods,
+    pub as_number: PyNumberMethods,
+    pub as_mapping: PyMappingMethods,
+    pub as_sequence: PySequenceMethods,
+    pub as_buffer: PyBufferProcs,
+    pub ht_name: *mut PyObject,
+    pub ht_slots: *mut PyObject,
+    pub ht_qualname: *mut PyObject,
+    pub ht_cached_keys: *mut _dictkeysobject,
+    pub ht_module: *mut PyObject,
+    pub _ht_tpname: *mut ::std::os::raw::c_char,
+    pub _spec_cache: _specialization_cache,
+}
+impl Default for _heaptypeobject {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+pub type PyHeapTypeObject = _heaptypeobject;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
 pub struct PyBytesObject {
     pub ob_base: PyVarObject,
     pub ob_shash: Py_hash_t,
@@ -5621,6 +5654,17 @@ pub struct PyDictKeyEntry {
     pub me_value: *mut PyObject,
 }
 impl Default for PyDictKeyEntry {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct PyDictUnicodeEntry {
+    pub me_key: *mut PyObject,
+    pub me_value: *mut PyObject,
+}
+impl Default for PyDictUnicodeEntry {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }

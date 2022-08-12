@@ -133,8 +133,10 @@ def extract_bindings(cpython_path, version, configure=False):
             --whitelist-type PyDictObject \
             --whitelist-type PyDictKeysObject \
             --whitelist-type PyDictKeyEntry \
+            --whitelist-type PyDictUnicodeEntry \
             --whitelist-type PyObject \
             --whitelist-type PyTypeObject \
+            --whitelist-type PyHeapTypeObject \
              -- -I . -I ./Include -I ./Include/internal
     """)
     if ret:
