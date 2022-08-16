@@ -1,6 +1,6 @@
 use std;
 
-use failure::Error;
+use anyhow::Error;
 
 use remoteprocess::ProcessMemory;
 use crate::python_interpreters::{StringObject, BytesObject, InterpreterState, Object, TypeObject, TupleObject, ListObject};

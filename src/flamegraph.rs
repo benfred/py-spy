@@ -31,7 +31,7 @@ use std;
 use std::collections::HashMap;
 
 
-use failure::Error;
+use anyhow::Error;
 use inferno::flamegraph::{Direction, Options};
 
 use crate::stack_trace::StackTrace;

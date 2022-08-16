@@ -1,4 +1,4 @@
-use clap::{ArgEnum, Arg, Command, crate_description, crate_name, crate_version, PossibleValue};
+use clap::{ArgEnum, Arg, Command, crate_description, crate_name, crate_version, PossibleValue, value_parser};
 use remoteprocess::Pid;
 
 /// Options on how to collect samples from a python process
@@ -267,7 +267,7 @@ impl Config {
             .about("Generate shell completions")
             .hide(true)
             .arg(Arg::new("shell")
-                .possible_values(clap_complete::Shell::possible_values())
+                .value_parser(value_parser!(clap_complete::Shell))
                 .help("Shell type"));
 
         // add native unwinding if appropriate

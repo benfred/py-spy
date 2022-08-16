@@ -2,7 +2,7 @@ use lazy_static::lazy_static;
 use regex::bytes::Regex;
 use std;
 
-use failure::{Error};
+use anyhow::{Error};
 
 
 #[derive(Debug, PartialEq, Eq, Clone)]

@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use failure::Error;
+use anyhow::Error;
 
 use cpp_demangle::{DemangleOptions, BorrowedSymbol};
 use remoteprocess::{self, Pid};

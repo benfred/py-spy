@@ -1,5 +1,5 @@
+use anyhow::Error;
 use console::{Term, style};
-use failure::Error;
 
 use crate::config::Config;
 use crate::python_spy::PythonSpy;

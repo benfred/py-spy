@@ -33,7 +33,7 @@ use std::io::Write;
 use crate::stack_trace;
 use remoteprocess::{Tid, Pid};
 
-use failure::{Error};
+use anyhow::{Error};
 use serde_derive::{Deserialize, Serialize};
 use serde_json;
 

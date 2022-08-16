@@ -6,7 +6,7 @@
 //! # Example:
 //!
 //! ```rust,no_run
-//! fn print_python_stacks(pid: py_spy::Pid) -> Result<(), failure::Error> {
+//! fn print_python_stacks(pid: py_spy::Pid) -> Result<(), anyhow::Error> {
 //!     // Create a new PythonSpy object with the default config options
 //!     let config = py_spy::Config::default();
 //!     let mut process = py_spy::PythonSpy::new(pid, &config)?;
@@ -25,7 +25,7 @@
 //! }
 //! ```
 #[macro_use]
-extern crate failure;
+extern crate anyhow;
 #[macro_use]
 extern crate log;
 

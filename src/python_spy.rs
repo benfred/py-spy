@@ -11,7 +11,7 @@ use regex::Regex;
 #[cfg(windows)]
 use regex::RegexBuilder;
 
-use failure::{Error, ResultExt};
+use anyhow::{Error, Result, Context};
 use lazy_static::lazy_static;
 use remoteprocess::{Process, ProcessMemory, Pid, Tid};
 use proc_maps::{get_process_maps, MapRange};
@@ -764,7 +764,7 @@ impl PythonProcessInfo {
                     // If we failed to find the executable in the virtual memory maps, just take the first file we find
                     // sometimes on windows get_process_exe returns stale info =( https://github.com/benfred/py-spy/issues/40
                     // and on all operating systems I've tried, the exe is the first region in the maps
-                    &maps[0]
+                    &maps.first().ok_or_else(|| format_err!("Failed to get virtual memory maps from process"))?
                 }
             };
 
