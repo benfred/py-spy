@@ -43,7 +43,7 @@ pub trait FrameObject {
     type CodeObject: CodeObject;
 
     fn code(&self) -> * mut Self::CodeObject;
-    fn lasti(&self) -> isize;
+    fn lasti(&self) -> i32;
     fn back(&self) -> * mut Self;
 }
 
@@ -60,7 +60,7 @@ pub trait CodeObject {
     fn argcount(&self) -> i32;
     fn varnames(&self) -> * mut Self::TupleObject;
 
-    fn get_line_number(&self, lasti: isize, table: &[u8]) -> i32;
+    fn get_line_number(&self, lasti: i32, table: &[u8]) -> i32;
 }
 
 pub trait BytesObject {
@@ -131,7 +131,7 @@ macro_rules! PythonCommonImpl {
             type CodeObject = $py::PyCodeObject;
 
             fn code(&self) -> * mut Self::CodeObject { self.f_code }
-            fn lasti(&self) -> isize { self.f_lasti as isize }
+            fn lasti(&self) -> i32 { self.f_lasti as i32 }
             fn back(&self) -> * mut Self { self.f_back }
         }
 
@@ -164,7 +164,7 @@ macro_rules! PythonCodeObjectImpl {
             fn argcount(&self) -> i32 { self.co_argcount }
             fn varnames(&self) -> * mut Self::TupleObject { self.co_varnames as * mut Self::TupleObject }
 
-            fn get_line_number(&self, lasti: isize, table: &[u8]) -> i32 {
+            fn get_line_number(&self, lasti: i32, table: &[u8]) -> i32 {
                 let lasti = lasti as i32;
 
                 // unpack the line table. format is specified here:
@@ -270,7 +270,13 @@ impl ThreadState for v3_11_0::PyThreadState {
 impl FrameObject for v3_11_0::_PyInterpreterFrame {
     type CodeObject = v3_11_0::PyCodeObject;
     fn code(&self) -> * mut Self::CodeObject { self.f_code }
-    fn lasti(&self) -> isize { self.prev_instr as isize }
+    fn lasti(&self) -> i32 {
+        // this returns the delta from the co_code, but we need to adjust for the
+        // offset from co_code.co_code_adaptive. This is slightly easier to do in the
+        // get_line_number code, so will adjust there
+        let co_code = self.f_code as * const _ as * const u8;
+        unsafe { (self.prev_instr as * const u8).offset_from(co_code) as i32}
+    }
     fn back(&self) -> * mut Self { self.previous }
 }
 
@@ -283,6 +289,31 @@ impl TypeObject for v3_11_0::PyTypeObject {
     fn name(&self) -> *const ::std::os::raw::c_char { self.tp_name }
     fn dictoffset(&self) -> isize { self.tp_dictoffset }
     fn flags(&self) -> usize { self.tp_flags as usize }
+}
+
+fn read_varint(index: &mut usize, table: &[u8]) -> usize {
+    let mut ret: usize;
+    let mut byte = table[*index];
+    let mut shift = 0;
+    *index += 1;
+    ret = (byte & 63) as usize;
+
+    while byte & 64 != 0 {
+        byte = table[*index];
+        *index += 1;
+        shift += 6;
+        ret += ((byte & 63) as usize) << shift;
+    }
+    ret
+}
+
+fn read_signed_varint(index: &mut usize, table: &[u8]) -> isize {
+    let unsigned_val = read_varint(index, table);
+    if unsigned_val & 1 != 0 {
+        -1 * ((unsigned_val >> 1) as isize)
+    } else {
+        (unsigned_val >> 1) as isize
+    }
 }
 
 impl CodeObject for v3_11_0::PyCodeObject {
@@ -298,45 +329,51 @@ impl CodeObject for v3_11_0::PyCodeObject {
     fn argcount(&self) -> i32 { self.co_argcount }
     fn varnames(&self) -> * mut Self::TupleObject { self.co_localsplusnames as * mut Self::TupleObject }
 
-    fn get_line_number(&self, prev_instr: isize, table: &[u8]) -> i32 {
-	// TODO: implement f_lasti for python 3.11
-        // Seems like its a combination of ‘prev_instr’ from the frame object and co_code_apative from the code object:
-	//      #define _PyInterpreterFrame_LASTI(IF) ((int)((IF)->prev_instr - _PyCode_CODE((IF)->f_code)))
-	//	#define _PyCode_CODE(CO) ((_Py_CODEUNIT *)(CO)->co_code_adaptive)
+    fn get_line_number(&self, lasti: i32, table: &[u8]) -> i32 {
+        // unpack compressed table format from python 3.11
+        // https://github.com/python/cpython/pull/91666/files
+        let lasti = lasti - offset_of(self, &self.co_code_adaptive) as i32;
+        let mut line_number: i32 = self.first_lineno();
+        let mut bytecode_address: i32 = 0;
 
-	let co_code_adaptive = &self.co_code_adaptive as *const _ as *const v3_11_0::_Py_CODEUNIT;
-        let lasti = unsafe { co_code_adaptive.offset_from(prev_instr as * const v3_11_0::_Py_CODEUNIT) };
+        let mut index: usize = 0;
+        loop {
+            if index >= table.len() {
+                break;
+            }
+            let byte = table[index];
+            index += 1;
 
-	// TODO: figure out if this lasti translation is still needed after changes above
-	let lasti = 2 * lasti as i32;
-
-        // TODO: the lasti code above doesn't seem right at all. set to 0, which has the
-        // effect of disablign line numbers (and just get the line number of hte function instead)
-        let lasti = 0;
-
-	// unpack the line table. format is specified here:
-	// https://github.com/python/cpython/blob/3.11/Objects/lnotab_notes.txt
-	let size = table.len();
-	let mut i = 0;
-	let mut line_number: i32 = self.first_lineno();
-	let mut bytecode_address: i32 = 0;
-	while (i + 1) < size {
-	    let delta: u8 = table[i];
-	    let line_delta: i8 = unsafe { std::mem::transmute(table[i + 1]) };
-	    i += 2;
-
-	    if line_delta == -128 {
-		continue;
-	    }
-
-	    line_number += i32::from(line_delta);
-	    bytecode_address += i32::from(delta);
-	    if bytecode_address > lasti {
-		break;
-	    }
-	}
-
-	line_number
+            let delta = ((byte & 7) as i32) + 1;
+            bytecode_address += delta * 2;
+            let code = (byte >> 3) & 15;
+            let line_delta = match code {
+                15 => { 0 },
+                14 => {
+                    let delta = read_signed_varint(&mut index, table);
+                    read_varint(&mut index, table); // end line
+                    read_varint(&mut index, table); // start column
+                    read_varint(&mut index, table); // end column
+                    delta
+                },
+                13 => {
+                    read_signed_varint(&mut index, table)
+                },
+                10..=12 => {
+                    index += 2; // start column / end column
+                    (code - 10).into()
+                },
+                _ => {
+                    index += 1; // column
+                    0
+                }
+            };
+            line_number += line_delta as i32;
+            if bytecode_address >= lasti {
+                break;
+            }
+        }
+        line_number
     }
 }
 
@@ -357,7 +394,7 @@ impl CodeObject for v3_10_0::PyCodeObject {
     fn nlocals(&self) -> i32 { self.co_nlocals }
     fn argcount(&self) -> i32 { self.co_argcount }
     fn varnames(&self) -> * mut Self::TupleObject { self.co_varnames as * mut Self::TupleObject }
-    fn get_line_number(&self, lasti: isize, table: &[u8]) -> i32 {
+    fn get_line_number(&self, lasti: i32, table: &[u8]) -> i32 {
 	// in Python 3.10 we need to double the lasti instruction value here (and no I don't know why)
 	// https://github.com/python/cpython/blob/7b88f63e1dd4006b1a08b9c9f087dd13449ecc76/Python/ceval.c#L5999
 	// Whereas in python versions up to 3.9 we didn't.
@@ -447,5 +484,21 @@ impl TupleObject for v2_7_15::PyTupleObject {
     fn size(&self) -> usize { self.ob_size as usize }
     fn address(&self, base: usize, index: usize) -> usize {
         base + offset_of(self, &self.ob_item) + index * std::mem::size_of::<* mut v2_7_15::PyObject>()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_py3_11_line_numbers() {
+        use crate::python_bindings::v3_11_0::PyCodeObject;
+        let code = PyCodeObject {co_firstlineno:4, ..Default::default()};
+
+        let table = [128_u8, 0, 221, 4, 8, 132, 74, 136, 118, 209, 4, 22, 212, 4, 22, 208, 4, 22,
+                     208, 4, 22, 208, 4, 22];
+        assert_eq!(code.get_line_number(214, &table), 5);
+
     }
 }

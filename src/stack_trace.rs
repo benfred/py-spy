@@ -158,7 +158,7 @@ impl StackTrace {
 }
 
 /// Returns the line number from a PyCodeObject (given the lasti index from a PyFrameObject)
-fn get_line_number<C: CodeObject, P: ProcessMemory>(code: &C, lasti: isize, process: &P) -> Result<i32, Error> {
+fn get_line_number<C: CodeObject, P: ProcessMemory>(code: &C, lasti: i32, process: &P) -> Result<i32, Error> {
     let table = copy_bytes(code.line_table(), process).context("Failed to copy line number table")?;
     Ok(code.get_line_number(lasti, &table))
 }
