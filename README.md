@@ -267,8 +267,11 @@ partial stack frames being included in the output.
 Not yet =).
 
 If there are features you'd like to see in py-spy either thumb up the [appropriate
-issue](https://github.com/benfred/py-spy/issues?q=is%3Aissue+is%3Aopen+sort%3Areactions-%2B1-desc) or create a new one that describes what functionality is missing. 
+issue](https://github.com/benfred/py-spy/issues?q=is%3Aissue+is%3Aopen+sort%3Areactions-%2B1-desc) or create a new one that describes what functionality is missing.
 
+### How to force colored output when piping to a pager?
+
+py-spy follows the [CLICOLOR](https://bixense.com/clicolors/) specification, thus setting `CLICOLOR_FORCE=1` in your environment will have py-spy print colored output even when piped to a pager.
 
 ## Credits
 
