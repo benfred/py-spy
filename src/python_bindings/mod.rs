@@ -104,7 +104,7 @@ pub mod pyruntime {
         match version {
             Version{major: 3, minor: 7, ..} => Some(828),
             Version{major: 3, minor: 8, ..} => Some(804),
-            Version{major: 3, minor: 9..=10, ..} => Some(364),
+            Version{major: 3, minor: 9..=11, ..} => Some(364),
             _ => None
         }
     }
@@ -116,6 +116,7 @@ pub mod pyruntime {
             Version{major: 3, minor: 7, ..} => Some(1496),
             Version{major: 3, minor: 8, ..} => Some(1384),
             Version{major: 3, minor: 9..=10, ..} => Some(584),
+            Version{major: 3, minor: 11, ..} => Some(592),
             _ => None
         }
     }
@@ -159,6 +160,7 @@ pub mod pyruntime {
             },
             Version{major: 3, minor: 8, ..} => Some(1296),
             Version{major: 3, minor: 9..=10, ..} => Some(496),
+            Version{major: 3, minor: 11, ..} => Some(504),
             _ => None
         }
     }
@@ -178,6 +180,7 @@ pub mod pyruntime {
             },
             Version{major: 3, minor: 8, ..} => Some(1224),
             Version{major: 3, minor: 9..=10, ..} => Some(424),
+            Version{major: 3, minor: 11, ..} => Some(432),
             _ => None
         }
     }
