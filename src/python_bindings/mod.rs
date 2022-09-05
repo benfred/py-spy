@@ -64,19 +64,20 @@ pub mod pyruntime {
     #[cfg(target_os="macos")]
     pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
         match version {
-             Version{major: 3, minor: 7, patch: 0..=3, ..} => Some(1440),
-             Version{major: 3, minor: 7, ..} => Some(1528),
-             Version{major: 3, minor: 8, patch: 0, ..} => {
-                 match version.release_flags.as_ref() {
+            Version{major: 3, minor: 7, patch: 0..=3, ..} => Some(1440),
+            Version{major: 3, minor: 7, ..} => Some(1528),
+            Version{major: 3, minor: 8, patch: 0, ..} => {
+                match version.release_flags.as_ref() {
                     "a1" => Some(1432),
                     "a2" => Some(888),
                     "a3" | "a4" => Some(1448),
                     _ => Some(1416),
                 }
-             },
-             Version{major: 3, minor: 8, ..} => { Some(1416) },
-             Version{major: 3, minor: 9..=10, ..} => { Some(616) },
-             _ => None
+            },
+            Version{major: 3, minor: 8, ..} => { Some(1416) },
+            Version{major: 3, minor: 9..=10, ..} => { Some(616) },
+            Version{major: 3, minor: 11, ..} => Some(624),
+            _ => None
         }
     }
 
