@@ -6,6 +6,7 @@ pub mod v3_7_0;
 pub mod v3_8_0;
 pub mod v3_9_5;
 pub mod v3_10_0;
+pub mod v3_11_0;
 
 // currently the PyRuntime struct used from Python 3.7 on really can't be
 // exposed in a cross platform way using bindgen. PyRuntime has several mutex's
@@ -52,6 +53,7 @@ pub mod pyruntime {
                 }
             },
             Version{major: 3, minor: 8..=10, ..} => 32,
+            Version{major: 3, minor: 11, ..} => 40,
             _ => 24
         }
     }
@@ -62,19 +64,20 @@ pub mod pyruntime {
     #[cfg(target_os="macos")]
     pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
         match version {
-             Version{major: 3, minor: 7, patch: 0..=3, ..} => Some(1440),
-             Version{major: 3, minor: 7, ..} => Some(1528),
-             Version{major: 3, minor: 8, patch: 0, ..} => {
-                 match version.release_flags.as_ref() {
+            Version{major: 3, minor: 7, patch: 0..=3, ..} => Some(1440),
+            Version{major: 3, minor: 7, ..} => Some(1528),
+            Version{major: 3, minor: 8, patch: 0, ..} => {
+                match version.release_flags.as_ref() {
                     "a1" => Some(1432),
                     "a2" => Some(888),
                     "a3" | "a4" => Some(1448),
                     _ => Some(1416),
                 }
-             },
-             Version{major: 3, minor: 8, ..} => { Some(1416) },
-             Version{major: 3, minor: 9..=10, ..} => { Some(616) },
-             _ => None
+            },
+            Version{major: 3, minor: 8, ..} => { Some(1416) },
+            Version{major: 3, minor: 9..=10, ..} => { Some(616) },
+            Version{major: 3, minor: 11, ..} => Some(624),
+            _ => None
         }
     }
 
@@ -101,7 +104,7 @@ pub mod pyruntime {
         match version {
             Version{major: 3, minor: 7, ..} => Some(828),
             Version{major: 3, minor: 8, ..} => Some(804),
-            Version{major: 3, minor: 9..=10, ..} => Some(364),
+            Version{major: 3, minor: 9..=11, ..} => Some(364),
             _ => None
         }
     }
@@ -113,6 +116,7 @@ pub mod pyruntime {
             Version{major: 3, minor: 7, ..} => Some(1496),
             Version{major: 3, minor: 8, ..} => Some(1384),
             Version{major: 3, minor: 9..=10, ..} => Some(584),
+            Version{major: 3, minor: 11, ..} => Some(592),
             _ => None
         }
     }
@@ -132,6 +136,7 @@ pub mod pyruntime {
              },
             Version{major: 3, minor: 8, ..} => Some(1368),
             Version{major: 3, minor: 9..=10, ..} => Some(568),
+            Version{major: 3, minor: 11, ..} => Some(576),
             _ => None
         }
     }
@@ -155,6 +160,7 @@ pub mod pyruntime {
             },
             Version{major: 3, minor: 8, ..} => Some(1296),
             Version{major: 3, minor: 9..=10, ..} => Some(496),
+            Version{major: 3, minor: 11, ..} => Some(504),
             _ => None
         }
     }
@@ -174,6 +180,7 @@ pub mod pyruntime {
             },
             Version{major: 3, minor: 8, ..} => Some(1224),
             Version{major: 3, minor: 9..=10, ..} => Some(424),
+            Version{major: 3, minor: 11, ..} => Some(432),
             _ => None
         }
     }

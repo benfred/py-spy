@@ -86,7 +86,14 @@ pub fn get_stack_trace<T>(thread: &T, process: &Process, copy_locals: bool, line
         where T: ThreadState {
     // TODO: just return frames here? everything else probably should be returned out of scope
     let mut frames = Vec::new();
-    let mut frame_ptr = thread.frame();
+
+    // python 3.11+ has an extra level of indirection to get the Frame from the threadstate
+    let mut frame_address = thread.frame_address();
+    if let Some(addr) = frame_address {
+        frame_address = Some(process.copy_struct(addr)?);
+    }
+
+    let mut frame_ptr = thread.frame(frame_address);
     while !frame_ptr.is_null() {
         let frame = process.copy_pointer(frame_ptr).context("Failed to copy PyFrameObject")?;
         let code = process.copy_pointer(frame.code()).context("Failed to copy PyCodeObject")?;

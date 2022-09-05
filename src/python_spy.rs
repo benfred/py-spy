@@ -21,7 +21,7 @@ use crate::binary_parser::{parse_binary, BinaryInfo};
 use crate::config::{Config, LockingStrategy, LineNo};
 #[cfg(unwind)]
 use crate::native_stack_trace::NativeStack;
-use crate::python_bindings::{pyruntime, v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0, v3_9_5, v3_10_0};
+use crate::python_bindings::{pyruntime, v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0, v3_9_5, v3_10_0, v3_11_0};
 use crate::python_interpreters::{self, InterpreterState, ThreadState};
 use crate::python_threading::thread_name_lookup;
 use crate::stack_trace::{StackTrace, get_stack_traces, get_stack_trace};
@@ -88,7 +88,7 @@ impl PythonSpy {
 
         // lets us figure out which thread has the GIL
          let threadstate_address = match version {
-             Version{major: 3, minor: 7..=10, ..} => {
+             Version{major: 3, minor: 7..=11, ..} => {
                 match python_info.get_symbol("_PyRuntime") {
                     Some(&addr) => {
                         if let Some(offset) = pyruntime::get_tstate_current_offset(&version) {
@@ -190,6 +190,7 @@ impl PythonSpy {
             Version{major: 3, minor: 8, ..} => self._get_stack_traces::<v3_8_0::_is>(),
             Version{major: 3, minor: 9, ..} => self._get_stack_traces::<v3_9_5::_is>(),
             Version{major: 3, minor: 10, ..} => self._get_stack_traces::<v3_10_0::_is>(),
+            Version{major: 3, minor: 11, ..} => self._get_stack_traces::<v3_11_0::_is>(),
             _ => Err(format_err!("Unsupported version of Python: {}", self.version)),
         }
     }
@@ -228,33 +229,44 @@ impl PythonSpy {
 
             // Try getting the native thread id
             let python_thread_id = thread.thread_id();
-            let mut os_thread_id = self._get_os_thread_id(python_thread_id, &interp)?;
 
-            // linux can see issues where pthread_ids get recycled for new OS threads,
-            // which totally breaks the caching we were doing here. Detect this and retry
-            if let Some(tid) = os_thread_id {
-                if thread_activity.len() > 0 && !thread_activity.contains_key(&tid) {
-                    info!("clearing away thread id caches, thread {} has exited", tid);
-                    self.python_thread_ids.clear();
-                    self.python_thread_names.clear();
-                    os_thread_id = self._get_os_thread_id(python_thread_id, &interp)?;
+            // python 3.11+ has the native thread id directly on the PyThreadState object,
+            // so use that if available
+            trace.os_thread_id = thread.native_thread_id();
+
+            // for older versions of python, try using OS specific code to get the native
+            // thread id (doesn' work on freebsd, or on arm/i686 processors on linux)
+            if trace.os_thread_id.is_none() {
+                let mut os_thread_id = self._get_os_thread_id(python_thread_id, &interp)?;
+
+                // linux can see issues where pthread_ids get recycled for new OS threads,
+                // which totally breaks the caching we were doing here. Detect this and retry
+                if let Some(tid) = os_thread_id {
+                    if thread_activity.len() > 0 && !thread_activity.contains_key(&tid) {
+                        info!("clearing away thread id caches, thread {} has exited", tid);
+                        self.python_thread_ids.clear();
+                        self.python_thread_names.clear();
+                        os_thread_id = self._get_os_thread_id(python_thread_id, &interp)?;
+                    }
                 }
+
+                trace.os_thread_id = os_thread_id.map(|id| id as u64);
             }
 
-            trace.os_thread_id = os_thread_id.map(|id| id as u64);
             trace.thread_name = self._get_python_thread_name(python_thread_id);
             trace.owns_gil = trace.thread_id == gil_thread_id;
 
             // Figure out if the thread is sleeping from the OS if possible
             trace.active = true;
-            if let Some(id) = os_thread_id {
-                if let Some(active) = thread_activity.get(&id) {
+            if let Some(id) = trace.os_thread_id {
+                let id = id as Tid;
+                if let Some(active) = thread_activity.get(&id as _) {
                     trace.active = *active;
                 }
             }
 
             // fallback to using a heuristic if we think the thread is still active
-            // Note that on linux the  OS thread activity can only be gotten on x86_64
+            // Note that on linux the OS thread activity can only be gotten on x86_64
             // processors and even then seems to be wrong occasionally in thinking 'select'
             // calls are active (which seems related to the thread locking code,
             // this problem doesn't seem to happen with the --nonblocking option)
@@ -268,8 +280,8 @@ impl PythonSpy {
             {
                 if self.config.native {
                     if let Some(native) = self.native.as_mut() {
-                        let thread_id = os_thread_id.ok_or_else(|| format_err!("failed to get os threadid"))?;
-                        let os_thread = remoteprocess::Thread::new(thread_id)?;
+                        let thread_id = trace.os_thread_id.ok_or_else(|| format_err!("failed to get os threadid"))?;
+                        let os_thread = remoteprocess::Thread::new(thread_id as Tid)?;
                         trace.frames = native.merge_native_thread(&trace.frames, &os_thread)?
                     }
                 }
@@ -581,7 +593,7 @@ fn get_interpreter_address(python_info: &PythonProcessInfo,
     // get the address of the main PyInterpreterState object from loaded symbols if we can
     // (this tends to be faster than scanning through the bss section)
     match version {
-        Version{major: 3, minor: 7..=10, ..} => {
+        Version{major: 3, minor: 7..=11, ..} => {
             if let Some(&addr) = python_info.get_symbol("_PyRuntime") {
                 let addr = process.copy_struct(addr as usize + pyruntime::get_interp_head_offset(&version))?;
 
@@ -704,6 +716,7 @@ fn check_interpreter_addresses(addrs: &[usize],
         Version{major: 3, minor: 8, ..} => check::<v3_8_0::_is>(addrs, maps, process),
         Version{major: 3, minor: 9, ..} => check::<v3_9_5::_is>(addrs, maps, process),
         Version{major: 3, minor: 10, ..} => check::<v3_10_0::_is>(addrs, maps, process),
+        Version{major: 3, minor: 11, ..} => check::<v3_11_0::_is>(addrs, maps, process),
         _ => Err(format_err!("Unsupported version of Python: {}", version))
     }
 }
