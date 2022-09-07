@@ -13,8 +13,8 @@ edition="2021"
 
 [dependencies]
 anyhow = "1"
-clap = {version="3.1", features=["wrap_help", "cargo", "derive"]}
-clap_complete="3.1"
+clap = {version="3.2", features=["wrap_help", "cargo", "derive"]}
+clap_complete="3.2"
 console = "0.15"
 ctrlc = "3"
 indicatif = "0.16"

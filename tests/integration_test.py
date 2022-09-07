@@ -99,9 +99,17 @@ class TestPyspy(unittest.TestCase):
             if expected_thread_names == actual_thread_names:
                 break
         if expected_thread_names != actual_thread_names:
-            print("failed to get thread names", expected_thread_names, actual_thread_names)
+            print(
+                "failed to get thread names",
+                expected_thread_names,
+                actual_thread_names,
+            )
 
         assert expected_thread_names == actual_thread_names
+
+    def test_shell_completions(self):
+        cmdline = [PYSPY, "completions", "bash"]
+        subprocess.check_output(cmdline)
 
 
 def _get_script(name):

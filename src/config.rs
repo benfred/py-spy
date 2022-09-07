@@ -323,9 +323,9 @@ impl Config {
                 config.dump_locals = matches.occurrences_of("locals");
             },
             "completions" => {
-                let shell = matches.value_of_t::<clap_complete::Shell>("shell")?;
+                let shell = matches.get_one::<clap_complete::Shell>("shell").unwrap();
                 let app_name = app.get_name().to_string();
-                clap_complete::generate(shell, &mut app, app_name, &mut std::io::stdout());
+                clap_complete::generate(*shell, &mut app, app_name, &mut std::io::stdout());
                 std::process::exit(0);
             }
             _ => {}
