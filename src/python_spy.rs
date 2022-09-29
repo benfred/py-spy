@@ -16,6 +16,8 @@ use lazy_static::lazy_static;
 use remoteprocess::{Process, ProcessMemory, Pid, Tid};
 use proc_maps::{get_process_maps, MapRange};
 
+#[cfg(all(target_os="linux", target_arch="x86_64", feature="trace_syscalls"))]
+use syscalls::SyscallNo;
 
 use crate::binary_parser::{parse_binary, BinaryInfo};
 use crate::config::{Config, LockingStrategy, LineNo};
@@ -273,6 +275,36 @@ impl PythonSpy {
             // Note: this should be done before the native merging for correct results
             if trace.active {
                 trace.active = !self._heuristic_is_thread_idle(&trace);
+            }
+
+            // Read current syscall (if any)
+            #[cfg(all(target_os="linux", target_arch="x86_64", feature="trace_syscalls"))]
+            {
+                if self.config.trace_syscalls {
+                    if let Some(tid) = os_thread_id {
+                        let path = format!("/proc/{}/task/{}/syscall", self.pid, tid);
+                        if let Ok(contents) = std::fs::read_to_string(&path) {
+                            let mut it = contents.splitn(2, " ");
+                            if let Some(syscall) = it.next() {
+                                if let Ok(syscall_no) = &syscall[..].parse::<u32>() {
+                                    let syscall = SyscallNo::new(*syscall_no as usize);
+                                    let name = syscall.map(|s| format!("{} syscall", s.name()));
+                                    let name = name.unwrap_or_else(|| format!("syscall #{}", syscall_no));
+
+                                    let frame = crate::stack_trace::Frame {
+                                        name,
+                                        filename: "<kernel>".to_string(),
+                                        line: 0,
+                                        module: None,
+                                        short_filename: None,
+                                        locals: None,
+                                    };
+                                    trace.frames.insert(0, frame);
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             // Merge in the native stack frames if necessary

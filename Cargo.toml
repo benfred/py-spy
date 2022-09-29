@@ -11,6 +11,13 @@ license = "MIT"
 build="build.rs"
 edition="2021"
 
+[features]
+default = ["trace_syscalls"]
+trace_syscalls = ["syscalls"]
+
+[target.'cfg(all(target_os="linux", target_arch="x86_64"))'.dependencies]
+syscalls = {version="0.3.3", optional=true}
+
 [dependencies]
 anyhow = "1"
 clap = {version="3.2", features=["wrap_help", "cargo", "derive"]}

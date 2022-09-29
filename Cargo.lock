@@ -846,6 +846,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
+ "syscalls",
  "tempfile",
  "termios",
  "winapi",
@@ -1106,6 +1107,21 @@ dependencies = [
  "quote",
  "unicode-ident",
 ]
+
+[[package]]
+name = "syscalls"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ad4126c98e506c5c2ada914b40c17b57a99f7d7044e35ff631a3504effb28e4"
+dependencies = [
+ "cc",
+]
+
+[[package]]
+name = "tap"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 
 [[package]]
 name = "tempfile"
