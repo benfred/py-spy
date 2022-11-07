@@ -14,7 +14,7 @@ import tempfile
 
 def build_python(cpython_path, version):
     # TODO: probably easier to use pyenv for this?
-    print("Compiling python %s from repo at %s" % (version, cpython_path))
+    print(f"Compiling python {version} from repo at {cpython_path}")
     install_path = os.path.abspath(os.path.join(cpython_path, version))
 
     ret = os.system(f"""
@@ -98,14 +98,14 @@ def calculate_pyruntime_offsets(cpython_path, version, configure=False):
 
 
 def extract_bindings(cpython_path, version, configure=False):
-    print("Generating bindings for python %s from repo at %s" % (version, cpython_path))
+    print(f"Generating bindings for python {version} from repo at {cpython_path}")
 
     ret = os.system(f"""
         cd {cpython_path}
         git checkout {version}
 
         # need to run configure on the current branch to generate pyconfig.h sometimes
-        {("./configure prefix=" + os.path.abspath(os.path.join(cpython_path, version))) if configure else ""}
+        {("./configure refix=" + os.path.abspath(os.path.join(cpython_path, version))) if configure else ""}
 
         cat Include/Python.h > bindgen_input.h
         cat Include/frameobject.h >> bindgen_input.h

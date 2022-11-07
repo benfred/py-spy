@@ -1,7 +1,7 @@
-import requests
 import pathlib
 import re
 
+import requests
 
 _VERSIONS_URL = "https://raw.githubusercontent.com/actions/python-versions/main/versions-manifest.json"  # noqa
 
@@ -14,7 +14,7 @@ def get_github_python_versions():
     versions_json = requests.get(_VERSIONS_URL).json()
     raw_versions = [v["version"] for v in versions_json]
     versions = []
-    for version_str in raw_versions: 
+    for version_str in raw_versions:
         if "-" in version_str and version_str != "3.11.0-beta.5":
             continue
 
@@ -23,7 +23,7 @@ def get_github_python_versions():
             # we don't support python 3.0/3.1/3.2 , and don't bother testing 3.3/3.4
             continue
 
-        elif major == 2 and minor < 7:
+        if major == 2 and minor < 7:
             # we don't test python support before 2.7
             continue
 

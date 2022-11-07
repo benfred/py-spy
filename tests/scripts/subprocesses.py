@@ -1,5 +1,6 @@
-import time
 import multiprocessing
+import time
+
 
 def target():
     multiprocessing.freeze_support()
