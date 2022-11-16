@@ -2,7 +2,7 @@ use clap::{ArgEnum, Arg, Command, crate_description, crate_name, crate_version, 
 use remoteprocess::Pid;
 
 /// Options on how to collect samples from a python process
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Config {
     /// Whether or not we should stop the python process when taking samples.
     /// Setting this to false will reduce the performance impact on the target
@@ -52,6 +52,8 @@ pub struct Config {
     pub full_filenames: bool,
     #[doc(hidden)]
     pub lineno: LineNo,
+    #[doc(hidden)]
+    pub refresh_seconds: f64,
 }
 
 #[allow(non_camel_case_types)]
@@ -116,7 +118,8 @@ impl Default for Config {
                duration: RecordDuration::Unlimited, native: false,
                gil_only: false, include_idle: false, include_thread_ids: false,
                hide_progress: false, capture_output: true, dump_json: false, dump_locals: 0, subprocesses: false,
-               full_filenames: false, lineno: LineNo::LastInstruction }
+               full_filenames: false, lineno: LineNo::LastInstruction,
+               refresh_seconds: 1.0 }
     }
 }
 
@@ -179,6 +182,14 @@ impl Config {
                 .long("gil")
                 .help("Only include traces that are holding on to the GIL");
 
+        let top_delay = Arg::new("delay")
+                .long("delay")
+                .value_name("seconds")
+                .help("Delay between 'top' refreshes.")
+                .default_value("1.0")
+                .value_parser(clap::value_parser!(f64))
+                .takes_value(true);
+
         let record = Command::new("record")
             .about("Records stack trace information to a flamegraph, speedscope or raw file")
             .arg(program.clone())
@@ -239,7 +250,8 @@ impl Config {
             .arg(subprocesses.clone())
             .arg(full_filenames.clone())
             .arg(gil.clone())
-            .arg(idle.clone());
+            .arg(idle.clone())
+            .arg(top_delay.clone());
 
         let dump = Command::new("dump")
             .about("Dumps stack traces for a target program to stdout")
@@ -317,6 +329,7 @@ impl Config {
             },
             "top" => {
                 config.sampling_rate = matches.value_of_t("rate")?;
+                config.refresh_seconds = *matches.get_one::<f64>("delay").unwrap();
             },
             "dump" => {
                 config.dump_json = matches.occurrences_of("json") > 0;
