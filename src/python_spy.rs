@@ -80,15 +80,17 @@ impl PythonSpy {
         #[cfg(target_os="freebsd")]
         let _lock = process.lock();
 
+        // TODO: move get_python_version, get_interpreter_address as members on python_info ?
         let version = get_python_version(&python_info, &process)?;
         info!("python version {} detected", version);
 
         let interpreter_address = get_interpreter_address(&python_info, &process, &version)?;
         info!("Found interpreter at 0x{:016x}", interpreter_address);
-
+    
+        // TODO: move this onto python_process_info as well?
         // lets us figure out which thread has the GIL
-         let threadstate_address = match version {
-             Version{major: 3, minor: 7..=11, ..} => {
+        let threadstate_address = match version {
+            Version{major: 3, minor: 7..=11, ..} => {
                 match python_info.get_symbol("_PyRuntime") {
                     Some(&addr) => {
                         if let Some(offset) = pyruntime::get_tstate_current_offset(&version) {
@@ -214,6 +216,8 @@ impl PythonSpy {
             None
         };
 
+        // TODO: hoist most of this code out to stack_trace.rs, and
+        // then annotate the output of that with things like native stack traces etc
         let gil_thread_id = self._get_gil_threadid::<I>()?;
 
         // Get the python interpreter, and loop over all the python threads
@@ -523,7 +527,7 @@ impl PythonSpy {
             }
         }
 
-        // remote the parent prefix and convert to an optional string
+        // remove the parent prefix and convert to an optional string
         let shortened = Path::new(filename)
             .strip_prefix(path)
             .ok()
@@ -533,9 +537,10 @@ impl PythonSpy {
         shortened
     }
 }
+
 /// Returns the version of python running in the process.
-fn get_python_version(python_info: &PythonProcessInfo, process: &remoteprocess::Process)
-        -> Result<Version, Error> {
+pub fn get_python_version<P>(python_info: &PythonProcessInfo, process: &P) -> Result<Version, Error>
+    where P: ProcessMemory {
     // If possible, grab the sys.version string from the processes memory (mac osx).
     if let Some(&addr) = python_info.get_symbol("Py_GetVersion.version") {
         info!("Getting version from symbol address");
@@ -587,9 +592,10 @@ fn get_python_version(python_info: &PythonProcessInfo, process: &remoteprocess::
     Err(format_err!("Failed to find python version from target process"))
 }
 
-fn get_interpreter_address(python_info: &PythonProcessInfo,
-                           process: &remoteprocess::Process,
-                           version: &Version) -> Result<usize, Error> {
+pub fn get_interpreter_address<P>(python_info: &PythonProcessInfo,
+                           process: &P,
+                           version: &Version) -> Result<usize, Error>
+    where P: ProcessMemory {
     // get the address of the main PyInterpreterState object from loaded symbols if we can
     // (this tends to be faster than scanning through the bss section)
     match version {
@@ -598,7 +604,7 @@ fn get_interpreter_address(python_info: &PythonProcessInfo,
                 let addr = process.copy_struct(addr as usize + pyruntime::get_interp_head_offset(&version))?;
 
                 // Make sure the interpreter addr is valid before returning
-                match check_interpreter_addresses(&[addr], &python_info.maps, process, version) {
+                match check_interpreter_addresses(&[addr], &*python_info.maps, process, version) {
                     Ok(addr) => return Ok(addr),
                     Err(_) => { warn!("Interpreter address from _PyRuntime symbol is invalid {:016x}", addr); }
                 };
@@ -607,7 +613,7 @@ fn get_interpreter_address(python_info: &PythonProcessInfo,
         _ => {
             if let Some(&addr) = python_info.get_symbol("interp_head") {
                 let addr = process.copy_struct(addr as usize)?;
-                match check_interpreter_addresses(&[addr], &python_info.maps, process, version) {
+                match check_interpreter_addresses(&[addr], &*python_info.maps, process, version) {
                     Ok(addr) => return Ok(addr),
                     Err(_) => { warn!("Interpreter address from interp_head symbol is invalid {:016x}", addr); }
                 };
@@ -619,7 +625,7 @@ fn get_interpreter_address(python_info: &PythonProcessInfo,
     // try scanning the BSS section of the binary for things that might be the interpreterstate
     let err =
         if let Some(ref pb) = python_info.python_binary {
-            match get_interpreter_address_from_binary(pb, &python_info.maps, process, version) {
+            match get_interpreter_address_from_binary(pb, &*python_info.maps, process, version) {
                 Ok(addr) => return Ok(addr),
                 err => Some(err)
             }
@@ -629,7 +635,7 @@ fn get_interpreter_address(python_info: &PythonProcessInfo,
     // Before giving up, try again if there is a libpython.so
     if let Some(ref lpb) = python_info.libpython_binary {
         info!("Failed to get interpreter from binary BSS, scanning libpython BSS");
-        match get_interpreter_address_from_binary(lpb, &python_info.maps, process, version) {
+        match get_interpreter_address_from_binary(lpb, &*python_info.maps, process, version) {
             Ok(addr) => return Ok(addr),
             lib_err => err.unwrap_or(lib_err)
         }
@@ -638,10 +644,10 @@ fn get_interpreter_address(python_info: &PythonProcessInfo,
     }
 }
 
-fn get_interpreter_address_from_binary(binary: &BinaryInfo,
-                                       maps: &[MapRange],
-                                       process: &remoteprocess::Process,
-                                       version: &Version) -> Result<usize, Error> {
+fn get_interpreter_address_from_binary<P>(binary: &BinaryInfo,
+                                       maps: &dyn ContainsAddr,
+                                       process: &P,
+                                       version: &Version) -> Result<usize, Error> where P: ProcessMemory {
     // We're going to scan the BSS/data section for things, and try to narrowly scan things that
     // look like pointers to PyinterpreterState
     let bss = process.copy(binary.bss_addr as usize, binary.bss_size as usize)?;
@@ -653,25 +659,18 @@ fn get_interpreter_address_from_binary(binary: &BinaryInfo,
 
 // Checks whether a block of memory (from BSS/.data etc) contains pointers that are pointing
 // to a valid PyInterpreterState
-fn check_interpreter_addresses(addrs: &[usize],
-                               maps: &[MapRange],
-                               process: &remoteprocess::Process,
-                               version: &Version) -> Result<usize, Error> {
-    // On windows, we can't just check if a pointer is valid by looking to see if it points
-    // to something in the virtual memory map. Brute-force it instead
-    #[cfg(windows)]
-    fn maps_contain_addr(_: usize, _: &[MapRange]) -> bool { true }
-
-    #[cfg(not(windows))]
-    use proc_maps::maps_contain_addr;
-
+fn check_interpreter_addresses<P>(addrs: &[usize],
+                               maps: &dyn ContainsAddr,
+                               process: &P,
+                               version: &Version) -> Result<usize, Error>
+    where P: ProcessMemory {
     // This function does all the work, but needs a type of the interpreter
-    fn check<I>(addrs: &[usize],
-                maps: &[MapRange],
-                process: &remoteprocess::Process) -> Result<usize, Error>
-            where I: python_interpreters::InterpreterState {
+    fn check<I, P>(addrs: &[usize],
+                maps: &dyn ContainsAddr,
+                process: &P) -> Result<usize, Error>
+            where I: python_interpreters::InterpreterState, P: ProcessMemory {
         for &addr in addrs {
-            if maps_contain_addr(addr, maps) {
+            if maps.contains_addr(addr) {
                 // this address points to valid memory. try loading it up as a PyInterpreterState
                 // to further check
                 let interp: I = match process.copy_struct(addr) {
@@ -682,7 +681,7 @@ fn check_interpreter_addresses(addrs: &[usize],
                 // get the pythreadstate pointer from the interpreter object, and if it is also
                 // a valid pointer then load it up.
                 let threads = interp.head();
-                if maps_contain_addr(threads as usize, maps) {
+                if maps.contains_addr(threads as usize) {
                     // If the threadstate points back to the interpreter like we expect, then
                     // this is almost certainly the address of the intrepreter
                     let thread = match process.copy_pointer(threads) {
@@ -702,36 +701,55 @@ fn check_interpreter_addresses(addrs: &[usize],
 
     // different versions have different layouts, check as appropriate
     match version {
-        Version{major: 2, minor: 3..=7, ..} => check::<v2_7_15::_is>(addrs, maps, process),
-        Version{major: 3, minor: 3, ..} => check::<v3_3_7::_is>(addrs, maps, process),
-        Version{major: 3, minor: 4..=5, ..} => check::<v3_5_5::_is>(addrs, maps, process),
-        Version{major: 3, minor: 6, ..} => check::<v3_6_6::_is>(addrs, maps, process),
-        Version{major: 3, minor: 7, ..} => check::<v3_7_0::_is>(addrs, maps, process),
+        Version{major: 2, minor: 3..=7, ..} => check::<v2_7_15::_is, P>(addrs, maps, process),
+        Version{major: 3, minor: 3, ..} => check::<v3_3_7::_is, P>(addrs, maps, process),
+        Version{major: 3, minor: 4..=5, ..} => check::<v3_5_5::_is, P>(addrs, maps, process),
+        Version{major: 3, minor: 6, ..} => check::<v3_6_6::_is, P>(addrs, maps, process),
+        Version{major: 3, minor: 7, ..} => check::<v3_7_0::_is, P>(addrs, maps, process),
         Version{major: 3, minor: 8, patch: 0, ..} => {
             match version.release_flags.as_ref() {
-                "a1" | "a2" | "a3" => check::<v3_7_0::_is>(addrs, maps, process),
-                _ => check::<v3_8_0::_is>(addrs, maps, process)
+                "a1" | "a2" | "a3" => check::<v3_7_0::_is, P>(addrs, maps, process),
+                _ => check::<v3_8_0::_is, P>(addrs, maps, process)
             }
         },
-        Version{major: 3, minor: 8, ..} => check::<v3_8_0::_is>(addrs, maps, process),
-        Version{major: 3, minor: 9, ..} => check::<v3_9_5::_is>(addrs, maps, process),
-        Version{major: 3, minor: 10, ..} => check::<v3_10_0::_is>(addrs, maps, process),
-        Version{major: 3, minor: 11, ..} => check::<v3_11_0::_is>(addrs, maps, process),
+        Version{major: 3, minor: 8, ..} => check::<v3_8_0::_is, P>(addrs, maps, process),
+        Version{major: 3, minor: 9, ..} => check::<v3_9_5::_is, P>(addrs, maps, process),
+        Version{major: 3, minor: 10, ..} => check::<v3_10_0::_is, P>(addrs, maps, process),
+        Version{major: 3, minor: 11, ..} => check::<v3_11_0::_is, P>(addrs, maps, process),
         _ => Err(format_err!("Unsupported version of Python: {}", version))
     }
 }
 
+pub trait ContainsAddr{
+    fn contains_addr(&self, addr: usize) -> bool;
+}
+
+impl ContainsAddr for Vec<MapRange> {
+    #[cfg(windows)]
+    fn contains_addr(&self, addr: usize) -> bool {
+        // On windows, we can't just check if a pointer is valid by looking to see if it points
+        // to something in the virtual memory map. Brute-force it instead
+        true
+    }
+
+    #[cfg(not(windows))]
+    fn contains_addr(&self, addr: usize) -> bool {
+        proc_maps::maps_contain_addr(addr, self)
+    }
+}
+
+
 /// Holds information about the python process: memory map layout, parsed binary info
 /// for python /libpython etc.
 pub struct PythonProcessInfo {
-    python_binary: Option<BinaryInfo>,
+    pub python_binary: Option<BinaryInfo>,
     // if python was compiled with './configure --enabled-shared', code/symbols will
     // be in a libpython.so file instead of the executable. support that.
-    libpython_binary: Option<BinaryInfo>,
-    maps: Vec<MapRange>,
-    python_filename: std::path::PathBuf,
+    pub libpython_binary: Option<BinaryInfo>,
+    pub maps: Box<dyn ContainsAddr>,
+    pub python_filename: std::path::PathBuf,
     #[cfg(target_os="linux")]
-    dockerized: bool,
+    pub dockerized: bool,
 }
 
 impl PythonProcessInfo {
@@ -781,11 +799,17 @@ impl PythonProcessInfo {
                 }
             };
 
+            #[cfg(not(target_os="linux"))]
             let filename = std::path::PathBuf::from(filename);
+
+            // use filename through /proc/pid/exe which works across docker namespaces and
+            // handles if the file was deleted
+            #[cfg(target_os="linux")]
+            let filename = &std::path::PathBuf::from(format!("/proc/{}/exe", process.pid));
 
             // TODO: consistent types? u64 -> usize? for map.start etc
             #[allow(unused_mut)]
-            let python_binary = parse_binary(process.pid, &filename, map.start() as u64, map.size() as u64, true)
+            let python_binary = parse_binary(&filename, map.start() as u64, map.size() as u64)
                 .and_then(|mut pb| {
                     // windows symbols are stored in separate files (.pdb), load
                     #[cfg(windows)]
@@ -832,8 +856,13 @@ impl PythonProcessInfo {
             if let Some(libpython) = libmap {
                 if let Some(filename) = &libpython.filename() {
                     info!("Found libpython binary @ {}", filename.display());
+
+                    // on linux the process could be running in docker, access the filename through procfs
+                    #[cfg(target_os="linux")]
+                    let filename = &std::path::PathBuf::from(format!("/proc/{}/root{}", process.pid, filename.display()));
+
                     #[allow(unused_mut)]
-                    let mut parsed = parse_binary(process.pid, filename, libpython.start() as u64, libpython.size() as u64, false)?;
+                    let mut parsed = parse_binary(filename, libpython.start() as u64, libpython.size() as u64)?;
                     #[cfg(windows)]
                     parsed.symbols.extend(get_windows_python_symbols(process.pid, filename, libpython.start() as u64)?);
                     libpython_binary = Some(parsed);
@@ -869,7 +898,7 @@ impl PythonProcessInfo {
                     if let Some(libpython) = python_dyld_data {
                         info!("Found libpython binary from dyld @ {}", libpython.filename.display());
 
-                        let mut binary = parse_binary(process.pid, &libpython.filename, libpython.segment.vmaddr, libpython.segment.vmsize, false)?;
+                        let mut binary = parse_binary(&libpython.filename, libpython.segment.vmaddr, libpython.segment.vmsize)?;
 
                         // TODO: bss addr offsets returned from parsing binary are wrong
                         // (assumes data section isn't split from text section like done here).
@@ -894,7 +923,7 @@ impl PythonProcessInfo {
         #[cfg(target_os="linux")]
         let dockerized = is_dockerized(process.pid).unwrap_or(false);
 
-        Ok(PythonProcessInfo{python_binary, libpython_binary, maps, python_filename,
+        Ok(PythonProcessInfo{python_binary, libpython_binary, maps: Box::new(maps), python_filename,
                              #[cfg(target_os="linux")]
                              dockerized
         })

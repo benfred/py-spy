@@ -37,12 +37,13 @@ mod cython;
 mod native_stack_trace;
 mod python_bindings;
 mod python_interpreters;
-mod python_spy;
+pub mod python_spy;
 mod python_data_access;
 mod python_threading;
 pub mod sampler;
-mod stack_trace;
+pub mod stack_trace;
 pub mod timer;
+pub mod coredump;
 mod utils;
 mod version;
 

@@ -4,6 +4,7 @@ extern crate anyhow;
 extern crate log;
 
 mod config;
+mod coredump;
 mod dump;
 mod binary_parser;
 #[cfg(unwind)]

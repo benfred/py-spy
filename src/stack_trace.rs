@@ -64,8 +64,8 @@ pub struct ProcessInfo {
 }
 
 /// Given an InterpreterState, this function returns a vector of stack traces for each thread
-pub fn get_stack_traces<I>(interpreter: &I, process: &Process, lineno: LineNo) -> Result<Vec<StackTrace>, Error>
-        where I: InterpreterState {
+pub fn get_stack_traces<I, P>(interpreter: &I, process: &P, lineno: LineNo) -> Result<Vec<StackTrace>, Error>
+        where I: InterpreterState, P: ProcessMemory {
     // TODO: deprecate this method
     let mut ret = Vec::new();
     let mut threads = interpreter.head();
@@ -82,8 +82,8 @@ pub fn get_stack_traces<I>(interpreter: &I, process: &Process, lineno: LineNo) -
 }
 
 /// Gets a stack trace for an individual thread
-pub fn get_stack_trace<T>(thread: &T, process: &Process, copy_locals: bool, lineno: LineNo) -> Result<StackTrace, Error>
-        where T: ThreadState {
+pub fn get_stack_trace<T, P>(thread: &T, process: &P, copy_locals: bool, lineno: LineNo) -> Result<StackTrace, Error>
+        where T: ThreadState, P: ProcessMemory {
     // TODO: just return frames here? everything else probably should be returned out of scope
     let mut frames = Vec::new();
 
@@ -130,8 +130,9 @@ pub fn get_stack_trace<T>(thread: &T, process: &Process, copy_locals: bool, line
 
         frame_ptr = frame.back();
     }
-
-    Ok(StackTrace{pid: process.pid, frames, thread_id: thread.thread_id(), thread_name: None, owns_gil: false, active: true, os_thread_id: None, process_info: None})
+    
+    // TODO: get pid ere 
+    Ok(StackTrace{pid: 12345, frames, thread_id: thread.thread_id(), thread_name: None, owns_gil: false, active: true, os_thread_id: None, process_info: None})
 }
 
 impl StackTrace {
