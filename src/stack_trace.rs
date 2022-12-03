@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Error, Result};
 
-use remoteprocess::{ProcessMemory, Pid, Process};
+use remoteprocess::{ProcessMemory, Pid};
 use serde_derive::Serialize;
 
 use crate::python_interpreters::{InterpreterState, ThreadState, FrameObject, CodeObject, TupleObject};

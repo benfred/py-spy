@@ -14,14 +14,14 @@ use remoteprocess;
 
 use crate::binary_parser::{BinaryInfo, parse_binary};
 use crate::python_bindings::{pyruntime, v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0, v3_9_5, v3_10_0, v3_11_0};
-use crate::python_interpreters::{self, InterpreterState, ThreadState};
-use crate::stack_trace::{StackTrace, get_stack_traces, get_stack_trace};
+use crate::python_interpreters;
+use crate::stack_trace::{get_stack_traces, get_stack_trace};
 use crate::version::Version;
 use crate::config::{Config, LineNo};
 
 // TODO: basically everything here probablt should be moved to a python_process_info module
 // (works without a pythonspy)
-use crate::python_spy::{is_python_lib, ContainsAddr, PythonProcessInfo, get_python_version, get_interpreter_address};
+use crate::python_process_info::{is_python_lib, ContainsAddr, PythonProcessInfo, get_python_version, get_interpreter_address};
 
 #[derive(Debug, Clone)]
 pub struct CoreMapRange {
@@ -110,7 +110,7 @@ impl CoreDump {
 impl remoteprocess::ProcessMemory for CoreDump {
     fn read(&self, addr: usize, buf: &mut [u8]) -> Result<(), remoteprocess::Error> {
         let start = addr as u64;
-        let end = (addr + buf.len()) as u64;
+        let _end = (addr + buf.len()) as u64;
 
         for map in &self.maps {    
             // TODO: issue is the bss addr spans multiple mmap sections - so checking the 'end'

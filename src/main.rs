@@ -13,6 +13,7 @@ mod cython;
 mod native_stack_trace;
 mod python_bindings;
 mod python_interpreters;
+mod python_process_info;
 mod python_spy;
 mod python_data_access;
 mod python_threading;
