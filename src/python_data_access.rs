@@ -80,7 +80,7 @@ pub fn copy_long<P: ProcessMemory>(process: &P, addr: usize) -> Result<(i64, boo
 }
 
 /// Copies a i64 from a python 2.7 PyIntObject
-pub fn copy_int(process: &remoteprocess::Process, addr: usize) -> Result<i64, Error> {
+pub fn copy_int<P: ProcessMemory>(process: &P, addr: usize) -> Result<i64, Error> {
     let value = process.copy_pointer(addr as *const crate::python_bindings::v2_7_15::PyIntObject)?;
     Ok(value.ob_ival as i64)
 }
@@ -207,8 +207,8 @@ const PY_TPFLAGS_STRING_SUBCLASS: usize = 1 << 28;
 const PY_TPFLAGS_DICT_SUBCLASS: usize =    1 << 29;
 
 /// Converts a python variable in the other process to a human readable string
-pub fn format_variable<I>(process: &remoteprocess::Process, version: &Version, addr: usize, max_length: isize)
-        -> Result<String, Error> where I: InterpreterState {
+pub fn format_variable<I, P>(process: &P, version: &Version, addr: usize, max_length: isize)
+        -> Result<String, Error> where I: InterpreterState, P: ProcessMemory {
     // We need at least 5 characters remaining for all this code to work, replace with an ellipsis if
     // we're out of space
     if max_length <= 5 {
@@ -258,8 +258,8 @@ pub fn format_variable<I>(process: &remoteprocess::Process, version: &Version, a
             let mut remaining = max_length - 2;
             for entry in DictIterator::from(process, version, addr)? {
                 let (key, value) = entry?;
-                let key = format_variable::<I>(process, version, key, remaining)?;
-                let value = format_variable::<I>(process, version, value, remaining)?;
+                let key = format_variable::<I, P>(process, version, key, remaining)?;
+                let value = format_variable::<I, P>(process, version, value, remaining)?;
                 remaining -= (key.len() + value.len()) as isize + 4;
                 if remaining <= 5 {
                     values.push("...".to_owned());
@@ -279,7 +279,7 @@ pub fn format_variable<I>(process: &remoteprocess::Process, version: &Version, a
         let mut remaining = max_length - 2;
         for i in 0..object.size() {
             let valueptr: *mut I::Object = process.copy_struct(addr + i * std::mem::size_of::<* mut I::Object>())?;
-            let value = format_variable::<I>(process, version, valueptr as usize, remaining)?;
+            let value = format_variable::<I, P>(process, version, valueptr as usize, remaining)?;
             remaining -= value.len() as isize + 2;
             if remaining <= 5 {
                 values.push("...".to_owned());
@@ -294,7 +294,7 @@ pub fn format_variable<I>(process: &remoteprocess::Process, version: &Version, a
         let mut remaining = max_length - 2;
         for i in 0..object.size() {
             let value_addr: *mut I::Object = process.copy_struct(object.address(addr, i))?;
-            let value = format_variable::<I>(process, version, value_addr as usize, remaining)?;
+            let value = format_variable::<I, P>(process, version, value_addr as usize, remaining)?;
             remaining -= value.len() as isize + 2;
             if remaining <= 5 {
                 values.push("...".to_owned());

@@ -13,11 +13,10 @@ use proc_maps::{get_process_maps, MapRange};
 
 
 use crate::binary_parser::{parse_binary, BinaryInfo};
-use crate::config::LineNo;
+use crate::config::{Config, LineNo};
 #[cfg(unwind)]
 use crate::python_bindings::{pyruntime, v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0, v3_9_5, v3_10_0, v3_11_0};
-use crate::python_interpreters::{self, ThreadState};
-use crate::python_threading::thread_name_lookup;
+use crate::python_interpreters::{InterpreterState, ThreadState};
 use crate::stack_trace::get_stack_traces;
 use crate::version::Version;
 
@@ -360,7 +359,7 @@ fn check_interpreter_addresses<P>(addrs: &[usize],
     fn check<I, P>(addrs: &[usize],
                 maps: &dyn ContainsAddr,
                 process: &P) -> Result<usize, Error>
-            where I: python_interpreters::InterpreterState, P: ProcessMemory {
+            where I: InterpreterState, P: ProcessMemory {
         for &addr in addrs {
             if maps.contains_addr(addr) {
                 // this address points to valid memory. try loading it up as a PyInterpreterState
@@ -382,7 +381,7 @@ fn check_interpreter_addresses<P>(addrs: &[usize],
                     };
 
                     // as a final sanity check, try getting the stack_traces, and only return if this works
-                    if thread.interp() as usize == addr && get_stack_traces(&interp, process, LineNo::NoLine).is_ok() {
+                    if thread.interp() as usize == addr && get_stack_traces(&interp, process, 0, None).is_ok() {
                         return Ok(addr);
                     }
                 }
@@ -409,6 +408,64 @@ fn check_interpreter_addresses<P>(addrs: &[usize],
         Version{major: 3, minor: 10, ..} => check::<v3_10_0::_is, P>(addrs, maps, process),
         Version{major: 3, minor: 11, ..} => check::<v3_11_0::_is, P>(addrs, maps, process),
         _ => Err(format_err!("Unsupported version of Python: {}", version))
+    }
+}
+
+pub fn get_threadstate_address(python_info: &PythonProcessInfo,
+                               version: &Version,
+                               config: &Config) -> Result<usize, Error> {
+    let threadstate_address = match version {
+        Version{major: 3, minor: 7..=11, ..} => {
+            match python_info.get_symbol("_PyRuntime") {
+                Some(&addr) => {
+                    if let Some(offset) = pyruntime::get_tstate_current_offset(&version) {
+                        info!("Found _PyRuntime @ 0x{:016x}, getting gilstate.tstate_current from offset 0x{:x}",
+                            addr, offset);
+                        addr as usize + offset
+                    } else {
+                        error_if_gil(config, &version, "unknown pyruntime.gilstate.tstate_current offset")?;
+                        0
+                    }
+                },
+                None => {
+                    error_if_gil(config, &version, "failed to find _PyRuntime symbol")?;
+                    0
+                }
+            }
+         },
+         _ => {
+             match python_info.get_symbol("_PyThreadState_Current") {
+                Some(&addr) => {
+                    info!("Found _PyThreadState_Current @ 0x{:016x}", addr);
+                    addr as usize
+                },
+                None => {
+                    error_if_gil(config, &version, "failed to find _PyThreadState_Current symbol")?;
+                    0
+                }
+            }
+         }
+     };
+
+    Ok(threadstate_address)
+}
+
+fn error_if_gil(config: &Config, version: &Version, msg: &str) -> Result<(), Error> {
+    lazy_static! {
+        static ref WARNED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    }
+
+    if config.gil_only {
+        if !WARNED.load(std::sync::atomic::Ordering::Relaxed) {
+            // only print this once
+            eprintln!("Cannot detect GIL holding in version '{}' on the current platform (reason: {})", version, msg);
+            eprintln!("Please open an issue in https://github.com/benfred/py-spy with the Python version and your platform.");
+            WARNED.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        Err(format_err!("Cannot detect GIL holding in version '{}' on the current platform (reason: {})", version, msg))
+    } else {
+        warn!("Unable to detect GIL usage: {}", msg);
+        Ok(())
     }
 }
 

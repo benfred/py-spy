@@ -9,7 +9,6 @@ use std::iter::FromIterator;
 use regex::RegexBuilder;
 
 use anyhow::{Error, Result, Context};
-use lazy_static::lazy_static;
 use remoteprocess::{Process, ProcessMemory, Pid, Tid};
 
 use crate::config::{Config, LockingStrategy};
@@ -18,9 +17,9 @@ use crate::native_stack_trace::NativeStack;
 use crate::python_bindings::{pyruntime, v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0, v3_9_5, v3_10_0, v3_11_0};
 use crate::python_interpreters::{InterpreterState, ThreadState};
 use crate::python_threading::thread_name_lookup;
-use crate::stack_trace::{StackTrace, get_stack_trace};
+use crate::stack_trace::{StackTrace, get_stack_trace, get_gil_threadid};
 use crate::version::Version;
-use crate::python_process_info::{PythonProcessInfo, get_python_version, get_interpreter_address};
+use crate::python_process_info::{PythonProcessInfo, get_python_version, get_interpreter_address, get_threadstate_address};
 
 /// Lets you retrieve stack traces of a running python program
 pub struct PythonSpy {
@@ -41,25 +40,6 @@ pub struct PythonSpy {
     pub dockerized: bool
 }
 
-fn error_if_gil(config: &Config, version: &Version, msg: &str) -> Result<(), Error> {
-    lazy_static! {
-        static ref WARNED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-    }
-
-    if config.gil_only {
-        if !WARNED.load(std::sync::atomic::Ordering::Relaxed) {
-            // only print this once
-            eprintln!("Cannot detect GIL holding in version '{}' on the current platform (reason: {})", version, msg);
-            eprintln!("Please open an issue in https://github.com/benfred/py-spy with the Python version and your platform.");
-            WARNED.store(true, std::sync::atomic::Ordering::Relaxed);
-        }
-        Err(format_err!("Cannot detect GIL holding in version '{}' on the current platform (reason: {})", version, msg))
-    } else {
-        warn!("Unable to detect GIL usage: {}", msg);
-        Ok(())
-    }
-}
-
 impl PythonSpy {
     /// Constructs a new PythonSpy object.
     pub fn new(pid: Pid, config: &Config) -> Result<PythonSpy, Error> {
@@ -75,47 +55,14 @@ impl PythonSpy {
         #[cfg(target_os="freebsd")]
         let _lock = process.lock();
 
-        // TODO: move get_python_version, get_interpreter_address as members on python_info ?
         let version = get_python_version(&python_info, &process)?;
         info!("python version {} detected", version);
 
         let interpreter_address = get_interpreter_address(&python_info, &process, &version)?;
         info!("Found interpreter at 0x{:016x}", interpreter_address);
     
-        // TODO: move this onto python_process_info as well?
         // lets us figure out which thread has the GIL
-        let threadstate_address = match version {
-            Version{major: 3, minor: 7..=11, ..} => {
-                match python_info.get_symbol("_PyRuntime") {
-                    Some(&addr) => {
-                        if let Some(offset) = pyruntime::get_tstate_current_offset(&version) {
-                            info!("Found _PyRuntime @ 0x{:016x}, getting gilstate.tstate_current from offset 0x{:x}",
-                                addr, offset);
-                            addr as usize + offset
-                        } else {
-                            error_if_gil(config, &version, "unknown pyruntime.gilstate.tstate_current offset")?;
-                            0
-                        }
-                    },
-                    None => {
-                        error_if_gil(config, &version, "failed to find _PyRuntime symbol")?;
-                        0
-                    }
-                }
-             },
-             _ => {
-                 match python_info.get_symbol("_PyThreadState_Current") {
-                    Some(&addr) => {
-                        info!("Found _PyThreadState_Current @ 0x{:016x}", addr);
-                        addr as usize
-                    },
-                    None => {
-                        error_if_gil(config, &version, "failed to find _PyThreadState_Current symbol")?;
-                        0
-                    }
-                }
-             }
-         };
+        let threadstate_address = get_threadstate_address(&python_info, &version, config)?;
 
         let version_string = format!("python{}.{}", version.major, version.minor);
 
@@ -213,7 +160,8 @@ impl PythonSpy {
 
         // TODO: hoist most of this code out to stack_trace.rs, and
         // then annotate the output of that with things like native stack traces etc
-        let gil_thread_id = self._get_gil_threadid::<I>()?;
+        //      have moved in gil / locals etc
+        let gil_thread_id = get_gil_threadid::<I, Process>(self.threadstate_address, &self.process)?;
 
         // Get the python interpreter, and loop over all the python threads
         let interp: I = self.process.copy_struct(self.interpreter_address)
@@ -230,9 +178,6 @@ impl PythonSpy {
             let python_thread_id = thread.thread_id();
 
             // python 3.11+ has the native thread id directly on the PyThreadState object,
-            // so use that if available
-            trace.os_thread_id = thread.native_thread_id();
-
             // for older versions of python, try using OS specific code to get the native
             // thread id (doesn' work on freebsd, or on arm/i686 processors on linux)
             if trace.os_thread_id.is_none() {
@@ -254,6 +199,7 @@ impl PythonSpy {
 
             trace.thread_name = self._get_python_thread_name(python_thread_id);
             trace.owns_gil = trace.thread_id == gil_thread_id;
+            trace.pid = self.process.pid;
 
             // Figure out if the thread is sleeping from the OS if possible
             trace.active = true;
@@ -292,7 +238,7 @@ impl PythonSpy {
                     use crate::python_data_access::format_variable;
                     let max_length = (128 * self.config.dump_locals) as isize;
                     for local in locals {
-                        let repr = format_variable::<I>(&self.process, &self.version, local.addr, max_length);
+                        let repr = format_variable::<I, Process>(&self.process, &self.version, local.addr, max_length);
                         local.repr = Some(repr.unwrap_or("?".to_owned()));
                     }
                 }
@@ -457,20 +403,6 @@ impl PythonSpy {
     #[cfg(target_os="freebsd")]
     fn _get_os_thread_id<I: InterpreterState>(&mut self, _python_thread_id: u64, _interp: &I) -> Result<Option<Tid>, Error> {
         Ok(None)
-    }
-
-    fn _get_gil_threadid<I: InterpreterState>(&self) -> Result<u64, Error> {
-        // figure out what thread has the GIL by inspecting _PyThreadState_Current
-        if self.threadstate_address > 0 {
-            let addr: usize = self.process.copy_struct(self.threadstate_address)?;
-
-            // if the addr is 0, no thread is currently holding the GIL
-            if addr != 0 {
-                let threadstate: I::ThreadState = self.process.copy_struct(addr)?;
-                return Ok(threadstate.thread_id());
-            }
-        }
-        Ok(0)
     }
 
     fn _get_python_thread_name(&mut self, python_thread_id: u64) -> Option<String> {

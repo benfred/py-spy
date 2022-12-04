@@ -23,7 +23,7 @@ use crate::config::{Config, LineNo};
 
 // TODO: basically everything here probablt should be moved to a python_process_info module
 // (works without a pythonspy)
-use crate::python_process_info::{is_python_lib, ContainsAddr, PythonProcessInfo, get_python_version, get_interpreter_address};
+use crate::python_process_info::{is_python_lib, ContainsAddr, PythonProcessInfo, get_python_version, get_interpreter_address, get_threadstate_address};
 
 #[derive(Debug, Clone)]
 pub struct CoreMapRange {
@@ -131,11 +131,11 @@ impl remoteprocess::ProcessMemory for CoreDump {
     }
 }
 
-fn get_core_stack<I, P>(interpreter_address: usize, process: &P, version: &Version) -> Result<Vec<StackTrace>, Error>
+fn get_core_stack<I, P>(interpreter_address: usize, threadstate_address: usize, process: &P, version: &Version) -> Result<Vec<StackTrace>, Error>
     where I: python_interpreters::InterpreterState, P: remoteprocess::ProcessMemory {
     let interp: I = process.copy_struct(interpreter_address)?;
 
-    let mut traces = get_stack_traces(&interp, process, LineNo::LastInstruction)?;
+    let mut traces = get_stack_traces(&interp, process, threadstate_address, None)?;
     let thread_names = thread_names_from_interpreter(&interp, process, version).ok();
 
     for trace in &mut traces {
@@ -147,6 +147,9 @@ fn get_core_stack<I, P>(interpreter_address: usize, process: &P, version: &Versi
 }
 
 pub fn parse_core(filename: &Path) -> Result<(), Error> {
+    // TODO: pass a config in
+    let config = Config::default();
+
     let dump = CoreDump::new(filename)?;
     let maps = &dump.maps;
 
@@ -197,18 +200,22 @@ pub fn parse_core(filename: &Path) -> Result<(), Error> {
     let interpreter_address = get_interpreter_address(&python_info, &dump, &version)?;
     info!("Found interpreter at 0x{:016x}", interpreter_address);
 
+    // lets us figure out which thread has the GIL
+    let threadstate_address = get_threadstate_address(&python_info, &version, &config)?;
+    info!("found threadstate at 0x{:016x}", threadstate_address);
+
     // different versions have different layouts, check as appropriate
     let traces =
     match version {
-        Version{major: 2, minor: 3..=7, ..} => get_core_stack::<v2_7_15::_is, CoreDump>(interpreter_address, &dump, &version),
-        Version{major: 3, minor: 3, ..} => get_core_stack::<v3_3_7::_is, CoreDump>(interpreter_address, &dump, &version),
-        Version{major: 3, minor: 4..=5, ..} => get_core_stack::<v3_5_5::_is, CoreDump>(interpreter_address, &dump, &version),
-        Version{major: 3, minor: 6, ..} => get_core_stack::<v3_6_6::_is, CoreDump>(interpreter_address, &dump, &version),
-        Version{major: 3, minor: 7, ..} => get_core_stack::<v3_7_0::_is, CoreDump>(interpreter_address, &dump, &version),
-        Version{major: 3, minor: 8, ..} => get_core_stack::<v3_8_0::_is, CoreDump>(interpreter_address, &dump, &version),
-        Version{major: 3, minor: 9, ..} => get_core_stack::<v3_9_5::_is, CoreDump>(interpreter_address, &dump, &version),
-        Version{major: 3, minor: 10, ..} => get_core_stack::<v3_10_0::_is, CoreDump>(interpreter_address, &dump, &version),
-        Version{major: 3, minor: 11, ..} => get_core_stack::<v3_11_0::_is, CoreDump>(interpreter_address, &dump, &version),
+        Version{major: 2, minor: 3..=7, ..} => get_core_stack::<v2_7_15::_is, CoreDump>(interpreter_address, threadstate_address, &dump, &version),
+        Version{major: 3, minor: 3, ..} => get_core_stack::<v3_3_7::_is, CoreDump>(interpreter_address, threadstate_address, &dump, &version),
+        Version{major: 3, minor: 4..=5, ..} => get_core_stack::<v3_5_5::_is, CoreDump>(interpreter_address, threadstate_address, &dump, &version),
+        Version{major: 3, minor: 6, ..} => get_core_stack::<v3_6_6::_is, CoreDump>(interpreter_address, threadstate_address, &dump, &version),
+        Version{major: 3, minor: 7, ..} => get_core_stack::<v3_7_0::_is, CoreDump>(interpreter_address, threadstate_address, &dump, &version),
+        Version{major: 3, minor: 8, ..} => get_core_stack::<v3_8_0::_is, CoreDump>(interpreter_address, threadstate_address, &dump, &version),
+        Version{major: 3, minor: 9, ..} => get_core_stack::<v3_9_5::_is, CoreDump>(interpreter_address, threadstate_address, &dump, &version),
+        Version{major: 3, minor: 10, ..} => get_core_stack::<v3_10_0::_is, CoreDump>(interpreter_address, threadstate_address, &dump, &version),
+        Version{major: 3, minor: 11, ..} => get_core_stack::<v3_11_0::_is, CoreDump>(interpreter_address, threadstate_address, &dump, &version),
         _ => Err(format_err!("Unsupported version of Python: {}", version))
     }?;
 
@@ -248,29 +255,28 @@ pub fn parse_core(filename: &Path) -> Result<(), Error> {
     }
 
   /*  TODO:
-        * GIL
-            * move code from pythonspy to pythonprocessinfo (error_on_gil, get_threadstate_address
-            * etc)
         * pass Config object into coredump.rs
-        * handle PID in get_stack_trace appropriately
-        * native threadid for python 3.11+
+        * add flag to Config (like allow coredump instead of pid)
         * local vars
         * warn about no native functionality
         * disable compiling for non -linux
         * unittest
         * Display other core related information (timestamps ? commandline etc?)
             * requires us parsing some of the structs in elfcore NT_PRPSINFO  / NT_PRSTATUS
-            * prpsinfo : program name / commandline etc
+            * prpsinfo : program name / commandline etc / pid
             * prstatus : ?? timestamp ??
-        * add flag to Config (like allow coredump instead of pid)
 
      DONE:
+        * handle PID in get_stack_trace appropriately
         * split pythonprocessinfo to own file / make coredump not rely on python_spy
         * unify CoreDump  / ContainsAddr functionality
             * parse directly as elf
             * split coredump / python coredump functionality out
         * display output formatting
         * threadnames
+        * GIL
+            * move code from pythonspy to pythonprocessinfo (error_on_gil, get_threadstate_address
+            * etc)
     */
 
     // TODO: output formatting

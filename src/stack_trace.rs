@@ -7,8 +7,8 @@ use remoteprocess::{ProcessMemory, Pid};
 use serde_derive::Serialize;
 
 use crate::python_interpreters::{InterpreterState, ThreadState, FrameObject, CodeObject, TupleObject};
-use crate::python_data_access::{copy_string, copy_bytes};
-use crate::config::LineNo;
+use crate::python_data_access::{copy_string, copy_bytes, format_variable};
+use crate::config::{Config, LineNo};
 
 /// Call stack for a single python thread
 #[derive(Debug, Clone, Serialize)]
@@ -64,14 +64,24 @@ pub struct ProcessInfo {
 }
 
 /// Given an InterpreterState, this function returns a vector of stack traces for each thread
-pub fn get_stack_traces<I, P>(interpreter: &I, process: &P, lineno: LineNo) -> Result<Vec<StackTrace>, Error>
+pub fn get_stack_traces<I, P>(interpreter: &I, process: &P, threadstate_address: usize, config: Option<&Config>) -> Result<Vec<StackTrace>, Error>
         where I: InterpreterState, P: ProcessMemory {
-    // TODO: deprecate this method
+
+    let gil_thread_id = get_gil_threadid::<I, P>(threadstate_address, process)?;
+
     let mut ret = Vec::new();
     let mut threads = interpreter.head();
+
+    let lineno = config.map(|c| c.lineno).unwrap_or(LineNo::NoLine);
+    let dump_locals = config.map(|c| c.dump_locals).unwrap_or(0);
+
     while !threads.is_null() {
         let thread = process.copy_pointer(threads).context("Failed to copy PyThreadState")?;
-        ret.push(get_stack_trace(&thread, process, false, lineno)?);
+
+        let mut trace = get_stack_trace(&thread, process, dump_locals > 0, lineno)?;
+        trace.owns_gil = trace.thread_id == gil_thread_id;
+
+        ret.push(trace);
         // This seems to happen occasionally when scanning BSS addresses for valid interpreters
         if ret.len() > 4096 {
             return Err(format_err!("Max thread recursion depth reached"));
@@ -130,10 +140,8 @@ pub fn get_stack_trace<T, P>(thread: &T, process: &P, copy_locals: bool, lineno:
 
         frame_ptr = frame.back();
     }
-    
-    // TODO: get pid ere
-    // TODO: native_thread_id if possible
-    Ok(StackTrace{pid: 12345, frames, thread_id: thread.thread_id(), thread_name: None, owns_gil: false, active: true, os_thread_id: None, process_info: None})
+
+    Ok(StackTrace{pid: 0, frames, thread_id: thread.thread_id(), thread_name: None, owns_gil: false, active: true, os_thread_id: thread.native_thread_id(), process_info: None})
 }
 
 impl StackTrace {
@@ -187,6 +195,21 @@ fn get_locals<C: CodeObject, F: FrameObject, P: ProcessMemory>(code: &C, framept
         ret.push(LocalVariable{name, addr, arg: i < argcount, repr: None});
     }
     Ok(ret)
+}
+
+pub fn get_gil_threadid<I: InterpreterState, P: ProcessMemory>(threadstate_address: usize, process: &P)
+    -> Result<u64, Error> {
+    // figure out what thread has the GIL by inspecting _PyThreadState_Current
+    if threadstate_address > 0 {
+        let addr: usize = process.copy_struct(threadstate_address)?;
+
+        // if the addr is 0, no thread is currently holding the GIL
+        if addr != 0 {
+            let threadstate: I::ThreadState = process.copy_struct(addr)?;
+            return Ok(threadstate.thread_id());
+        }
+    }
+    Ok(0)
 }
 
 impl ProcessInfo {
