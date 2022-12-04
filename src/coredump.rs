@@ -16,6 +16,7 @@ use remoteprocess::ProcessMemory;
 
 use crate::binary_parser::{BinaryInfo, parse_binary};
 use crate::python_bindings::{pyruntime, v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0, v3_9_5, v3_10_0, v3_11_0};
+use crate::python_data_access::format_variable;
 use crate::python_interpreters::InterpreterState;
 use crate::stack_trace::{StackTrace, get_stack_traces, get_stack_trace};
 use crate::python_threading::thread_names_from_interpreter;
@@ -62,8 +63,7 @@ impl CoreDump {
         file.read_to_end(&mut contents)?;
         let elf  = goblin::elf::Elf::parse(&contents)?;
 
-        // TODO: no-unwrap (return an error if there are no notes)
-        let notes = elf.iter_note_headers(&contents).unwrap();
+        let notes = elf.iter_note_headers(&contents).ok_or_else(|| format_err!("no note segment found"))?;
 
         // TODO: parse out any other information we want to display here
 
@@ -135,7 +135,6 @@ impl ProcessMemory for CoreDump {
 
 pub struct PythonCoreDump {
     core: CoreDump,
-    config: Config,
     python_info: PythonProcessInfo,
     version: Version,
     interpreter_address: usize,
@@ -143,7 +142,7 @@ pub struct PythonCoreDump {
 }
 
 impl PythonCoreDump {
-    pub fn new(filename: &Path, config: &Config) -> Result<PythonCoreDump, Error> {
+    pub fn new(filename: &Path) -> Result<PythonCoreDump, Error> {
 
         let core = CoreDump::new(filename)?;
         let maps = &core.maps;
@@ -196,40 +195,51 @@ impl PythonCoreDump {
         info!("Found interpreter at 0x{:016x}", interpreter_address);
 
         // lets us figure out which thread has the GIL
+        let config = Config::default();
         let threadstate_address = get_threadstate_address(&python_info, &version, &config)?;
         info!("found threadstate at 0x{:016x}", threadstate_address);
 
-        Ok(PythonCoreDump{core, config: config.clone(), python_info, version, interpreter_address, threadstate_address})
+        Ok(PythonCoreDump{core, python_info, version, interpreter_address, threadstate_address})
     }
 
-    pub fn get_stack(&self) -> Result<Vec<StackTrace>, Error> {
+    pub fn get_stack(&self, config: &Config) -> Result<Vec<StackTrace>, Error> {
         // different versions have different layouts, check as appropriate
         Ok(match self.version {
-            Version{major: 2, minor: 3..=7, ..} => self._get_stack::<v2_7_15::_is>(),
-            Version{major: 3, minor: 3, ..} => self._get_stack::<v3_3_7::_is>(),
-            Version{major: 3, minor: 4..=5, ..} => self._get_stack::<v3_5_5::_is>(),
-            Version{major: 3, minor: 6, ..} => self._get_stack::<v3_6_6::_is>(),
-            Version{major: 3, minor: 7, ..} => self._get_stack::<v3_7_0::_is>(),
-            Version{major: 3, minor: 8, ..} => self._get_stack::<v3_8_0::_is>(),
-            Version{major: 3, minor: 9, ..} => self._get_stack::<v3_9_5::_is>(),
-            Version{major: 3, minor: 10, ..} => self._get_stack::<v3_10_0::_is>(),
-            Version{major: 3, minor: 11, ..} => self._get_stack::<v3_11_0::_is>(),
+            Version{major: 2, minor: 3..=7, ..} => self._get_stack::<v2_7_15::_is>(config),
+            Version{major: 3, minor: 3, ..} => self._get_stack::<v3_3_7::_is>(config),
+            Version{major: 3, minor: 4..=5, ..} => self._get_stack::<v3_5_5::_is>(config),
+            Version{major: 3, minor: 6, ..} => self._get_stack::<v3_6_6::_is>(config),
+            Version{major: 3, minor: 7, ..} => self._get_stack::<v3_7_0::_is>(config),
+            Version{major: 3, minor: 8, ..} => self._get_stack::<v3_8_0::_is>(config),
+            Version{major: 3, minor: 9, ..} => self._get_stack::<v3_9_5::_is>(config),
+            Version{major: 3, minor: 10, ..} => self._get_stack::<v3_10_0::_is>(config),
+            Version{major: 3, minor: 11, ..} => self._get_stack::<v3_11_0::_is>(config),
             _ => Err(format_err!("Unsupported version of Python: {}", self.version))
         }?)
     }
 
-    fn _get_stack<I: InterpreterState>(&self) -> Result<Vec<StackTrace>, Error> {
-	let interp: I = self.core.copy_struct(self.interpreter_address)?;
+    fn _get_stack<I: InterpreterState>(&self, config: &Config) -> Result<Vec<StackTrace>, Error> {
+        let interp: I = self.core.copy_struct(self.interpreter_address)?;
 
-	let mut traces = get_stack_traces(&interp, &self.core, self.threadstate_address, None)?;
-	let thread_names = thread_names_from_interpreter(&interp, &self.core, &self.version).ok();
+        let mut traces = get_stack_traces(&interp, &self.core, self.threadstate_address, Some(config))?;
+        let thread_names = thread_names_from_interpreter(&interp, &self.core, &self.version).ok();
 
-	for trace in &mut traces {
-	    if let Some(ref thread_names) = thread_names {
-		trace.thread_name = thread_names.get(&trace.thread_id).cloned();
-	    }
-	}
-	Ok(traces)
+        for trace in &mut traces {
+            if let Some(ref thread_names) = thread_names {
+                trace.thread_name = thread_names.get(&trace.thread_id).cloned();
+            }
+
+            for frame in &mut trace.frames {
+                if let Some(locals) = frame.locals.as_mut() {
+                    let max_length = (128 * config.dump_locals) as isize;
+                    for local in locals {
+                        let repr = format_variable::<I, CoreDump>(&self.core, &self.version, local.addr, max_length);
+                        local.repr = Some(repr.unwrap_or("?".to_owned()));
+                    }
+                }
+            }
+        }
+        Ok(traces)
     }
 
     pub fn print_traces(&self, traces: &Vec<StackTrace>) -> Result<(), Error> {
@@ -238,6 +248,7 @@ impl PythonCoreDump {
         //      should change active status to 'idle'
 
         // TODO: show info from coredump (like program name, timestamp etC)
+        // TODO: reduce boilerplate, and share with the code in dump.rs
         println!("Core {}", style(self.core.filename.display()).bold());
         println!("Python v{}",
             style(&self.version).bold());
@@ -264,7 +275,24 @@ impl PythonCoreDump {
                 } else {
                     println!("    {} ({})", style(&frame.name).green(), style(&filename).cyan());
                 }
-                // TODO: local variables
+
+                if let Some(locals) = &frame.locals {
+                    let mut shown_args = false;
+                    let mut shown_locals = false;
+                    for local in locals {
+                        if local.arg && !shown_args {
+                            println!("        {}", style("Arguments:").dim());
+                            shown_args = true;
+                        } else if !local.arg && !shown_locals {
+                            println!("        {}", style("Locals:").dim());
+                            shown_locals = true;
+                        }
+
+                        let repr = local.repr.as_ref().map(String::as_str).unwrap_or("?");
+                        println!("            {}: {}", local.name, repr);
+                    }
+                }
+
             }
         }
 
@@ -274,18 +302,19 @@ impl PythonCoreDump {
 
 
   /*  TODO:
-        * pass Config object into coredump.rs
-        * add flag to Config (like allow coredump instead of pid)
-        * local vars
+        * allow calling from main py-spy executable
+                * add flag to Config (like allow coredump instead of pid)
+                * if corefilename set, then
         * warn about no native functionality
         * disable compiling for non -linux
-        * unittest
         * Display other core related information (timestamps ? commandline etc?)
             * requires us parsing some of the structs in elfcore NT_PRPSINFO  / NT_PRSTATUS
             * prpsinfo : program name / commandline etc / pid
             * prstatus : ?? timestamp ??
+        * unittest
 
      DONE:
+        * local vars
         * handle PID in get_stack_trace appropriately
         * split pythonprocessinfo to own file / make coredump not rely on python_spy
         * unify CoreDump  / ContainsAddr functionality
