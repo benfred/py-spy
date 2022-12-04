@@ -12,10 +12,11 @@ use goblin;
 use log::{info};
 use libc;
 use remoteprocess;
+use remoteprocess::ProcessMemory;
 
 use crate::binary_parser::{BinaryInfo, parse_binary};
 use crate::python_bindings::{pyruntime, v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0, v3_9_5, v3_10_0, v3_11_0};
-use crate::python_interpreters;
+use crate::python_interpreters::InterpreterState;
 use crate::stack_trace::{StackTrace, get_stack_traces, get_stack_trace};
 use crate::python_threading::thread_names_from_interpreter;
 use crate::version::Version;
@@ -49,12 +50,13 @@ impl ContainsAddr for Vec<CoreMapRange> {
 }
 
 pub struct CoreDump {
+    filename: PathBuf,
     contents: Vec<u8>,
     maps: Vec<CoreMapRange>,
 }
 
 impl CoreDump {
-    fn new(filename: &Path) -> Result<CoreDump, Error> {
+    pub fn new(filename: &Path) -> Result<CoreDump, Error> {
         let mut file = File::open(filename)?;
         let mut contents = Vec::new();
         file.read_to_end(&mut contents)?;
@@ -105,11 +107,11 @@ impl CoreDump {
             }
         }
 
-        Ok(CoreDump{contents, maps})
+        Ok(CoreDump{filename: filename.to_owned(), contents, maps})
     }
 }
 
-impl remoteprocess::ProcessMemory for CoreDump {
+impl ProcessMemory for CoreDump {
     fn read(&self, addr: usize, buf: &mut [u8]) -> Result<(), remoteprocess::Error> {
         let start = addr as u64;
         let _end = (addr + buf.len()) as u64;
@@ -131,128 +133,145 @@ impl remoteprocess::ProcessMemory for CoreDump {
     }
 }
 
-fn get_core_stack<I, P>(interpreter_address: usize, threadstate_address: usize, process: &P, version: &Version) -> Result<Vec<StackTrace>, Error>
-    where I: python_interpreters::InterpreterState, P: remoteprocess::ProcessMemory {
-    let interp: I = process.copy_struct(interpreter_address)?;
-
-    let mut traces = get_stack_traces(&interp, process, threadstate_address, None)?;
-    let thread_names = thread_names_from_interpreter(&interp, process, version).ok();
-
-    for trace in &mut traces {
-        if let Some(ref thread_names) = thread_names {
-            trace.thread_name = thread_names.get(&trace.thread_id).cloned();
-        }
-    }
-    Ok(traces)
+pub struct PythonCoreDump {
+    core: CoreDump,
+    config: Config,
+    python_info: PythonProcessInfo,
+    version: Version,
+    interpreter_address: usize,
+    threadstate_address: usize,
 }
 
-pub fn parse_core(filename: &Path) -> Result<(), Error> {
-    // TODO: pass a config in
-    let config = Config::default();
+impl PythonCoreDump {
+    pub fn new(filename: &Path, config: &Config) -> Result<PythonCoreDump, Error> {
 
-    let dump = CoreDump::new(filename)?;
-    let maps = &dump.maps;
+        let core = CoreDump::new(filename)?;
+        let maps = &core.maps;
 
-    // Get the python binary from the maps, and parse it
-    let (python_filename, python_binary) = {
-        let map = maps.iter().find(|m| m.filename().is_some() & m.is_exec()).ok_or_else(|| format_err!("Failed to get binary from coredump"))?;
-        let python_filename = map.filename().unwrap();
-        let python_binary = parse_binary(python_filename, map.start() as _ , map.size() as _);
-        info!("Found python binary @ {}", python_filename.display());
-        (python_filename.to_owned(), python_binary)
-    };
-
-    // get the libpython binary (if any) from maps
-    let libpython_binary = {
-        let libmap = maps.iter()
-            .find(|m| {
-                if let Some(pathname) = m.filename() {
-                    if let Some(pathname) = pathname.to_str() {
-                        return is_python_lib(pathname) && m.is_exec();
-                    }
-                }
-                false
-            });
-
-        let mut libpython_binary: Option<BinaryInfo> = None;
-        if let Some(libpython) = libmap {
-            if let Some(filename) = &libpython.filename() {
-                info!("Found libpython binary @ {}", filename.display());
-                let parsed = parse_binary(filename, libpython.start() as u64, libpython.size() as u64)?;
-                libpython_binary = Some(parsed);
-            }
-        }
-        libpython_binary
-    };
-
-    // If we have a libpython binary - we can tolerate failures on parsing the main python binary.
-    let python_binary = match libpython_binary {
-        None => Some(python_binary.context("Failed to parse python binary")?),
-        _ => python_binary.ok(),
-    };
-
-    let python_info = PythonProcessInfo{python_binary, libpython_binary, maps: Box::new(dump.maps.clone()),
-        python_filename: python_filename, dockerized: false};
-
-    let version = get_python_version(&python_info, &dump).context("failed to get python version")?;
-    info!("Got python version {}", version);
-
-    let interpreter_address = get_interpreter_address(&python_info, &dump, &version)?;
-    info!("Found interpreter at 0x{:016x}", interpreter_address);
-
-    // lets us figure out which thread has the GIL
-    let threadstate_address = get_threadstate_address(&python_info, &version, &config)?;
-    info!("found threadstate at 0x{:016x}", threadstate_address);
-
-    // different versions have different layouts, check as appropriate
-    let traces =
-    match version {
-        Version{major: 2, minor: 3..=7, ..} => get_core_stack::<v2_7_15::_is, CoreDump>(interpreter_address, threadstate_address, &dump, &version),
-        Version{major: 3, minor: 3, ..} => get_core_stack::<v3_3_7::_is, CoreDump>(interpreter_address, threadstate_address, &dump, &version),
-        Version{major: 3, minor: 4..=5, ..} => get_core_stack::<v3_5_5::_is, CoreDump>(interpreter_address, threadstate_address, &dump, &version),
-        Version{major: 3, minor: 6, ..} => get_core_stack::<v3_6_6::_is, CoreDump>(interpreter_address, threadstate_address, &dump, &version),
-        Version{major: 3, minor: 7, ..} => get_core_stack::<v3_7_0::_is, CoreDump>(interpreter_address, threadstate_address, &dump, &version),
-        Version{major: 3, minor: 8, ..} => get_core_stack::<v3_8_0::_is, CoreDump>(interpreter_address, threadstate_address, &dump, &version),
-        Version{major: 3, minor: 9, ..} => get_core_stack::<v3_9_5::_is, CoreDump>(interpreter_address, threadstate_address, &dump, &version),
-        Version{major: 3, minor: 10, ..} => get_core_stack::<v3_10_0::_is, CoreDump>(interpreter_address, threadstate_address, &dump, &version),
-        Version{major: 3, minor: 11, ..} => get_core_stack::<v3_11_0::_is, CoreDump>(interpreter_address, threadstate_address, &dump, &version),
-        _ => Err(format_err!("Unsupported version of Python: {}", version))
-    }?;
-
-    // TODO: json output
-    //      needs config object
-    //      should change active status to 'idle'
-
-    // TODO: show info from coredump (like program name, timestamp etC)
-    println!("Core {}", style(filename.display()).bold());
-    println!("Python v{}",
-        style(&version).bold());
-
-    for trace in traces.iter().rev() {
-        let thread_id = trace.format_threadid();
-
-        // unlike the main dump - don't show thread active status since we can't easily get that
-        // from the core dump
-        let status = if trace.owns_gil { format!(" (gil)") } else { "".to_owned() };
-        match trace.thread_name.as_ref() {
-            Some(name) => {
-                println!("Thread {}{}: \"{}\"", style(thread_id).bold().yellow(), status, name);
-            }
-            None => {
-                println!("Thread {}{}", style(thread_id).bold().yellow(), status);
-            }
+        // Get the python binary from the maps, and parse it
+        let (python_filename, python_binary) = {
+            let map = maps.iter().find(|m| m.filename().is_some() & m.is_exec()).ok_or_else(|| format_err!("Failed to get binary from coredump"))?;
+            let python_filename = map.filename().unwrap();
+            let python_binary = parse_binary(python_filename, map.start() as _ , map.size() as _);
+            info!("Found python binary @ {}", python_filename.display());
+            (python_filename.to_owned(), python_binary)
         };
 
-        for frame in &trace.frames {
-            let filename = match &frame.short_filename { Some(f) => &f, None => &frame.filename };
-            if frame.line != 0 {
-                println!("    {} ({}:{})", style(&frame.name).green(), style(&filename).cyan(), style(frame.line).dim());
-            } else {
-                println!("    {} ({})", style(&frame.name).green(), style(&filename).cyan());
+        // get the libpython binary (if any) from maps
+        let libpython_binary = {
+            let libmap = maps.iter()
+                .find(|m| {
+                    if let Some(pathname) = m.filename() {
+                        if let Some(pathname) = pathname.to_str() {
+                            return is_python_lib(pathname) && m.is_exec();
+                        }
+                    }
+                    false
+                });
+
+            let mut libpython_binary: Option<BinaryInfo> = None;
+            if let Some(libpython) = libmap {
+                if let Some(filename) = &libpython.filename() {
+                    info!("Found libpython binary @ {}", filename.display());
+                    let parsed = parse_binary(filename, libpython.start() as u64, libpython.size() as u64)?;
+                    libpython_binary = Some(parsed);
+                }
             }
-            // TODO: local variables
-        }
+            libpython_binary
+        };
+
+        // If we have a libpython binary - we can tolerate failures on parsing the main python binary.
+        let python_binary = match libpython_binary {
+            None => Some(python_binary.context("Failed to parse python binary")?),
+            _ => python_binary.ok(),
+        };
+
+        let python_info = PythonProcessInfo{python_binary, libpython_binary, maps: Box::new(core.maps.clone()),
+            python_filename: python_filename, dockerized: false};
+
+        let version = get_python_version(&python_info, &core).context("failed to get python version")?;
+        info!("Got python version {}", version);
+
+        let interpreter_address = get_interpreter_address(&python_info, &core, &version)?;
+        info!("Found interpreter at 0x{:016x}", interpreter_address);
+
+        // lets us figure out which thread has the GIL
+        let threadstate_address = get_threadstate_address(&python_info, &version, &config)?;
+        info!("found threadstate at 0x{:016x}", threadstate_address);
+
+        Ok(PythonCoreDump{core, config: config.clone(), python_info, version, interpreter_address, threadstate_address})
     }
+
+    pub fn get_stack(&self) -> Result<Vec<StackTrace>, Error> {
+        // different versions have different layouts, check as appropriate
+        Ok(match self.version {
+            Version{major: 2, minor: 3..=7, ..} => self._get_stack::<v2_7_15::_is>(),
+            Version{major: 3, minor: 3, ..} => self._get_stack::<v3_3_7::_is>(),
+            Version{major: 3, minor: 4..=5, ..} => self._get_stack::<v3_5_5::_is>(),
+            Version{major: 3, minor: 6, ..} => self._get_stack::<v3_6_6::_is>(),
+            Version{major: 3, minor: 7, ..} => self._get_stack::<v3_7_0::_is>(),
+            Version{major: 3, minor: 8, ..} => self._get_stack::<v3_8_0::_is>(),
+            Version{major: 3, minor: 9, ..} => self._get_stack::<v3_9_5::_is>(),
+            Version{major: 3, minor: 10, ..} => self._get_stack::<v3_10_0::_is>(),
+            Version{major: 3, minor: 11, ..} => self._get_stack::<v3_11_0::_is>(),
+            _ => Err(format_err!("Unsupported version of Python: {}", self.version))
+        }?)
+    }
+
+    fn _get_stack<I: InterpreterState>(&self) -> Result<Vec<StackTrace>, Error> {
+	let interp: I = self.core.copy_struct(self.interpreter_address)?;
+
+	let mut traces = get_stack_traces(&interp, &self.core, self.threadstate_address, None)?;
+	let thread_names = thread_names_from_interpreter(&interp, &self.core, &self.version).ok();
+
+	for trace in &mut traces {
+	    if let Some(ref thread_names) = thread_names {
+		trace.thread_name = thread_names.get(&trace.thread_id).cloned();
+	    }
+	}
+	Ok(traces)
+    }
+
+    pub fn print_traces(&self, traces: &Vec<StackTrace>) -> Result<(), Error> {
+        // TODO: json output
+        //      needs config object
+        //      should change active status to 'idle'
+
+        // TODO: show info from coredump (like program name, timestamp etC)
+        println!("Core {}", style(self.core.filename.display()).bold());
+        println!("Python v{}",
+            style(&self.version).bold());
+
+        for trace in traces.iter().rev() {
+            let thread_id = trace.format_threadid();
+
+            // unlike the main dump - don't show thread active status since we can't easily get that
+            // from the core dump
+            let status = if trace.owns_gil { format!(" (gil)") } else { "".to_owned() };
+            match trace.thread_name.as_ref() {
+                Some(name) => {
+                    println!("Thread {}{}: \"{}\"", style(thread_id).bold().yellow(), status, name);
+                }
+                None => {
+                    println!("Thread {}{}", style(thread_id).bold().yellow(), status);
+                }
+            };
+
+            for frame in &trace.frames {
+                let filename = match &frame.short_filename { Some(f) => &f, None => &frame.filename };
+                if frame.line != 0 {
+                    println!("    {} ({}:{})", style(&frame.name).green(), style(&filename).cyan(), style(frame.line).dim());
+                } else {
+                    println!("    {} ({})", style(&frame.name).green(), style(&filename).cyan());
+                }
+                // TODO: local variables
+            }
+        }
+
+        Ok(())
+    }
+}
+
 
   /*  TODO:
         * pass Config object into coredump.rs
@@ -283,10 +302,6 @@ pub fn parse_core(filename: &Path) -> Result<(), Error> {
     // TODO: dispatch macro : basically call a function templatized on interpreterstate
     // version (outside of scope of this PR)
     // TODO: display other core related information (?)
-
-    Ok(())
-}
-
 
 /* TODO: do we still need this
                 let name = match note.n_type {
