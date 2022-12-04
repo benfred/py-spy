@@ -131,7 +131,8 @@ pub fn get_stack_trace<T, P>(thread: &T, process: &P, copy_locals: bool, lineno:
         frame_ptr = frame.back();
     }
     
-    // TODO: get pid ere 
+    // TODO: get pid ere
+    // TODO: native_thread_id if possible
     Ok(StackTrace{pid: 12345, frames, thread_id: thread.thread_id(), thread_name: None, owns_gil: false, active: true, os_thread_id: None, process_info: None})
 }
 

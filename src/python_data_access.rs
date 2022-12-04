@@ -46,7 +46,7 @@ pub fn copy_bytes<T: BytesObject, P: ProcessMemory>(ptr: * const T, process: &P)
 }
 
 /// Copies a i64 from a PyLongObject. Returns the value + if it overflowed
-pub fn copy_long(process: &remoteprocess::Process, addr: usize) -> Result<(i64, bool), Error> {
+pub fn copy_long<P: ProcessMemory>(process: &P, addr: usize) -> Result<(i64, bool), Error> {
     // this is PyLongObject for a specific version of python, but this works since it's binary compatible
     // layout across versions we're targeting
     let value = process.copy_pointer(addr as *const crate::python_bindings::v3_7_0::PyLongObject)?;
@@ -87,8 +87,8 @@ pub fn copy_int(process: &remoteprocess::Process, addr: usize) -> Result<i64, Er
 
 /// Allows iteration of a python dictionary. Only supports python 3.6+ right now
 
-pub struct DictIterator<'a> {
-    process: &'a remoteprocess::Process,
+pub struct DictIterator<'a, P: 'a> {
+    process: &'a P,
     entries_addr: usize,
     kind: u8,
     index: usize,
@@ -96,8 +96,8 @@ pub struct DictIterator<'a> {
     values: usize
 }
 
-impl<'a> DictIterator<'a> {
-    pub fn from_managed_dict(process: &'a remoteprocess::Process, version: &'a Version, addr: usize, tp_addr: usize) -> Result<DictIterator<'a>, Error> {
+impl<'a, P: ProcessMemory> DictIterator<'a, P> {
+    pub fn from_managed_dict(process: &'a P, version: &'a Version, addr: usize, tp_addr: usize) -> Result<DictIterator<'a, P>, Error> {
         // Handles logic of _PyObject_ManagedDictPointer in python 3.11
         let values_addr: usize = process.copy_struct(addr - 4 * std::mem::size_of::<usize>())?;
         let dict_addr: usize = process.copy_struct(addr - 3 * std::mem::size_of::<usize>())?;
@@ -114,7 +114,7 @@ impl<'a> DictIterator<'a> {
         }
     }
 
-    pub fn from(process: &'a remoteprocess::Process, version: &'a Version, addr: usize) -> Result<DictIterator<'a>, Error> {
+    pub fn from(process: &'a P, version: &'a Version, addr: usize) -> Result<DictIterator<'a, P>, Error>  {
          match version {
             Version{major: 3, minor: 11, ..} => {
                 let dict: crate::python_bindings::v3_11_0::PyDictObject = process.copy_struct(addr)?;
@@ -146,7 +146,7 @@ impl<'a> DictIterator<'a> {
     }
 }
 
-impl<'a> Iterator for DictIterator<'a> {
+impl<'a, P: ProcessMemory> Iterator for DictIterator<'a, P> {
     type Item = Result<(usize, usize), Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
