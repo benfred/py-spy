@@ -15,6 +15,7 @@ use remoteprocess;
 use remoteprocess::ProcessMemory;
 
 use crate::binary_parser::{BinaryInfo, parse_binary};
+use crate::dump::print_trace;
 use crate::python_bindings::{pyruntime, v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0, v3_9_5, v3_10_0, v3_11_0};
 use crate::python_data_access::format_variable;
 use crate::python_interpreters::InterpreterState;
@@ -126,9 +127,9 @@ impl ProcessMemory for CoreDump {
         let _end = (addr + buf.len()) as u64;
 
         for map in &self.maps {
-            // TODO: issue is the bss addr spans multiple mmap sections - so checking the 'end'
-            // here means we skip it (though works)
-            // if start >= ph.p_vaddr && end <= (ph.p_vaddr + ph.p_memsz) {
+            // TODO: one issue here is the bss addr spans multiple mmap segments - so checking the 'end'
+            // here means we skip it. Instead we're just checking if the start address exists in
+            // the segment
             let ph = &map.segment;
             if start >= ph.p_vaddr && start <= (ph.p_vaddr + ph.p_memsz) {
                 let offset = (start - ph.p_vaddr + ph.p_offset) as usize;
@@ -212,6 +213,10 @@ impl PythonCoreDump {
     }
 
     pub fn get_stack(&self, config: &Config) -> Result<Vec<StackTrace>, Error> {
+        if config.native {
+            return Err(format_err!("Native unwinding isn't supported with coredump yet"));
+        }
+
         // different versions have different layouts, check as appropriate
         Ok(match self.version {
             Version{major: 2, minor: 3..=7, ..} => self._get_stack::<v2_7_15::_is>(config),
@@ -251,63 +256,22 @@ impl PythonCoreDump {
         Ok(traces)
     }
 
-    pub fn print_traces(&self, traces: &Vec<StackTrace>) -> Result<(), Error> {
-        // println!("psinfo {:#?}", self.core.psinfo);
+    pub fn print_traces(&self, traces: &Vec<StackTrace>, config: &Config) -> Result<(), Error> {
+        if config.dump_json {
+            println!("{}", serde_json::to_string_pretty(&traces)?);
+            return Ok(())
+        }
+
         if let Some(psinfo) = self.core.psinfo {
             println!("Process {}: {}",
                 style(psinfo.pr_pid).bold().yellow(),
                 OsStr::from_bytes(&psinfo.pr_psargs).to_string_lossy());
         }
-        println!("Python v{}",
-            style(&self.version).bold());
-
-        // TODO: show info from coredump (like program name, timestamp etC)
-        // TODO: reduce boilerplate, and share with the code in dump.rs
-        //          also handles JSON output
-
+        println!("Python v{}", style(&self.version).bold());
+        println!("");
         for trace in traces.iter().rev() {
-            let thread_id = trace.format_threadid();
-
-            // unlike the main dump - don't show thread active status since we can't easily get that
-            // from the core dump
-            let status = if trace.owns_gil { format!(" (gil)") } else { "".to_owned() };
-            match trace.thread_name.as_ref() {
-                Some(name) => {
-                    println!("Thread {}{}: \"{}\"", style(thread_id).bold().yellow(), status, name);
-                }
-                None => {
-                    println!("Thread {}{}", style(thread_id).bold().yellow(), status);
-                }
-            };
-
-            for frame in &trace.frames {
-                let filename = match &frame.short_filename { Some(f) => &f, None => &frame.filename };
-                if frame.line != 0 {
-                    println!("    {} ({}:{})", style(&frame.name).green(), style(&filename).cyan(), style(frame.line).dim());
-                } else {
-                    println!("    {} ({})", style(&frame.name).green(), style(&filename).cyan());
-                }
-
-                if let Some(locals) = &frame.locals {
-                    let mut shown_args = false;
-                    let mut shown_locals = false;
-                    for local in locals {
-                        if local.arg && !shown_args {
-                            println!("        {}", style("Arguments:").dim());
-                            shown_args = true;
-                        } else if !local.arg && !shown_locals {
-                            println!("        {}", style("Locals:").dim());
-                            shown_locals = true;
-                        }
-
-                        let repr = local.repr.as_ref().map(String::as_str).unwrap_or("?");
-                        println!("            {}: {}", local.name, repr);
-                    }
-                }
-
-            }
+            print_trace(&trace, false);
         }
-
         Ok(())
     }
 }
@@ -371,12 +335,12 @@ mod elfcore {
         * allow calling from main py-spy executable
                 * add flag to Config (like allow coredump instead of pid)
                 * if corefilename set, then
-        * warn about no native functionality
-        * disable compiling for non -linux
-        * share print functionality with dump.rs
         * unittest
 
      DONE:
+        * warn about no native functionality
+        * disable compiling for non -linux
+        * share print functionality with dump.rs
         * Display other core related information (timestamps ? commandline etc?)
             * requires us parsing some of the structs in elfcore NT_PRPSINFO  / NT_PRSTATUS
             * prpsinfo : program name / commandline etc / pid

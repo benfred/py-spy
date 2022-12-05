@@ -4,6 +4,7 @@ extern crate anyhow;
 extern crate log;
 
 mod config;
+#[cfg(target_os="linux")]
 mod coredump;
 mod dump;
 mod binary_parser;
