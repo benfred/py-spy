@@ -211,7 +211,11 @@ impl PythonCoreDump {
 
     pub fn get_stack(&self, config: &Config) -> Result<Vec<StackTrace>, Error> {
         if config.native {
-            return Err(format_err!("Native unwinding isn't supported with coredump yet"));
+            return Err(format_err!("Native unwinding isn't yet supported with coredumps"));
+        }
+
+        if config.subprocesses {
+            return Err(format_err!("Subprocesses can't be used for getting stacktraces from coredumps"));
         }
 
         // different versions have different layouts, check as appropriate
@@ -329,60 +333,6 @@ mod elfcore {
 }
 
   /*  TODO:
-        * allow calling from main py-spy executable
-                * add flag to Config (like allow coredump instead of pid)
-                * if corefilename set, then
         * unittest
-
-     DONE:
-        * warn about no native functionality
-        * disable compiling for non -linux
-        * share print functionality with dump.rs
-        * Display other core related information (timestamps ? commandline etc?)
-            * requires us parsing some of the structs in elfcore NT_PRPSINFO  / NT_PRSTATUS
-            * prpsinfo : program name / commandline etc / pid
-            * prstatus : ?? timestamp ??
-        * local vars
-        * handle PID in get_stack_trace appropriately
-        * split pythonprocessinfo to own file / make coredump not rely on python_spy
-        * unify CoreDump  / ContainsAddr functionality
-            * parse directly as elf
-            * split coredump / python coredump functionality out
-        * display output formatting
-        * threadnames
-        * GIL
-            * move code from pythonspy to pythonprocessinfo (error_on_gil, get_threadstate_address
-            * etc)
     */
 
-    // TODO: dispatch macro : basically call a function templatized on interpreterstate
-    // version (outside of scope of this PR)
-
-/* TODO: do we still need this
-                let name = match note.n_type {
-                    // TODO: valide for name == "CORE"
-                    goblin::elf::note::NT_FILE => "NT_FILE",  // mapped files
-                    goblin::elf::note::NT_PRSTATUS => "NT_PRSTATUS",  // (prstatus structure)
-                    goblin::elf::note::NT_SIGINFO => "NT_SIGINFO",  // (siginfo_t data)
-                    goblin::elf::note::NT_PRPSINFO => "NT_PRPSINFO", // (prpsinfo structure)
-
-                    // https://github.com/rust-lang/libc/blob/e4b8fd4f59a87346c870295c8125469c672998aa/src/unix/linux_like/linux/gnu/mod.rs#L939
-                    // doesn't seem to be defined in goblin though?
-                    2 => "NT_FPREGSET", // (floating point registers)
-                    6 => "NT_AUXV", // (auxiliary vector)
-                    // TODO: valid for name == "LINUX"
-                    514 => "NT_X86_XSTATE",  // (x86 XSAVE extended state)
-                    _ => "other"
-                };
-
-  */
-                // PRSTATUS: registers/ pid /signal information  usertime/systemtime
-                // https://github.com/torvalds/linux/blob/01f856ae6d0ca5ad0505b79bf2d22d7ca439b2a1/include/linux/elfcore.h#L32
-                // Is there a memory layout for this anywhere ?
-                // is in elfcore, probably will have to come up with our own here
-                /*
-                if note.n_type ==  goblin::elf::note::NT_PRSTATUS  {
-                    let registers = unsafe { *(note.desc[112..].as_ptr() as * const Registers) };
-                    println!("dude {} {} {:#?}", note.desc.len(), std::mem::size_of::<Registers>(), registers);
-                }
-                */
