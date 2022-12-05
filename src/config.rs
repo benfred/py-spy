@@ -52,6 +52,8 @@ pub struct Config {
     pub full_filenames: bool,
     #[doc(hidden)]
     pub lineno: LineNo,
+    #[doc(hidden)]
+    pub core_filename: Option<String>,
 }
 
 #[allow(non_camel_case_types)]
@@ -116,7 +118,7 @@ impl Default for Config {
                duration: RecordDuration::Unlimited, native: false,
                gil_only: false, include_idle: false, include_thread_ids: false,
                hide_progress: false, capture_output: true, dump_json: false, dump_locals: 0, subprocesses: false,
-               full_filenames: false, lineno: LineNo::LastInstruction }
+               full_filenames: false, lineno: LineNo::LastInstruction, core_filename: None }
     }
 }
 
@@ -241,10 +243,25 @@ impl Config {
             .arg(gil.clone())
             .arg(idle.clone());
 
+        #[cfg(target_os="linux")]
+        let dump_pid = pid.clone().required_unless_present("core");
+
+        #[cfg(not(target_os="linux"))]
+        let dump_pid = pid.clone().required(true);
+
         let dump = Command::new("dump")
             .about("Dumps stack traces for a target program to stdout")
-            .arg(pid.clone().required(true))
-            .arg(full_filenames.clone())
+            .arg(dump_pid);
+
+        #[cfg(target_os="linux")]
+        let dump = dump.arg(Arg::new("core")
+            .short('c')
+            .long("core")
+            .help("Filename of coredump to display python stack traces from")
+            .value_name("core")
+            .takes_value(true));
+
+        let dump = dump.arg(full_filenames.clone())
             .arg(Arg::new("locals")
                 .short('l')
                 .long("locals")
@@ -321,6 +338,11 @@ impl Config {
             "dump" => {
                 config.dump_json = matches.occurrences_of("json") > 0;
                 config.dump_locals = matches.occurrences_of("locals");
+
+                #[cfg(target_os="linux")]
+                {
+                config.core_filename = matches.value_of("core").map(|f| f.to_owned());
+                }
             },
             "completions" => {
                 let shell = matches.get_one::<clap_complete::Shell>("shell").unwrap();

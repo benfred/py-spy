@@ -31,17 +31,21 @@ extern crate log;
 
 pub mod config;
 pub mod binary_parser;
+#[cfg(target_os="linux")]
+pub mod coredump;
 #[cfg(unwind)]
 mod cython;
+pub mod dump;
 #[cfg(unwind)]
 mod native_stack_trace;
 mod python_bindings;
 mod python_interpreters;
-mod python_spy;
+pub mod python_spy;
+pub mod python_process_info;
 mod python_data_access;
 mod python_threading;
 pub mod sampler;
-mod stack_trace;
+pub mod stack_trace;
 pub mod timer;
 mod utils;
 mod version;

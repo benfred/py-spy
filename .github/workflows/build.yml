@@ -58,6 +58,7 @@ jobs:
       run: |
         pip install --upgrade maturin
         maturin build --release -o dist
+      if: runner.os != 'Linux'
     - name: Build Wheel - universal2
       env:
         DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
@@ -71,6 +72,7 @@ jobs:
     - name: Rename Wheels
       run: |
         python3 -c "import shutil; import glob; wheels = glob.glob('dist/*.whl'); [shutil.move(wheel, wheel.replace('py3', 'py2.py3')) for wheel in wheels if 'py2' not in wheel]"
+      if: runner.os != 'Linux'
     - name: Upload wheels
       uses: actions/upload-artifact@v2
       with:
