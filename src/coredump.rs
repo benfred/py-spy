@@ -54,6 +54,8 @@ pub struct CoreDump {
     filename: PathBuf,
     contents: Vec<u8>,
     maps: Vec<CoreMapRange>,
+    psinfo: Option<elfcore::elf_prpsinfo>,
+    status: Vec<elfcore::elf_prstatus>,
 }
 
 impl CoreDump {
@@ -65,12 +67,19 @@ impl CoreDump {
 
         let notes = elf.iter_note_headers(&contents).ok_or_else(|| format_err!("no note segment found"))?;
 
-        // TODO: parse out any other information we want to display here
-
         let mut filenames = HashMap::new();
+        let mut psinfo = None;
+        let mut status = Vec::new();
         for note in notes {
             if let Ok(note) = note {
-                if note.n_type == goblin::elf::note::NT_FILE {
+                if note.n_type == goblin::elf::note::NT_PRPSINFO {
+                    psinfo = Some(unsafe { *(note.desc.as_ptr() as * const elfcore::elf_prpsinfo) });
+                }
+                else if note.n_type == goblin::elf::note::NT_PRSTATUS {
+                    let thread_status = unsafe { *(note.desc.as_ptr() as * const elfcore::elf_prstatus) };
+                    status.push(thread_status);
+                }
+                else if note.n_type == goblin::elf::note::NT_FILE {
                     let data = note.desc;
                     let ptrs = data.as_ptr() as * const usize;
 
@@ -107,7 +116,7 @@ impl CoreDump {
             }
         }
 
-        Ok(CoreDump{filename: filename.to_owned(), contents, maps})
+        Ok(CoreDump{filename: filename.to_owned(), contents, maps, psinfo, status})
     }
 }
 
@@ -243,15 +252,18 @@ impl PythonCoreDump {
     }
 
     pub fn print_traces(&self, traces: &Vec<StackTrace>) -> Result<(), Error> {
-        // TODO: json output
-        //      needs config object
-        //      should change active status to 'idle'
+        // println!("psinfo {:#?}", self.core.psinfo);
+        if let Some(psinfo) = self.core.psinfo {
+            println!("Process {}: {}",
+                style(psinfo.pr_pid).bold().yellow(),
+                OsStr::from_bytes(&psinfo.pr_psargs).to_string_lossy());
+        }
+        println!("Python v{}",
+            style(&self.version).bold());
 
         // TODO: show info from coredump (like program name, timestamp etC)
         // TODO: reduce boilerplate, and share with the code in dump.rs
-        println!("Core {}", style(self.core.filename.display()).bold());
-        println!("Python v{}",
-            style(&self.version).bold());
+        //          also handles JSON output
 
         for trace in traces.iter().rev() {
             let thread_id = trace.format_threadid();
@@ -300,6 +312,60 @@ impl PythonCoreDump {
     }
 }
 
+mod elfcore {
+    pub const ELF_PRARGSZ: u32 = 80;
+    #[repr(C)]
+    #[derive(Debug, Copy, Clone)]
+    pub struct elf_siginfo {
+        pub si_signo: ::std::os::raw::c_int,
+        pub si_code: ::std::os::raw::c_int,
+        pub si_errno: ::std::os::raw::c_int,
+    }
+
+    #[repr(C)]
+    #[derive(Debug, Copy, Clone)]
+    pub struct timeval {
+        pub tv_sec: ::std::os::raw::c_long,
+        pub tv_usec: ::std::os::raw::c_long,
+    }
+
+    #[repr(C)]
+    #[derive(Debug, Copy, Clone)]
+    pub struct elf_prstatus {
+        pub pr_info: elf_siginfo,
+        pub pr_cursig: ::std::os::raw::c_short,
+        pub pr_sigpend: ::std::os::raw::c_ulong,
+        pub pr_sighold: ::std::os::raw::c_ulong,
+        pub pr_pid: ::std::os::raw::c_int,
+        pub pr_ppid: ::std::os::raw::c_int,
+        pub pr_pgrp: ::std::os::raw::c_int,
+        pub pr_sid: ::std::os::raw::c_int,
+        pub pr_utime: timeval,
+        pub pr_stime: timeval,
+        pub pr_cutime: timeval,
+        pub pr_cstime: timeval,
+        // TODO: has registers next for thread next - don't need them right now, but if we want to do
+        // unwinding we will
+    }
+
+    #[repr(C)]
+    #[derive(Debug, Copy, Clone)]
+    pub struct elf_prpsinfo {
+        pub pr_state: ::std::os::raw::c_char,
+        pub pr_sname: ::std::os::raw::c_char,
+        pub pr_zomb: ::std::os::raw::c_char,
+        pub pr_nice: ::std::os::raw::c_char,
+        pub pr_flag: ::std::os::raw::c_ulong,
+        pub pr_uid: ::std::os::raw::c_uint,
+        pub pr_gid: ::std::os::raw::c_uint,
+        pub pr_pid: ::std::os::raw::c_int,
+        pub pr_ppid: ::std::os::raw::c_int,
+        pub pr_pgrp: ::std::os::raw::c_int,
+        pub pr_sid: ::std::os::raw::c_int,
+        pub pr_fname: [::std::os::raw::c_uchar; 16usize],
+        pub pr_psargs: [::std::os::raw::c_uchar; 80usize],
+    }
+}
 
   /*  TODO:
         * allow calling from main py-spy executable
@@ -307,13 +373,14 @@ impl PythonCoreDump {
                 * if corefilename set, then
         * warn about no native functionality
         * disable compiling for non -linux
+        * share print functionality with dump.rs
+        * unittest
+
+     DONE:
         * Display other core related information (timestamps ? commandline etc?)
             * requires us parsing some of the structs in elfcore NT_PRPSINFO  / NT_PRSTATUS
             * prpsinfo : program name / commandline etc / pid
             * prstatus : ?? timestamp ??
-        * unittest
-
-     DONE:
         * local vars
         * handle PID in get_stack_trace appropriately
         * split pythonprocessinfo to own file / make coredump not rely on python_spy
