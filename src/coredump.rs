@@ -57,7 +57,8 @@ pub struct CoreDump {
 }
 
 impl CoreDump {
-    pub fn new(filename: &Path) -> Result<CoreDump, Error> {
+    pub fn new<P: AsRef<Path>>(filename: P) -> Result<CoreDump, Error> {
+        let filename = filename.as_ref();
         let mut file = File::open(filename)?;
         let mut contents = Vec::new();
         file.read_to_end(&mut contents)?;
@@ -148,8 +149,7 @@ pub struct PythonCoreDump {
 }
 
 impl PythonCoreDump {
-    pub fn new(filename: &Path) -> Result<PythonCoreDump, Error> {
-
+    pub fn new<P: AsRef<Path>>(filename: P) -> Result<PythonCoreDump, Error> {
         let core = CoreDump::new(filename)?;
         let maps = &core.maps;
 
@@ -337,7 +337,40 @@ mod elfcore {
     }
 }
 
-  /*  TODO:
-        * unittest
-    */
+#[cfg(test)]
+mod test {
+    use super::*;
+    use py_spy_testdata::get_coredump_path;
 
+    #[cfg(target_pointer_width = "64")]
+    #[test]
+    fn test_coredump() {
+        // we won't have the python binary for the core dump here,
+        // so we can't (yet) figure out the interpreter address & version.
+        // Manually specify here to test out instead
+        let core = CoreDump::new(&get_coredump_path("python_3_9_threads")).unwrap();
+        let version =  Version{major: 3, minor: 9, patch: 13, release_flags: "".to_owned()};
+        let python_core = PythonCoreDump {
+            core,
+            version,
+            interpreter_address: 0x000055a8293dbe20,
+            threadstate_address: 0x000055a82745fe18};
+
+        let config = Config::default();
+        let traces = python_core.get_stack(&config).unwrap();
+
+        // should have two threads
+        assert_eq!(traces.len(), 2);
+
+        let main_thread = &traces[1];
+        assert_eq!(main_thread.frames.len(), 1);
+        assert_eq!(main_thread.frames[0].name, "<module>");
+        assert_eq!(main_thread.thread_name, Some("MainThread".to_owned()));
+
+        let child_thread = &traces[0];
+        assert_eq!(child_thread.frames.len(), 5);
+        assert_eq!(child_thread.frames[0].name, "dump_sum");
+        assert_eq!(child_thread.frames[0].line, 16);
+        assert_eq!(child_thread.thread_name, Some("child_thread".to_owned()));
+    }
+}
