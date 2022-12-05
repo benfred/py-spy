@@ -35,7 +35,7 @@ pub mod binary_parser;
 pub mod coredump;
 #[cfg(unwind)]
 mod cython;
-mod dump;
+pub mod dump;
 #[cfg(unwind)]
 mod native_stack_trace;
 mod python_bindings;

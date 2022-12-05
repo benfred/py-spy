@@ -7,7 +7,7 @@ use remoteprocess::{ProcessMemory, Pid};
 use serde_derive::Serialize;
 
 use crate::python_interpreters::{InterpreterState, ThreadState, FrameObject, CodeObject, TupleObject};
-use crate::python_data_access::{copy_string, copy_bytes, format_variable};
+use crate::python_data_access::{copy_string, copy_bytes};
 use crate::config::{Config, LineNo};
 
 /// Call stack for a single python thread

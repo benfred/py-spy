@@ -7,7 +7,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::io::Read;
 
 use anyhow::{Error, Context, Result};
-use console::{Term, style};
+use console::style;
 use goblin;
 use log::{info};
 use libc;
@@ -16,14 +16,14 @@ use remoteprocess::ProcessMemory;
 
 use crate::binary_parser::{BinaryInfo, parse_binary};
 use crate::dump::print_trace;
-use crate::python_bindings::{pyruntime, v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0, v3_9_5, v3_10_0, v3_11_0};
+use crate::python_bindings::{v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0, v3_9_5, v3_10_0, v3_11_0};
 use crate::python_data_access::format_variable;
 use crate::python_interpreters::InterpreterState;
 use crate::python_process_info::{is_python_lib, ContainsAddr, PythonProcessInfo, get_python_version, get_interpreter_address, get_threadstate_address};
-use crate::stack_trace::{StackTrace, get_stack_traces, get_stack_trace};
+use crate::stack_trace::{StackTrace, get_stack_traces};
 use crate::python_threading::thread_names_from_interpreter;
 use crate::version::Version;
-use crate::config::{Config, LineNo};
+use crate::config::Config;
 
 #[derive(Debug, Clone)]
 pub struct CoreMapRange {
@@ -142,7 +142,6 @@ impl ProcessMemory for CoreDump {
 
 pub struct PythonCoreDump {
     core: CoreDump,
-    python_info: PythonProcessInfo,
     version: Version,
     interpreter_address: usize,
     threadstate_address: usize,
@@ -206,7 +205,7 @@ impl PythonCoreDump {
         let threadstate_address = get_threadstate_address(&python_info, &version, &config)?;
         info!("found threadstate at 0x{:016x}", threadstate_address);
 
-        Ok(PythonCoreDump{core, python_info, version, interpreter_address, threadstate_address})
+        Ok(PythonCoreDump{core, version, interpreter_address, threadstate_address})
     }
 
     pub fn get_stack(&self, config: &Config) -> Result<Vec<StackTrace>, Error> {
@@ -263,6 +262,13 @@ impl PythonCoreDump {
             return Ok(())
         }
 
+        for status in &self.core.status {
+            println!("Signal {}: {}",
+                style(status.pr_cursig).bold().yellow(),
+                self.core.filename.display());
+            break;
+        }
+
         if let Some(psinfo) = self.core.psinfo {
             println!("Process {}: {}",
                 style(psinfo.pr_pid).bold().yellow(),
@@ -278,7 +284,6 @@ impl PythonCoreDump {
 }
 
 mod elfcore {
-    pub const ELF_PRARGSZ: u32 = 80;
     #[repr(C)]
     #[derive(Debug, Copy, Clone)]
     pub struct elf_siginfo {

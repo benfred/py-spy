@@ -14,7 +14,7 @@ use remoteprocess::{Process, ProcessMemory, Pid, Tid};
 use crate::config::{Config, LockingStrategy};
 #[cfg(unwind)]
 use crate::native_stack_trace::NativeStack;
-use crate::python_bindings::{pyruntime, v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0, v3_9_5, v3_10_0, v3_11_0};
+use crate::python_bindings::{v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0, v3_9_5, v3_10_0, v3_11_0};
 use crate::python_data_access::format_variable;
 use crate::python_interpreters::{InterpreterState, ThreadState};
 use crate::python_threading::thread_name_lookup;
