@@ -1,4 +1,6 @@
 use std;
+#[cfg(windows)]
+use std::collections::HashMap;
 use std::mem::size_of;
 use std::slice;
 use std::path::Path;
@@ -10,7 +12,6 @@ use anyhow::{Error, Result, Context};
 use lazy_static::lazy_static;
 use remoteprocess::{ProcessMemory, Pid};
 use proc_maps::{get_process_maps, MapRange};
-
 
 use crate::binary_parser::{parse_binary, BinaryInfo};
 use crate::config::{Config, LineNo};
