@@ -188,6 +188,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
 
     let mut errors = 0;
     let mut intervals = 0;
+    let mut gc_intervals = 0;
     let mut samples = 0;
     println!();
 
@@ -229,6 +230,16 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
             if intervals >= max_intervals {
                 exit_message = "";
                 break;
+            }
+        }
+
+
+        if let Some(collecting) = sample.gc_collecting {
+            if collecting != 0 {
+                gc_intervals += 1;
+                if config.no_gc {
+                    continue;
+                }
             }
         }
 
@@ -276,6 +287,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
             } else {
                 format!("Collected {} samples", samples)
             };
+
             progress.set_message(msg);
         }
         progress.inc(1);
@@ -289,6 +301,12 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
     {
     let mut out_file = std::fs::File::create(&filename)?;
     output.write(&mut out_file)?;
+    }
+
+    if gc_intervals > 0 {
+        println!("{}{:.3}% of samples were spent in garbage collection{}", lede,
+            (100.0 * gc_intervals as f32) / intervals as f32,
+            if config.no_gc { ", and were excluded by the --no-gc flag" } else {" "});
     }
 
     match config.format.as_ref().unwrap() {

@@ -42,7 +42,7 @@ class TestPyspy(unittest.TestCase):
             ]
             cmdline.extend(options or [])
             cmdline.extend(["--", sys.executable, script_name])
-            subprocess.check_output(cmdline)
+            output = subprocess.check_output(cmdline)
             with open(profile_file.name) as f:
                 profiles = json.load(f)
 
@@ -58,15 +58,15 @@ class TestPyspy(unittest.TestCase):
                     ] += 1
                 else:
                     samples[tuple(Frame(**frames[frame]) for frame in sample)] += 1
-        return samples
+        return samples, output
 
     def test_longsleep(self):
         # running with the gil flag should have ~ no samples returned
-        profile = self._sample_process(_get_script("longsleep.py"), GIL)
+        profile, _ = self._sample_process(_get_script("longsleep.py"), GIL)
         assert sum(profile.values()) <= 5
 
         # running with the idle flag should have > 95%  of samples in the sleep call
-        profile = self._sample_process(_get_script("longsleep.py"), ["--idle"])
+        profile, _ = self._sample_process(_get_script("longsleep.py"), ["--idle"])
         sample, count = _most_frequent_sample(profile)
         assert count >= 95
         assert len(sample) == 2
@@ -77,7 +77,7 @@ class TestPyspy(unittest.TestCase):
 
     def test_busyloop(self):
         # can't be sure what line we're on, but we should have ~ all samples holding the gil
-        profile = self._sample_process(_get_script("busyloop.py"), GIL)
+        profile, _ = self._sample_process(_get_script("busyloop.py"), GIL)
         assert sum(profile.values()) >= 95
 
     def test_thread_names(self):
@@ -87,7 +87,7 @@ class TestPyspy(unittest.TestCase):
             return
 
         for _ in range(3):
-            profile = self._sample_process(
+            profile, _ = self._sample_process(
                 _get_script("thread_names.py"),
                 ["--threads", "--idle"],
                 include_profile_name=True,
@@ -110,6 +110,19 @@ class TestPyspy(unittest.TestCase):
     def test_shell_completions(self):
         cmdline = [PYSPY, "completions", "bash"]
         subprocess.check_output(cmdline)
+
+
+    def test_gc_collecting(self):
+        # we don't support getting GC stats on python < 3.9
+        v = sys.version_info
+        if v.major < 3 or v.minor < 9:
+            return
+
+        profiles, output = self._sample_process(_get_script("gc.py"))
+
+        # TODO: while this will verify that at least one sample was spent in GC,
+        # its still not a very compelling test
+        assert(b"samples were spent in garbage collection" in output)
 
 
 def _get_script(name):

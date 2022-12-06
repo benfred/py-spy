@@ -6,7 +6,7 @@ use std::thread;
 
 use anyhow::Error;
 
-use remoteprocess::Pid;
+use remoteprocess::{ProcessMemory, Pid};
 
 use crate::timer::Timer;
 use crate::python_spy::PythonSpy;
@@ -23,7 +23,8 @@ pub struct Sampler {
 pub struct Sample {
     pub traces: Vec<StackTrace>,
     pub sampling_errors: Option<Vec<(Pid, Error)>>,
-    pub late: Option<Duration>
+    pub late: Option<Duration>,
+    pub gc_collecting: Option<i32>,
 }
 
 impl Sampler {
@@ -71,7 +72,15 @@ impl Sampler {
                 };
 
                 let late = sleep.err();
-                if tx.send(Sample{traces: traces, sampling_errors, late}).is_err() {
+
+                // TODO: Should we do this inside the process lock?
+                let gc_collecting = if spy.gc_collecting_address != 0 {
+                    spy.process.copy_struct::<i32>(spy.gc_collecting_address).ok()
+                } else {
+                    None
+                };
+
+                if tx.send(Sample{traces: traces, sampling_errors, late, gc_collecting}).is_err() {
                     break;
                 }
             }
@@ -187,9 +196,12 @@ impl Sampler {
                     trace.process_info = process.clone();
                 }
 
+                // TODO: get gc stats for subprocesses as well
+                // (move to get_stack_traces, change to not return a vector etc)
+
                 // Send the collected info back
                 let late = sleep.err();
-                if tx.send(Sample{traces, sampling_errors, late}).is_err() {
+                if tx.send(Sample{traces, sampling_errors, late, gc_collecting: None}).is_err() {
                     break;
                 }
 

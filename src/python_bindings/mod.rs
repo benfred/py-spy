@@ -184,4 +184,18 @@ pub mod pyruntime {
             _ => None
         }
     }
+
+    #[cfg(all(any(target_os="linux", target_os="macos"), target_arch="x86_64"))]
+    pub fn get_gc_collecting_offset(version: &Version) -> Option<usize> {
+        match version {
+            Version{major: 3, minor: 9..=10, ..} => Some(816),
+            Version{major: 3, minor: 11, ..} => Some(848),
+            _ => None
+        }
+    }
+
+    #[cfg(not(all(any(target_os="linux", target_os="macos"), target_arch="x86_64")))]
+    pub fn get_gc_collecting_offset(version: &Version) -> Option<usize> {
+        None
+    }
 }
