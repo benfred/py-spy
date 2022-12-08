@@ -20,7 +20,7 @@ jobs:
       run: |
         pyenv global system
         python --version
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - name: Build
       run: cargo build --verbose
     - name: Run tests
@@ -33,7 +33,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - name: Install Dependencies
       run: sudo apt install libunwind-dev
       if: runner.os == 'Linux'
@@ -51,7 +51,7 @@ jobs:
     - name: Test (retry#2)
       run: cargo test --release
       if: steps.test1.outcome=='failure'
-    - uses: actions/setup-python@v2
+    - uses: actions/setup-python@v4
       with:
         python-version: 3.9
     - name: Build Wheel
@@ -74,7 +74,7 @@ jobs:
         python3 -c "import shutil; import glob; wheels = glob.glob('dist/*.whl'); [shutil.move(wheel, wheel.replace('py3', 'py2.py3')) for wheel in wheels if 'py2' not in wheel]"
       if: runner.os != 'Linux'
     - name: Upload wheels
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: wheels
         path: dist
@@ -92,7 +92,7 @@ jobs:
         RUSTUP_HOME: /root/.rustup
         CARGO_HOME: /root/.cargo
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - name: Build
       run: |
         python3 -m pip install --upgrade maturin
@@ -101,7 +101,7 @@ jobs:
       run: |
         python3 -c "import shutil; import glob; wheels = glob.glob('dist/*.whl'); [shutil.move(wheel, wheel.replace('py3', 'py2.py3')) for wheel in wheels if 'py2' not in wheel]"
     - name: Upload wheels
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: wheels
         path: dist
@@ -116,16 +116,16 @@ jobs:
             release: FreeBSD-13.1-STABLE
             url: https://github.com/rbspy/freebsd-vagrant-box/releases/download/20220703/fbsd_13_1.box
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Cache Vagrant box
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: ~/.vagrant.d
           key: ${{ matrix.box }}-vagrant-boxes-${{ hashFiles('ci/Vagrantfile') }}
           restore-keys: |
             ${{ matrix.box }}-vagrant-
       - name: Cache Cargo and build artifacts
-        uses: actions/cache@v2.1.4
+        uses: actions/cache@v3
         with:
           path: build-artifacts.tar
           key: ${{ matrix.box }}-cargo-${{ hashFiles('**/Cargo.lock') }}
@@ -154,7 +154,7 @@ jobs:
           tar xf build-artifacts.tar target/release/py-spy
           mv target/release/py-spy py-spy-x86_64-unknown-freebsd
       - name: Upload Binaries
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: py-spy-x86_64-unknown-freebsd
           path: py-spy-x86_64-unknown-freebsd
@@ -171,10 +171,10 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v2
-      - uses: actions/download-artifact@v2
+      - uses: actions/download-artifact@v3
         with:
           name: wheels
-      - uses: actions/setup-python@v2
+      - uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install wheel
@@ -219,8 +219,8 @@ jobs:
         # only test out relatively recent versions of python
         pyenv-python-version: [3.7.10, 3.8.9, 3.9.4]
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/download-artifact@v2
+      - uses: actions/checkout@v3
+      - uses: actions/download-artifact@v3
         with:
           name: wheels
       - name: Setup pyenv
@@ -242,7 +242,7 @@ jobs:
     if: "startsWith(github.ref, 'refs/tags/')"
     needs: [test-wheels, test-wheel-linux-armv7]
     steps:
-      - uses: actions/download-artifact@v2
+      - uses: actions/download-artifact@v3
         with:
           name: wheels
       - name: Create GitHub Release
@@ -253,7 +253,7 @@ jobs:
       - name: Install Dependencies
         run: sudo apt install libunwind-dev
         if: runner.os == 'Linux'
-      - uses: actions/setup-python@v2
+      - uses: actions/setup-python@v4
         with:
           python-version: 3.9
       - name: Push to PyPi
@@ -264,7 +264,7 @@ jobs:
           pip install --upgrade wheel pip setuptools twine
           twine upload *
           rm *
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Push to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
