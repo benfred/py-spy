@@ -4,6 +4,8 @@ extern crate anyhow;
 extern crate log;
 
 mod config;
+#[cfg(target_os="linux")]
+mod coredump;
 mod dump;
 mod binary_parser;
 #[cfg(unwind)]
@@ -12,6 +14,7 @@ mod cython;
 mod native_stack_trace;
 mod python_bindings;
 mod python_interpreters;
+mod python_process_info;
 mod python_spy;
 mod python_data_access;
 mod python_threading;
@@ -369,6 +372,15 @@ fn pyspy_main() -> Result<(), Error> {
             eprintln!("This program requires root on OSX.");
             eprintln!("Try running again with elevated permissions by going 'sudo !!'");
             std::process::exit(1)
+        }
+    }
+
+    #[cfg(target_os="linux")]
+    {
+        if let Some(ref core_filename) = config.core_filename {
+            let core = coredump::PythonCoreDump::new(std::path::Path::new(&core_filename))?;
+            let traces = core.get_stack(&config)?;
+            return core.print_traces(&traces, &config);
         }
     }
 
