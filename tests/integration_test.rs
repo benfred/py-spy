@@ -164,7 +164,7 @@ fn test_recursive() {
 
     // there used to be a problem where the top-level functions being returned
     // weren't actually entry points: https://github.com/benfred/py-spy/issues/56
-    // This was fixed by locking the process while we are profling it. Test that
+    // This was fixed by locking the process while we are profiling it. Test that
     // the fix works by generating some samples from a program that would exhibit
     // this behaviour
     let mut runner = TestRunner::new(Config::default(), "./tests/scripts/recursive.py");

@@ -61,7 +61,7 @@ impl PythonSpy {
 
         let interpreter_address = get_interpreter_address(&python_info, &process, &version)?;
         info!("Found interpreter at 0x{:016x}", interpreter_address);
-    
+
         // lets us figure out which thread has the GIL
         let threadstate_address = get_threadstate_address(&python_info, &version, config)?;
 
@@ -180,7 +180,7 @@ impl PythonSpy {
 
             // python 3.11+ has the native thread id directly on the PyThreadState object,
             // for older versions of python, try using OS specific code to get the native
-            // thread id (doesn' work on freebsd, or on arm/i686 processors on linux)
+            // thread id (doesn't work on freebsd, or on arm/i686 processors on linux)
             if trace.os_thread_id.is_none() {
                 let mut os_thread_id = self._get_os_thread_id(python_thread_id, &interp)?;
 

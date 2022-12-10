@@ -116,7 +116,7 @@ impl Sampler {
         }
 
         // Create a new thread to periodically monitor for new child processes, and update
-        // the procesess map
+        // the processes map
         let spies = Arc::new(Mutex::new(spies));
         let monitor_spies = spies.clone();
         let monitor_config = config.clone();
