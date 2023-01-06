@@ -166,11 +166,24 @@ impl SpeedscopeFile {
 
 impl Frame {
     pub fn new(stack_frame: &stack_trace::Frame, show_line_numbers: bool) -> Frame {
+        let name = if show_line_numbers {
+            format!("{}@{}", stack_frame.name, stack_frame.line)
+        } else {
+            stack_frame.name.clone()
+        };
         Frame {
-            name: stack_frame.name.clone(),
+            name: name,
             // TODO: filename?
             file: Some(stack_frame.filename.clone()),
             line: if show_line_numbers { Some(stack_frame.line as u32) } else { None },
+            col: None
+        }
+    }
+    pub fn new_fn(stack_frame: &stack_trace::Frame) -> Frame {
+        Frame {
+            name: stack_frame.name.clone(),
+            file: Some(stack_frame.filename.clone()),
+            line: None,
             col: None
         }
     }
@@ -197,18 +210,30 @@ impl Stats {
 
     pub fn record(&mut self, stack: &stack_trace::StackTrace) -> Result<(), io::Error> {
         let show_line_numbers = self.config.show_line_numbers;
-        let mut frame_indices: Vec<usize> = stack.frames.iter().map(|frame| {
+        let mut frame_indices = Vec::with_capacity(stack.frames.len() * (1 + show_line_numbers as usize));
+        for frame in &stack.frames {
             let frames = &mut self.frames;
+
             let mut key = frame.clone();
             if !show_line_numbers {
                 key.line = 0;
             }
-            *self.frame_to_index.entry(key).or_insert_with(|| {
+            frame_indices.push(*self.frame_to_index.entry(key).or_insert_with(|| {
                 let len = frames.len();
                 frames.push(Frame::new(&frame, show_line_numbers));
                 len
-            })
-        }).collect();
+            }));
+
+            if show_line_numbers {
+                let mut fn_key = frame.clone();
+                fn_key.line = 0;
+                frame_indices.push(*self.frame_to_index.entry(fn_key).or_insert_with(|| {
+                    let len = frames.len();
+                    frames.push(Frame::new_fn(&frame));
+                    len
+                }));
+            }
+        }
         frame_indices.reverse();
 
         let key = (stack.pid as Pid, stack.thread_id as Tid);
