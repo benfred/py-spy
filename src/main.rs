@@ -455,10 +455,10 @@ fn sample_pyroscope(pid: remoteprocess::Pid, config: &Config) -> Result<(), Erro
             let res = client
                 .post(&pyroscope_url)
                 .query(&[
-                    ("from", start_ts.to_string()),
-                    ("until", Local::now().timestamp().to_string()),
-                    ("name", name.clone()),
-                    ("sampleRate", config.sampling_rate.to_string()),
+                    ("from", &start_ts.to_string()),
+                    ("until", &Local::now().timestamp().to_string()),
+                    ("name", &name),
+                    ("sampleRate", &config.sampling_rate.to_string()),
                 ])
                 .body(body)
                 .send()?;
@@ -489,10 +489,10 @@ fn sample_pyroscope(pid: remoteprocess::Pid, config: &Config) -> Result<(), Erro
     let res = client
         .post(&pyroscope_url)
         .query(&[
-            ("from", start_ts.to_string()),
-            ("until", Local::now().timestamp().to_string()),
-            ("name", name.clone()),
-            ("sampleRate", config.sampling_rate.to_string()),
+            ("from", &start_ts.to_string()),
+            ("until", &Local::now().timestamp().to_string()),
+            ("name", &name),
+            ("sampleRate", &config.sampling_rate.to_string()),
         ])
         .body(body)
         .send()?;
