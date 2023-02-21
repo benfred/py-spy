@@ -37,6 +37,7 @@ use console::style;
 
 use config::{Config, FileFormat, RecordDuration};
 use console_viewer::ConsoleViewer;
+use reqwest::StatusCode;
 use stack_trace::{Frame, StackTrace};
 
 use chrono::{Local, SecondsFormat};
@@ -339,6 +340,184 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
     Ok(())
 }
 
+fn sample_pyroscope(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error> {
+    let mut output = RawFlamegraph(flamegraph::Flamegraph::new(config.show_line_numbers));
+    let pyroscope_url = format!("{}/ingest", config.pyroscope_url.as_ref().unwrap());
+    let pyroscope_app = config.pyroscope_app.as_ref().unwrap();
+    let pyroscope_tags = config.pyroscope_tags.as_deref().unwrap_or("");
+    let name = format!("{}{{{}}}", pyroscope_app, pyroscope_tags);
+
+    let sampler = sampler::Sampler::new(pid, config)?;
+
+    let lede = format!("{}{} ", style("py-spy").bold().green(), style(">").dim());
+
+    let report_interval = config.pyroscope_report_interval;
+
+    let max_intervals = match &config.duration {
+        RecordDuration::Unlimited => {
+            println!("{}Sampling process {} times a second, sending aggregated pyroscope reports every {} samples. Press Control-C to exit.", lede, config.sampling_rate, report_interval);
+            None
+        }
+        RecordDuration::Seconds(sec) => {
+            println!("{}Sampling process {} times a second for {} seconds, sending aggregated pyroscope reports every {} samples. Press Control-C to exit.", lede, config.sampling_rate, sec, report_interval);
+            Some(sec * config.sampling_rate)
+        }
+    };
+
+    let client = reqwest::blocking::Client::new();
+
+    let mut errors = 0;
+    let mut intervals = 0;
+    let mut send_samples = 0;
+    let mut samples = 0;
+    println!();
+
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
+    ctrlc::set_handler(move || {
+        r.store(false, Ordering::SeqCst);
+    })?;
+
+    let mut exit_message = "Stopped sampling because process exited";
+    let mut last_late_message = std::time::Instant::now();
+
+    let mut start_ts = Local::now().timestamp();
+
+    for mut sample in sampler {
+        if let Some(delay) = sample.late {
+            if delay > Duration::from_secs(1) {
+                if config.hide_progress {
+                    // display a message if we're late, but don't spam the log
+                    let now = std::time::Instant::now();
+                    if now - last_late_message > Duration::from_secs(1) {
+                        last_late_message = now;
+                        println!("{}{:.2?} behind in sampling, results may be inaccurate. Try reducing the sampling rate", lede, delay)
+                    }
+                } else {
+                    println!("{:.2?} behind in sampling, results may be inaccurate. Try reducing the sampling rate.", delay);
+                }
+            }
+        }
+
+        if !running.load(Ordering::SeqCst) {
+            exit_message = "Stopped sampling because Control-C pressed";
+            break;
+        }
+
+        intervals += 1;
+        if let Some(max_intervals) = max_intervals {
+            if intervals >= max_intervals {
+                exit_message = "";
+                break;
+            }
+        }
+
+        for trace in sample.traces.iter_mut() {
+            if !(config.include_idle || trace.active) {
+                continue;
+            }
+
+            if config.gil_only && !trace.owns_gil {
+                continue;
+            }
+
+            if config.include_thread_ids {
+                let threadid = trace.format_threadid();
+                trace.frames.push(Frame {
+                    name: format!("thread ({})", threadid),
+                    filename: String::from(""),
+                    module: None,
+                    short_filename: None,
+                    line: 0,
+                    locals: None,
+                });
+            }
+
+            if let Some(process_info) = trace.process_info.as_ref().map(|x| x) {
+                trace.frames.push(process_info.to_frame());
+                let mut parent = process_info.parent.as_ref();
+                while parent.is_some() {
+                    if let Some(process_info) = parent {
+                        trace.frames.push(process_info.to_frame());
+                        parent = process_info.parent.as_ref();
+                    }
+                }
+            }
+
+            samples += 1;
+            output.increment(&trace)?;
+        }
+
+        send_samples += 1;
+        if send_samples >= report_interval {
+            let mut body: Vec<u8> = Vec::new();
+            output.write(&mut body)?;
+            let res = client
+                .post(&pyroscope_url)
+                .query(&[
+                    ("from", start_ts.to_string()),
+                    ("until", Local::now().timestamp().to_string()),
+                    ("name", name.clone()),
+                    ("sampleRate", config.sampling_rate.to_string()),
+                ])
+                .body(body)
+                .send()?;
+            start_ts = Local::now().timestamp();
+            output = RawFlamegraph(flamegraph::Flamegraph::new(config.show_line_numbers));
+            send_samples = 0;
+
+            if res.status() != StatusCode::OK {
+                println!(
+                    "{}An error occurred while sending data to pyroscope: {:#?}",
+                    lede, res
+                )
+            } else {
+                println!("{}Sent pyroscope report!", lede);
+            }
+        }
+
+        if let Some(sampling_errors) = sample.sampling_errors {
+            for (pid, e) in sampling_errors {
+                warn!("Failed to get stack trace from {}: {}", pid, e);
+                errors += 1;
+            }
+        }
+    }
+
+    let mut body: Vec<u8> = Vec::new();
+    output.write(&mut body)?;
+    let res = client
+        .post(&pyroscope_url)
+        .query(&[
+            ("from", start_ts.to_string()),
+            ("until", Local::now().timestamp().to_string()),
+            ("name", name.clone()),
+            ("sampleRate", config.sampling_rate.to_string()),
+        ])
+        .body(body)
+        .send()?;
+
+    if res.status() != StatusCode::OK {
+        println!(
+            "{}An error occurred while sending data to pyroscope: {:#?}",
+            lede, res
+        )
+    } else {
+        println!("{}Sent final pyroscope report!", lede);
+    }
+
+    if !exit_message.is_empty() {
+        println!("\n{}{}", lede, exit_message);
+    }
+
+    println!(
+        "{}Reported data to '{}'. Samples: {} Errors: {}",
+        lede, pyroscope_url, samples, errors
+    );
+
+    Ok(())
+}
+
 fn run_spy_command(pid: remoteprocess::Pid, config: &config::Config) -> Result<(), Error> {
     match config.command.as_ref() {
         "dump" => {
@@ -349,6 +528,9 @@ fn run_spy_command(pid: remoteprocess::Pid, config: &config::Config) -> Result<(
         }
         "top" => {
             sample_console(pid, config)?;
+        }
+        "pyroscope" => {
+            sample_pyroscope(pid, config)?;
         }
         _ => {
             // shouldn't happen
