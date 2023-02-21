@@ -294,7 +294,6 @@ impl Config {
             .arg(full_filenames.clone())
             .arg(
                 Arg::new("url")
-                    .short('y')
                     .long("pyroscope_url")
                     .value_name("http://localhost:4040")
                     .help("Pyroscope URL")
@@ -321,7 +320,7 @@ impl Config {
                 Arg::new("report_interval")
                     .long("pyroscope_report_interval")
                     .value_name("report_interval")
-                    .help("Pyroscope report interval")
+                    .help("Pyroscope reporting interval, will send an aggregated report as soon as this many samples are collected.")
                     .takes_value(true)
                     .required(true),
             )
