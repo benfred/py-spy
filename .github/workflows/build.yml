@@ -37,6 +37,8 @@ jobs:
     - name: Install Dependencies
       run: sudo apt install libunwind-dev
       if: runner.os == 'Linux'
+    - name: Format
+      run: cargo fmt --check
     - name: Build
       run: cargo build --release --verbose --examples
     - name: Test
