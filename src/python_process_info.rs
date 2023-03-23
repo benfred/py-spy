@@ -3,6 +3,8 @@ use std;
 use std::collections::HashMap;
 use std::mem::size_of;
 use std::slice;
+#[cfg(target_os="linux")]
+use std::fs::read_link;
 use std::path::Path;
 use regex::Regex;
 #[cfg(windows)]
@@ -141,7 +143,13 @@ impl PythonProcessInfo {
 
                     // on linux the process could be running in docker, access the filename through procfs
                     #[cfg(target_os="linux")]
-                    let filename = &std::path::PathBuf::from(format!("/proc/{}/root{}", process.pid, filename.display()));
+                    let filename = {
+                        let root = read_link(format!("/proc/{}/root", process.pid))?;
+                        &match filename.strip_prefix(&root) {
+                            Ok(rootless) => std::path::PathBuf::from(format!("/proc/{}/root/{}", process.pid, rootless.display())),
+                            Err(_) => panic!("unexpected filename {} not starting with the root {}", filename.display(), root.display())
+                        }
+                    };
 
                     #[allow(unused_mut)]
                     let mut parsed = parse_binary(filename, libpython.start() as u64, libpython.size() as u64)?;
