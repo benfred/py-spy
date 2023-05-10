@@ -839,6 +839,7 @@ dependencies = [
  "lru",
  "memmap",
  "proc-maps",
+ "py-spy-testdata",
  "rand",
  "rand_distr",
  "regex",
@@ -850,6 +851,12 @@ dependencies = [
  "termios",
  "winapi",
 ]
+
+[[package]]
+name = "py-spy-testdata"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "188970d7e0a2e1c4e17d48c821de4d3ad37df749306b249020adc92c1c40a8a1"
 
 [[package]]
 name = "quick-xml"

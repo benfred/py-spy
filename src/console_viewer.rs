@@ -274,7 +274,7 @@ impl ConsoleViewer {
         match self.stats.overall_samples {
             10 | 100 | 500 => true,
             _ => self.options.lock().unwrap().dirty ||
-                 self.stats.elapsed >= 1.0
+                 self.stats.elapsed >= self.config.refresh_seconds
         }
     }
 
