@@ -107,7 +107,7 @@ jobs:
         path: dist
 
   build-freebsd:
-    runs-on: macos-10.15
+    runs-on: macos-latest
     timeout-minutes: 30
     strategy:
       matrix:
