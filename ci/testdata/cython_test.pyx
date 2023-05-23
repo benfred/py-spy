@@ -3,6 +3,7 @@ that uses newtowns method to compute the square root of a number """
 
 from cython cimport floating
 
+
 cpdef sqrt(floating value):
     # solve for the square root of value by finding the zeros of
     #   'x * x - value = 0' using newtons meethod

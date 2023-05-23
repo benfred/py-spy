@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 import time
 
+
 def function1(seconds):
     time.sleep(seconds)
 
