@@ -333,6 +333,7 @@ pub mod tests {
     }
 
     #[allow(dead_code)]
+    #[repr(C)] // Rust can optimize the layout of this struct and break our pointer arithmetic
     pub struct AllocatedPyASCIIObject {
         pub base: PyASCIIObject,
         pub storage: [u8; 4096]
