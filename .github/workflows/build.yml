@@ -247,7 +247,7 @@ jobs:
     name: Release
     runs-on: ubuntu-latest
     if: "startsWith(github.ref, 'refs/tags/')"
-    needs: [test-wheels]
+    needs: [test-wheels, test-wheel-linux-armv7]
     steps:
       - uses: actions/download-artifact@v3
         with:
