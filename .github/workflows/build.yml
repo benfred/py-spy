@@ -67,7 +67,7 @@ jobs:
       run: |
         rustup target add aarch64-apple-darwin
         pip install --upgrade maturin
-        maturin build --release -o dist --universal2
+        maturin build --release -o dist --target universal2-apple-darwin
       if: matrix.os == 'macos-latest'
     - name: Rename Wheels
       run: |
@@ -108,7 +108,7 @@ jobs:
         path: dist
 
   build-freebsd:
-    runs-on: macos-10.15
+    runs-on: macos-latest
     timeout-minutes: 30
     strategy:
       matrix:
