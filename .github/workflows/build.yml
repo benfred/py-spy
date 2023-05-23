@@ -13,18 +13,18 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # build-linux-armv7:
-  #   runs-on: [self-hosted, linux, arm]
-  #   steps:
-  #   - name: Setup python
-  #     run: |
-  #       pyenv global system
-  #       python --version
-  #   - uses: actions/checkout@v3
-  #   - name: Build
-  #     run: cargo build --verbose
-  #   - name: Run tests
-  #     run: cargo test
+  build-linux-armv7:
+    runs-on: [self-hosted, linux, arm]
+    steps:
+    - name: Setup python
+      run: |
+        pyenv global system
+        python --version
+    - uses: actions/checkout@v3
+    - name: Build
+      run: cargo build --verbose
+    - name: Run tests
+      run: cargo test
 
   build:
     runs-on: ${{ matrix.os }}
@@ -216,33 +216,32 @@ jobs:
         run: sudo "PATH=$PATH" python tests/integration_test.py
         if: steps.osx_test1.outcome=='failure'
 
-  # Disabled on fork at madkinsz/py-spy because we do not have self-hosted runners
-  # test-wheel-linux-armv7:
-  #   name: Test ARMv7 Wheel
-  #   needs: [build-linux-cross]
-  #   runs-on: [self-hosted, linux, arm]
-  #   strategy:
-  #     matrix:
-  #       # we're installing the manylinux2014 wheel, so can
-  #       # only test out relatively recent versions of python
-  #       pyenv-python-version: [3.7.10, 3.8.9, 3.9.4]
-  #   steps:
-  #     - uses: actions/checkout@v3
-  #     - uses: actions/download-artifact@v3
-  #       with:
-  #         name: wheels
-  #     - name: Setup pyenv
-  #       run: |
-  #         # build the version of python if not installed already
-  #         # (note this relies on pyenv being setup already)
-  #         pyenv install -s ${{ matrix.pyenv-python-version }}
-  #         pyenv global ${{ matrix.pyenv-python-version }}
-  #         python --version
-  #     - name: Install wheel
-  #       run: |
-  #         pip install --force-reinstall --no-index --find-links . py-spy
-  #     - name: Test Wheel
-  #       run: python tests/integration_test.py
+  test-wheel-linux-armv7:
+    name: Test ARMv7 Wheel
+    needs: [build-linux-cross]
+    runs-on: [self-hosted, linux, arm]
+    strategy:
+      matrix:
+        # we're installing the manylinux2014 wheel, so can
+        # only test out relatively recent versions of python
+        pyenv-python-version: [3.7.10, 3.8.9, 3.9.4]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/download-artifact@v3
+        with:
+          name: wheels
+      - name: Setup pyenv
+        run: |
+          # build the version of python if not installed already
+          # (note this relies on pyenv being setup already)
+          pyenv install -s ${{ matrix.pyenv-python-version }}
+          pyenv global ${{ matrix.pyenv-python-version }}
+          python --version
+      - name: Install wheel
+        run: |
+          pip install --force-reinstall --no-index --find-links . py-spy
+      - name: Test Wheel
+        run: python tests/integration_test.py
 
   release:
     name: Release
