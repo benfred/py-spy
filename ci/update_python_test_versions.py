@@ -60,7 +60,7 @@ if __name__ == "__main__":
     test_wheels = transformed.index("  test-wheels:\n")
     first_line = transformed.index("        exclude:\n", test_wheels)
     last_line = transformed.index("\n", first_line)
-    transformed = transformed[:first_line+1] + exclusions + transformed[last_line+1:]
+    transformed = transformed[:first_line+1] + exclusions + transformed[last_line:]
 
     with open(build_yml, "w") as o:
         o.write("".join(transformed))
