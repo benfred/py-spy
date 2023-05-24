@@ -67,7 +67,7 @@ jobs:
       run: |
         rustup target add aarch64-apple-darwin
         pip install --upgrade maturin
-        maturin build --release -o dist --universal2
+        maturin build --release -o dist --target universal2-apple-darwin
       if: matrix.os == 'macos-latest'
     - name: Rename Wheels
       run: |
@@ -97,6 +97,7 @@ jobs:
       run: |
         python3 -m pip install --upgrade maturin
         maturin build --release -o dist --target $RUST_MUSL_CROSS_TARGET
+        maturin sdist -o dist
     - name: Rename Wheels
       run: |
         python3 -c "import shutil; import glob; wheels = glob.glob('dist/*.whl'); [shutil.move(wheel, wheel.replace('py3', 'py2.py3')) for wheel in wheels if 'py2' not in wheel]"
@@ -107,7 +108,7 @@ jobs:
         path: dist
 
   build-freebsd:
-    runs-on: macos-10.15
+    runs-on: macos-latest
     timeout-minutes: 30
     strategy:
       matrix:
