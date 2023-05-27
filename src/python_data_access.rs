@@ -327,6 +327,7 @@ pub mod tests {
     // python stores data after pybytesobject/pyasciiobject. hack by initializing a 4k buffer for testing.
     // TODO: get better at Rust and figure out a better solution
     #[allow(dead_code)]
+    #[repr(C)]
     pub struct AllocatedPyByteObject {
         pub base: PyBytesObject,
         pub storage: [u8; 4096]

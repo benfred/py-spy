@@ -115,23 +115,23 @@ jobs:
         include:
           - box: fbsd_13_1
             release: FreeBSD-13.1-STABLE
-            url: https://github.com/rbspy/freebsd-vagrant-box/releases/download/20220703/fbsd_13_1.box
+            url: https://github.com/rbspy/freebsd-vagrant-box/releases/download/20221112/fbsd_13_1.box
     steps:
       - uses: actions/checkout@v3
       - name: Cache Vagrant box
-        uses: actions/cache@v3
+        uses: actions/cache@v3.0.4
         with:
           path: ~/.vagrant.d
-          key: ${{ matrix.box }}-vagrant-boxes-${{ hashFiles('ci/Vagrantfile') }}
+          key: ${{ matrix.box }}-vagrant-boxes-20221112-${{ hashFiles('ci/Vagrantfile') }}
           restore-keys: |
-            ${{ matrix.box }}-vagrant-
+            ${{ matrix.box }}-vagrant-boxes-20221112-
       - name: Cache Cargo and build artifacts
-        uses: actions/cache@v3
+        uses: actions/cache@v3.0.4
         with:
           path: build-artifacts.tar
-          key: ${{ matrix.box }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ matrix.box }}-cargo-20221112-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ matrix.box }}-cargo-
+            ${{ matrix.box }}-cargo-20221112-
       - name: Set up VM
         run: |
           brew install vagrant
