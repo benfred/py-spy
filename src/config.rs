@@ -63,7 +63,8 @@ pub struct Config {
 pub enum FileFormat {
     flamegraph,
     raw,
-    speedscope
+    speedscope,
+    callgrind,
 }
 
 impl FileFormat {
@@ -193,7 +194,7 @@ impl Config {
                 .takes_value(true);
 
         let record = Command::new("record")
-            .about("Records stack trace information to a flamegraph, speedscope or raw file")
+            .about("Records stack trace information to a flamegraph, speedscope, callgrind or raw file")
             .arg(program.clone())
             .arg(pid.clone().required_unless_present("python_program"))
             .arg(full_filenames.clone())

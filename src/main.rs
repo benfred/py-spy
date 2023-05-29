@@ -20,6 +20,7 @@ mod python_data_access;
 mod python_threading;
 mod stack_trace;
 mod console_viewer;
+mod callgrind;
 mod flamegraph;
 mod speedscope;
 mod sampler;
@@ -87,12 +88,28 @@ fn sample_console(pid: remoteprocess::Pid,
 
 pub trait Recorder {
     fn increment(&mut self, trace: &StackTrace) -> Result<(), Error>;
+    fn finalize(&mut self) -> Result<(), Error>;
     fn write(&self, w: &mut dyn Write) -> Result<(), Error>;
 }
 
 impl Recorder for speedscope::Stats {
     fn increment(&mut self, trace: &StackTrace) -> Result<(), Error> {
         Ok(self.record(trace)?)
+    }
+    fn finalize(&mut self) -> Result<(), Error> {
+        Ok(())
+    }
+    fn write(&self, w: &mut dyn Write) -> Result<(), Error> {
+        self.write(w)
+    }
+}
+
+impl Recorder for callgrind::Stats {
+    fn increment(&mut self, trace: &StackTrace) -> Result<(), Error> {
+        Ok(self.add(&trace.frames)?)
+    }
+    fn finalize(&mut self) -> Result<(), Error> {
+        self.finish()
     }
     fn write(&self, w: &mut dyn Write) -> Result<(), Error> {
         self.write(w)
@@ -102,6 +119,9 @@ impl Recorder for speedscope::Stats {
 impl Recorder for flamegraph::Flamegraph {
     fn increment(&mut self, trace: &StackTrace) -> Result<(), Error> {
         Ok(self.increment(trace)?)
+    }
+    fn finalize(&mut self) -> Result<(), Error> {
+        Ok(())
     }
     fn write(&self, w: &mut dyn Write) -> Result<(), Error> {
         self.write(w)
@@ -115,6 +135,10 @@ impl Recorder for RawFlamegraph {
         Ok(self.0.increment(trace)?)
     }
 
+    fn finalize(&mut self) -> Result<(), Error> {
+        Ok(())
+    }
+
     fn write(&self, w: &mut dyn Write) -> Result<(), Error> {
         self.0.write_raw(w)
     }
@@ -125,6 +149,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
         Some(FileFormat::flamegraph) => Box::new(flamegraph::Flamegraph::new(config.show_line_numbers)),
         Some(FileFormat::speedscope) =>  Box::new(speedscope::Stats::new(config)),
         Some(FileFormat::raw) => Box::new(RawFlamegraph(flamegraph::Flamegraph::new(config.show_line_numbers))),
+        Some(FileFormat::callgrind) => Box::new(callgrind::Stats::new()),
         None => return Err(format_err!("A file format is required to record samples"))
     };
 
@@ -135,6 +160,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
                 Some(FileFormat::flamegraph) => "svg",
                 Some(FileFormat::speedscope) => "json",
                 Some(FileFormat::raw) => "txt",
+                Some(FileFormat::callgrind) => "callgrind",
                 None => return Err(format_err!("A file format is required to record samples"))
             };
             let local_time = Local::now().to_rfc3339_opts(SecondsFormat::Secs, true);
@@ -287,6 +313,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
     }
 
     {
+    output.finalize()?;
     let mut out_file = std::fs::File::create(&filename)?;
     output.write(&mut out_file)?;
     }
@@ -307,6 +334,10 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
         FileFormat::raw => {
             println!("{}Wrote raw flamegraph data to '{}'. Samples: {} Errors: {}", lede, filename, samples, errors);
             println!("{}You can use the flamegraph.pl script from https://github.com/brendangregg/flamegraph to generate a SVG", lede);
+        }
+        FileFormat::callgrind => {
+            println!("{}Wrote callgrind data to '{}'. Samples: {} Errors: {}", lede, filename, samples, errors);
+            println!("{}You can use kcachegrind/qcachegrind to visualize it: https://apps.kde.org/kcachegrind/", lede);
         }
     };
 
