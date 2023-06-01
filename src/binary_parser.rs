@@ -3,7 +3,6 @@ use std::fs::File;
 use std::path::Path;
 
 use anyhow::Error;
-use goblin;
 use goblin::Object;
 use memmap::Mmap;
 

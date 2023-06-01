@@ -243,7 +243,7 @@ impl PythonSpy {
                 // linux can see issues where pthread_ids get recycled for new OS threads,
                 // which totally breaks the caching we were doing here. Detect this and retry
                 if let Some(tid) = os_thread_id {
-                    if thread_activity.len() > 0 && !thread_activity.contains_key(&tid) {
+                    if !thread_activity.is_empty() && !thread_activity.contains_key(&tid) {
                         info!("clearing away thread id caches, thread {} has exited", tid);
                         self.python_thread_ids.clear();
                         self.python_thread_names.clear();
@@ -302,7 +302,7 @@ impl PythonSpy {
                             local.addr,
                             max_length,
                         );
-                        local.repr = Some(repr.unwrap_or("?".to_owned()));
+                        local.repr = Some(repr.unwrap_or_else(|_| "?".to_owned()));
                     }
                 }
             }
@@ -417,7 +417,7 @@ impl PythonSpy {
         }
 
         let processed_os_threads: HashSet<Tid> =
-            HashSet::from_iter(self.python_thread_ids.values().map(|x| *x));
+            HashSet::from_iter(self.python_thread_ids.values().copied());
 
         let unwinder = self.process.unwinder()?;
 
@@ -428,7 +428,7 @@ impl PythonSpy {
                 continue;
             }
 
-            match self._get_pthread_id(&unwinder, &thread, &all_python_threads) {
+            match self._get_pthread_id(&unwinder, thread, &all_python_threads) {
                 Ok(pthread_id) => {
                     if pthread_id != 0 {
                         self.python_thread_ids.insert(pthread_id, threadid);
@@ -503,11 +503,8 @@ impl PythonSpy {
         match self.python_thread_names.get(&python_thread_id) {
             Some(thread_name) => Some(thread_name.clone()),
             None => {
-                self.python_thread_names =
-                    thread_name_lookup(self).unwrap_or_else(|| HashMap::new());
-                self.python_thread_names
-                    .get(&python_thread_id)
-                    .map(|name| name.clone())
+                self.python_thread_names = thread_name_lookup(self).unwrap_or_default();
+                self.python_thread_names.get(&python_thread_id).cloned()
             }
         }
     }

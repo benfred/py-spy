@@ -1,3 +1,4 @@
+#![allow(clippy::unnecessary_cast)]
 use anyhow::Error;
 
 use crate::python_interpreters::{
@@ -95,7 +96,7 @@ pub fn copy_long<P: ProcessMemory>(process: &P, addr: usize) -> Result<(i64, boo
 pub fn copy_int<P: ProcessMemory>(process: &P, addr: usize) -> Result<i64, Error> {
     let value =
         process.copy_pointer(addr as *const crate::python_bindings::v2_7_15::PyIntObject)?;
-    Ok(value.ob_ival)
+    Ok(value.ob_ival as i64)
 }
 
 /// Allows iteration of a python dictionary. Only supports python 3.6+ right now

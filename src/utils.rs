@@ -13,7 +13,7 @@ pub fn resolve_filename(filename: &str, modulename: &str) -> Option<String> {
         if let Some(name) = path.file_name() {
             let temp = parent.join(name);
             if temp.exists() {
-                return Some(temp.to_string_lossy().to_owned().to_string());
+                return Some(temp.to_string_lossy().to_string());
             }
         }
     }

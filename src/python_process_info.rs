@@ -85,7 +85,7 @@ impl PythonProcessInfo {
                     // If we failed to find the executable in the virtual memory maps, just take the first file we find
                     // sometimes on windows get_process_exe returns stale info =( https://github.com/benfred/py-spy/issues/40
                     // and on all operating systems I've tried, the exe is the first region in the maps
-                    &maps.first().ok_or_else(|| {
+                    maps.first().ok_or_else(|| {
                         format_err!("Failed to get virtual memory maps from process")
                     })?
                 }
@@ -100,37 +100,32 @@ impl PythonProcessInfo {
             let filename = &std::path::PathBuf::from(format!("/proc/{}/exe", process.pid));
 
             // TODO: consistent types? u64 -> usize? for map.start etc
-            #[allow(unused_mut)]
-            let python_binary = parse_binary(&filename, map.start() as u64, map.size() as u64)
-                .and_then(|mut pb| {
-                    // windows symbols are stored in separate files (.pdb), load
-                    #[cfg(windows)]
-                    {
-                        get_windows_python_symbols(process.pid, &filename, map.start() as u64)
-                            .map(|symbols| {
-                                pb.symbols.extend(symbols);
-                                pb
-                            })
-                            .map_err(|err| err.into())
-                    }
+            let python_binary = parse_binary(filename, map.start() as u64, map.size() as u64);
 
-                    // For OSX, need to adjust main binary symbols by subtracting _mh_execute_header
-                    // (which we've added to by map.start already, so undo that here)
-                    #[cfg(target_os = "macos")]
-                    {
-                        let offset = pb.symbols["_mh_execute_header"] - map.start() as u64;
-                        for address in pb.symbols.values_mut() {
-                            *address -= offset;
-                        }
+            // windows symbols are stored in separate files (.pdb), load
+            #[cfg(windows)]
+            let python_binary = python_binary.and_then(|mut pb| {
+                get_windows_python_symbols(process.pid, &filename, map.start() as u64)
+                    .map(|symbols| {
+                        pb.symbols.extend(symbols);
+                        pb
+                    })
+                    .map_err(|err| err.into())
+            });
 
-                        if pb.bss_addr != 0 {
-                            pb.bss_addr -= offset;
-                        }
-                    }
+            // For OSX, need to adjust main binary symbols by subtracting _mh_execute_header
+            // (which we've added to by map.start already, so undo that here)
+            #[cfg(target_os = "macos")]
+            let python_binary = python_binary.map(|mut pb| {
+                let offset = pb.symbols["_mh_execute_header"] - map.start() as u64;
+                for address in pb.symbols.values_mut() {
+                    *address -= offset;
+                }
 
-                    #[cfg(not(windows))]
-                    Ok(pb)
-                });
+                if pb.bss_addr != 0 {
+                    pb.bss_addr -= offset;
+                }
+            });
 
             (python_binary, filename.clone())
         };
@@ -311,8 +306,8 @@ where
     let path = Path::new(&python_info.python_filename);
     if let Some(python) = path.file_name() {
         if let Some(python) = python.to_str() {
-            if python.starts_with("python") {
-                let tokens: Vec<&str> = python[6..].split('.').collect();
+            if let Some(stripped_python) = python.strip_prefix("python") {
+                let tokens: Vec<&str> = stripped_python.split('.').collect();
                 if tokens.len() >= 2 {
                     if let (Ok(major), Ok(minor)) =
                         (tokens[0].parse::<u64>(), tokens[1].parse::<u64>())
@@ -351,7 +346,7 @@ where
         } => {
             if let Some(&addr) = python_info.get_symbol("_PyRuntime") {
                 let addr = process
-                    .copy_struct(addr as usize + pyruntime::get_interp_head_offset(&version))?;
+                    .copy_struct(addr as usize + pyruntime::get_interp_head_offset(version))?;
 
                 // Make sure the interpreter addr is valid before returning
                 match check_interpreter_addresses(&[addr], &*python_info.maps, process, version) {
@@ -395,7 +390,7 @@ where
     if let Some(ref lpb) = python_info.libpython_binary {
         info!("Failed to get interpreter from binary BSS, scanning libpython BSS");
         match get_interpreter_address_from_binary(lpb, &*python_info.maps, process, version) {
-            Ok(addr) => return Ok(addr),
+            Ok(addr) => Ok(addr),
             lib_err => err.unwrap_or(lib_err),
         }
     } else {
@@ -536,21 +531,21 @@ pub fn get_threadstate_address(
             ..
         } => match python_info.get_symbol("_PyRuntime") {
             Some(&addr) => {
-                if let Some(offset) = pyruntime::get_tstate_current_offset(&version) {
+                if let Some(offset) = pyruntime::get_tstate_current_offset(version) {
                     info!("Found _PyRuntime @ 0x{:016x}, getting gilstate.tstate_current from offset 0x{:x}",
                             addr, offset);
                     addr as usize + offset
                 } else {
                     error_if_gil(
                         config,
-                        &version,
+                        version,
                         "unknown pyruntime.gilstate.tstate_current offset",
                     )?;
                     0
                 }
             }
             None => {
-                error_if_gil(config, &version, "failed to find _PyRuntime symbol")?;
+                error_if_gil(config, version, "failed to find _PyRuntime symbol")?;
                 0
             }
         },
@@ -562,7 +557,7 @@ pub fn get_threadstate_address(
             None => {
                 error_if_gil(
                     config,
-                    &version,
+                    version,
                     "failed to find _PyThreadState_Current symbol",
                 )?;
                 0
@@ -621,7 +616,7 @@ impl ContainsAddr for Vec<MapRange> {
 #[cfg(target_os = "linux")]
 fn is_dockerized(pid: Pid) -> Result<bool, Error> {
     let self_mnt = std::fs::read_link("/proc/self/ns/mnt")?;
-    let target_mnt = std::fs::read_link(&format!("/proc/{}/ns/mnt", pid))?;
+    let target_mnt = std::fs::read_link(format!("/proc/{}/ns/mnt", pid))?;
     Ok(self_mnt != target_mnt)
 }
 

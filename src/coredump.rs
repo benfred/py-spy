@@ -8,10 +8,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Error, Result};
 use console::style;
-use goblin;
-use libc;
 use log::info;
-use remoteprocess;
 use remoteprocess::ProcessMemory;
 
 use crate::binary_parser::{parse_binary, BinaryInfo};
