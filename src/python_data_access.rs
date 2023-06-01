@@ -1,5 +1,3 @@
-use std;
-
 use anyhow::Error;
 
 use crate::python_interpreters::{
@@ -97,7 +95,7 @@ pub fn copy_long<P: ProcessMemory>(process: &P, addr: usize) -> Result<(i64, boo
 pub fn copy_int<P: ProcessMemory>(process: &P, addr: usize) -> Result<i64, Error> {
     let value =
         process.copy_pointer(addr as *const crate::python_bindings::v2_7_15::PyIntObject)?;
-    Ok(value.ob_ival as i64)
+    Ok(value.ob_ival)
 }
 
 /// Allows iteration of a python dictionary. Only supports python 3.6+ right now
@@ -333,8 +331,8 @@ where
         || (version.major == 2 && (flags & PY_TPFLAGS_BYTES_SUBCLASS != 0))
     {
         let value = copy_string(addr as *const I::StringObject, process)?
-            .replace("\"", "\\\"")
-            .replace("\n", "\\n");
+            .replace('\'', "\\\"")
+            .replace('\n', "\\n");
         if value.len() as isize >= max_length - 5 {
             format!("\"{}...\"", &value[..(max_length - 5) as usize])
         } else {

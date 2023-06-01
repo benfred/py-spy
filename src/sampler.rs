@@ -79,7 +79,7 @@ impl Sampler {
                 let late = sleep.err();
                 if tx
                     .send(Sample {
-                        traces: traces,
+                        traces,
                         sampling_errors,
                         late,
                     })

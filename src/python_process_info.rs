@@ -1,7 +1,6 @@
 use regex::Regex;
 #[cfg(windows)]
 use regex::RegexBuilder;
-use std;
 #[cfg(windows)]
 use std::collections::HashMap;
 use std::mem::size_of;

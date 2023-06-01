@@ -1,6 +1,5 @@
 #[cfg(windows)]
 use regex::RegexBuilder;
-use std;
 use std::collections::HashMap;
 #[cfg(all(target_os = "linux", unwind))]
 use std::collections::HashSet;

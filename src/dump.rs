@@ -35,7 +35,7 @@ pub fn print_traces(pid: Pid, config: &Config, parent: Option<Pid>) -> Result<()
             parentprocess.cmdline()?.join(" ")
         );
     }
-    println!("");
+    println!();
     let traces = process.get_stack_traces()?;
     for trace in traces.iter().rev() {
         print_trace(trace, true);
@@ -53,7 +53,7 @@ pub fn print_traces(pid: Pid, config: &Config, parent: Option<Pid>) -> Result<()
                 // though we could end up printing grandchild processes multiple times. Limit down
                 // to just once
                 if parentpid == pid {
-                    print_traces(childpid, &config, Some(parentpid))?;
+                    print_traces(childpid, config, Some(parentpid))?;
                 }
             }
         }
@@ -88,7 +88,7 @@ pub fn print_trace(trace: &StackTrace, include_activity: bool) {
 
     for frame in &trace.frames {
         let filename = match &frame.short_filename {
-            Some(f) => &f,
+            Some(f) => f,
             None => &frame.filename,
         };
         if frame.line != 0 {
@@ -118,7 +118,7 @@ pub fn print_trace(trace: &StackTrace, include_activity: bool) {
                     shown_locals = true;
                 }
 
-                let repr = local.repr.as_ref().map(String::as_str).unwrap_or("?");
+                let repr = local.repr.as_deref().unwrap_or("?");
                 println!("            {}: {}", local.name, repr);
             }
         }
