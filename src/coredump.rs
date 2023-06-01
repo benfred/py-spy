@@ -1,29 +1,34 @@
 use std::collections::HashMap;
+use std::ffi::OsStr;
 use std::fs::File;
+use std::io::Read;
+use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 use std::path::PathBuf;
-use std::ffi::OsStr;
-use std::os::unix::ffi::OsStrExt;
-use std::io::Read;
 
-use anyhow::{Error, Context, Result};
+use anyhow::{Context, Error, Result};
 use console::style;
 use goblin;
-use log::{info};
 use libc;
+use log::info;
 use remoteprocess;
 use remoteprocess::ProcessMemory;
 
-use crate::binary_parser::{BinaryInfo, parse_binary};
+use crate::binary_parser::{parse_binary, BinaryInfo};
+use crate::config::Config;
 use crate::dump::print_trace;
-use crate::python_bindings::{v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0, v3_9_5, v3_10_0, v3_11_0};
+use crate::python_bindings::{
+    v2_7_15, v3_10_0, v3_11_0, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0, v3_9_5,
+};
 use crate::python_data_access::format_variable;
 use crate::python_interpreters::InterpreterState;
-use crate::python_process_info::{is_python_lib, ContainsAddr, PythonProcessInfo, get_python_version, get_interpreter_address, get_threadstate_address};
-use crate::stack_trace::{StackTrace, get_stack_traces};
+use crate::python_process_info::{
+    get_interpreter_address, get_python_version, get_threadstate_address, is_python_lib,
+    ContainsAddr, PythonProcessInfo,
+};
 use crate::python_threading::thread_names_from_interpreter;
+use crate::stack_trace::{get_stack_traces, StackTrace};
 use crate::version::Version;
-use crate::config::Config;
 
 #[derive(Debug, Clone)]
 pub struct CoreMapRange {
@@ -34,17 +39,30 @@ pub struct CoreMapRange {
 // Defines accessors to match those in proc_maps. However, can't use the
 // proc_maps trait since is private
 impl CoreMapRange {
-    pub fn size(&self) -> usize { self.segment.p_memsz as usize }
-    pub fn start(&self) -> usize { self.segment.p_vaddr as usize }
-    pub fn filename(&self) -> Option<&Path> { self.pathname.as_deref() }
-    pub fn is_exec(&self) -> bool { self.segment.is_executable() }
-    pub fn is_write(&self) -> bool { self.segment.is_write() }
-    pub fn is_read(&self) -> bool { self.segment.is_read() }
+    pub fn size(&self) -> usize {
+        self.segment.p_memsz as usize
+    }
+    pub fn start(&self) -> usize {
+        self.segment.p_vaddr as usize
+    }
+    pub fn filename(&self) -> Option<&Path> {
+        self.pathname.as_deref()
+    }
+    pub fn is_exec(&self) -> bool {
+        self.segment.is_executable()
+    }
+    pub fn is_write(&self) -> bool {
+        self.segment.is_write()
+    }
+    pub fn is_read(&self) -> bool {
+        self.segment.is_read()
+    }
 }
 
 impl ContainsAddr for Vec<CoreMapRange> {
     fn contains_addr(&self, addr: usize) -> bool {
-        self.iter().any(|map| (addr >= map.start()) && (addr < (map.start() + map.size())))
+        self.iter()
+            .any(|map| (addr >= map.start()) && (addr < (map.start() + map.size())))
     }
 }
 
@@ -62,9 +80,11 @@ impl CoreDump {
         let mut file = File::open(filename)?;
         let mut contents = Vec::new();
         file.read_to_end(&mut contents)?;
-        let elf  = goblin::elf::Elf::parse(&contents)?;
+        let elf = goblin::elf::Elf::parse(&contents)?;
 
-        let notes = elf.iter_note_headers(&contents).ok_or_else(|| format_err!("no note segment found"))?;
+        let notes = elf
+            .iter_note_headers(&contents)
+            .ok_or_else(|| format_err!("no note segment found"))?;
 
         let mut filenames = HashMap::new();
         let mut psinfo = None;
@@ -72,15 +92,14 @@ impl CoreDump {
         for note in notes {
             if let Ok(note) = note {
                 if note.n_type == goblin::elf::note::NT_PRPSINFO {
-                    psinfo = Some(unsafe { *(note.desc.as_ptr() as * const elfcore::elf_prpsinfo) });
-                }
-                else if note.n_type == goblin::elf::note::NT_PRSTATUS {
-                    let thread_status = unsafe { *(note.desc.as_ptr() as * const elfcore::elf_prstatus) };
+                    psinfo = Some(unsafe { *(note.desc.as_ptr() as *const elfcore::elf_prpsinfo) });
+                } else if note.n_type == goblin::elf::note::NT_PRSTATUS {
+                    let thread_status =
+                        unsafe { *(note.desc.as_ptr() as *const elfcore::elf_prstatus) };
                     status.push(thread_status);
-                }
-                else if note.n_type == goblin::elf::note::NT_FILE {
+                } else if note.n_type == goblin::elf::note::NT_FILE {
                     let data = note.desc;
-                    let ptrs = data.as_ptr() as * const usize;
+                    let ptrs = data.as_ptr() as *const usize;
 
                     let count = unsafe { *ptrs };
                     let _page_size = unsafe { *ptrs.offset(1) };
@@ -106,16 +125,33 @@ impl CoreDump {
         for ph in elf.program_headers {
             if ph.p_type == goblin::elf::program_header::PT_LOAD {
                 let pathname = filenames.get(&(ph.p_vaddr as _));
-                let map = CoreMapRange {pathname: pathname.cloned(), segment: ph};
-                info!("map: {:016x}-{:016x} {}{}{} {}", map.start(), map.start() + map.size(),
-                    if map.is_read() {'r'} else {'-'}, if map.is_write() {'w'} else {'-'}, if map.is_exec() {'x'} else {'-'},
-                    map.filename().unwrap_or(&std::path::PathBuf::from("")).display());
+                let map = CoreMapRange {
+                    pathname: pathname.cloned(),
+                    segment: ph,
+                };
+                info!(
+                    "map: {:016x}-{:016x} {}{}{} {}",
+                    map.start(),
+                    map.start() + map.size(),
+                    if map.is_read() { 'r' } else { '-' },
+                    if map.is_write() { 'w' } else { '-' },
+                    if map.is_exec() { 'x' } else { '-' },
+                    map.filename()
+                        .unwrap_or(&std::path::PathBuf::from(""))
+                        .display()
+                );
 
                 maps.push(map);
             }
         }
 
-        Ok(CoreDump{filename: filename.to_owned(), contents, maps, psinfo, status})
+        Ok(CoreDump {
+            filename: filename.to_owned(),
+            contents,
+            maps,
+            psinfo,
+            status,
+        })
     }
 }
 
@@ -131,8 +167,8 @@ impl ProcessMemory for CoreDump {
             let ph = &map.segment;
             if start >= ph.p_vaddr && start <= (ph.p_vaddr + ph.p_memsz) {
                 let offset = (start - ph.p_vaddr + ph.p_offset) as usize;
-                buf.copy_from_slice(&self.contents[offset..(offset+buf.len())]);
-                return Ok(())
+                buf.copy_from_slice(&self.contents[offset..(offset + buf.len())]);
+                return Ok(());
             }
         }
 
@@ -155,30 +191,33 @@ impl PythonCoreDump {
 
         // Get the python binary from the maps, and parse it
         let (python_filename, python_binary) = {
-            let map = maps.iter().find(|m| m.filename().is_some() & m.is_exec()).ok_or_else(|| format_err!("Failed to get binary from coredump"))?;
+            let map = maps
+                .iter()
+                .find(|m| m.filename().is_some() & m.is_exec())
+                .ok_or_else(|| format_err!("Failed to get binary from coredump"))?;
             let python_filename = map.filename().unwrap();
-            let python_binary = parse_binary(python_filename, map.start() as _ , map.size() as _);
+            let python_binary = parse_binary(python_filename, map.start() as _, map.size() as _);
             info!("Found python binary @ {}", python_filename.display());
             (python_filename.to_owned(), python_binary)
         };
 
         // get the libpython binary (if any) from maps
         let libpython_binary = {
-            let libmap = maps.iter()
-                .find(|m| {
-                    if let Some(pathname) = m.filename() {
-                        if let Some(pathname) = pathname.to_str() {
-                            return is_python_lib(pathname) && m.is_exec();
-                        }
+            let libmap = maps.iter().find(|m| {
+                if let Some(pathname) = m.filename() {
+                    if let Some(pathname) = pathname.to_str() {
+                        return is_python_lib(pathname) && m.is_exec();
                     }
-                    false
-                });
+                }
+                false
+            });
 
             let mut libpython_binary: Option<BinaryInfo> = None;
             if let Some(libpython) = libmap {
                 if let Some(filename) = &libpython.filename() {
                     info!("Found libpython binary @ {}", filename.display());
-                    let parsed = parse_binary(filename, libpython.start() as u64, libpython.size() as u64)?;
+                    let parsed =
+                        parse_binary(filename, libpython.start() as u64, libpython.size() as u64)?;
                     libpython_binary = Some(parsed);
                 }
             }
@@ -191,10 +230,16 @@ impl PythonCoreDump {
             _ => python_binary.ok(),
         };
 
-        let python_info = PythonProcessInfo{python_binary, libpython_binary, maps: Box::new(core.maps.clone()),
-            python_filename: python_filename, dockerized: false};
+        let python_info = PythonProcessInfo {
+            python_binary,
+            libpython_binary,
+            maps: Box::new(core.maps.clone()),
+            python_filename: python_filename,
+            dockerized: false,
+        };
 
-        let version = get_python_version(&python_info, &core).context("failed to get python version")?;
+        let version =
+            get_python_version(&python_info, &core).context("failed to get python version")?;
         info!("Got python version {}", version);
 
         let interpreter_address = get_interpreter_address(&python_info, &core, &version)?;
@@ -205,37 +250,76 @@ impl PythonCoreDump {
         let threadstate_address = get_threadstate_address(&python_info, &version, &config)?;
         info!("found threadstate at 0x{:016x}", threadstate_address);
 
-        Ok(PythonCoreDump{core, version, interpreter_address, threadstate_address})
+        Ok(PythonCoreDump {
+            core,
+            version,
+            interpreter_address,
+            threadstate_address,
+        })
     }
 
     pub fn get_stack(&self, config: &Config) -> Result<Vec<StackTrace>, Error> {
         if config.native {
-            return Err(format_err!("Native unwinding isn't yet supported with coredumps"));
+            return Err(format_err!(
+                "Native unwinding isn't yet supported with coredumps"
+            ));
         }
 
         if config.subprocesses {
-            return Err(format_err!("Subprocesses can't be used for getting stacktraces from coredumps"));
+            return Err(format_err!(
+                "Subprocesses can't be used for getting stacktraces from coredumps"
+            ));
         }
 
         // different versions have different layouts, check as appropriate
         Ok(match self.version {
-            Version{major: 2, minor: 3..=7, ..} => self._get_stack::<v2_7_15::_is>(config),
-            Version{major: 3, minor: 3, ..} => self._get_stack::<v3_3_7::_is>(config),
-            Version{major: 3, minor: 4..=5, ..} => self._get_stack::<v3_5_5::_is>(config),
-            Version{major: 3, minor: 6, ..} => self._get_stack::<v3_6_6::_is>(config),
-            Version{major: 3, minor: 7, ..} => self._get_stack::<v3_7_0::_is>(config),
-            Version{major: 3, minor: 8, ..} => self._get_stack::<v3_8_0::_is>(config),
-            Version{major: 3, minor: 9, ..} => self._get_stack::<v3_9_5::_is>(config),
-            Version{major: 3, minor: 10, ..} => self._get_stack::<v3_10_0::_is>(config),
-            Version{major: 3, minor: 11, ..} => self._get_stack::<v3_11_0::_is>(config),
-            _ => Err(format_err!("Unsupported version of Python: {}", self.version))
+            Version {
+                major: 2,
+                minor: 3..=7,
+                ..
+            } => self._get_stack::<v2_7_15::_is>(config),
+            Version {
+                major: 3, minor: 3, ..
+            } => self._get_stack::<v3_3_7::_is>(config),
+            Version {
+                major: 3,
+                minor: 4..=5,
+                ..
+            } => self._get_stack::<v3_5_5::_is>(config),
+            Version {
+                major: 3, minor: 6, ..
+            } => self._get_stack::<v3_6_6::_is>(config),
+            Version {
+                major: 3, minor: 7, ..
+            } => self._get_stack::<v3_7_0::_is>(config),
+            Version {
+                major: 3, minor: 8, ..
+            } => self._get_stack::<v3_8_0::_is>(config),
+            Version {
+                major: 3, minor: 9, ..
+            } => self._get_stack::<v3_9_5::_is>(config),
+            Version {
+                major: 3,
+                minor: 10,
+                ..
+            } => self._get_stack::<v3_10_0::_is>(config),
+            Version {
+                major: 3,
+                minor: 11,
+                ..
+            } => self._get_stack::<v3_11_0::_is>(config),
+            _ => Err(format_err!(
+                "Unsupported version of Python: {}",
+                self.version
+            )),
         }?)
     }
 
     fn _get_stack<I: InterpreterState>(&self, config: &Config) -> Result<Vec<StackTrace>, Error> {
         let interp: I = self.core.copy_struct(self.interpreter_address)?;
 
-        let mut traces = get_stack_traces(&interp, &self.core, self.threadstate_address, Some(config))?;
+        let mut traces =
+            get_stack_traces(&interp, &self.core, self.threadstate_address, Some(config))?;
         let thread_names = thread_names_from_interpreter(&interp, &self.core, &self.version).ok();
 
         for trace in &mut traces {
@@ -247,7 +331,12 @@ impl PythonCoreDump {
                 if let Some(locals) = frame.locals.as_mut() {
                     let max_length = (128 * config.dump_locals) as isize;
                     for local in locals {
-                        let repr = format_variable::<I, CoreDump>(&self.core, &self.version, local.addr, max_length);
+                        let repr = format_variable::<I, CoreDump>(
+                            &self.core,
+                            &self.version,
+                            local.addr,
+                            max_length,
+                        );
                         local.repr = Some(repr.unwrap_or("?".to_owned()));
                     }
                 }
@@ -259,20 +348,24 @@ impl PythonCoreDump {
     pub fn print_traces(&self, traces: &Vec<StackTrace>, config: &Config) -> Result<(), Error> {
         if config.dump_json {
             println!("{}", serde_json::to_string_pretty(&traces)?);
-            return Ok(())
+            return Ok(());
         }
 
         for status in &self.core.status {
-            println!("Signal {}: {}",
+            println!(
+                "Signal {}: {}",
                 style(status.pr_cursig).bold().yellow(),
-                self.core.filename.display());
+                self.core.filename.display()
+            );
             break;
         }
 
         if let Some(psinfo) = self.core.psinfo {
-            println!("Process {}: {}",
+            println!(
+                "Process {}: {}",
                 style(psinfo.pr_pid).bold().yellow(),
-                OsStr::from_bytes(&psinfo.pr_psargs).to_string_lossy());
+                OsStr::from_bytes(&psinfo.pr_psargs).to_string_lossy()
+            );
         }
         println!("Python v{}", style(&self.version).bold());
         println!("");
@@ -349,12 +442,18 @@ mod test {
         // so we can't (yet) figure out the interpreter address & version.
         // Manually specify here to test out instead
         let core = CoreDump::new(&get_coredump_path("python_3_9_threads")).unwrap();
-        let version =  Version{major: 3, minor: 9, patch: 13, release_flags: "".to_owned()};
+        let version = Version {
+            major: 3,
+            minor: 9,
+            patch: 13,
+            release_flags: "".to_owned(),
+        };
         let python_core = PythonCoreDump {
             core,
             version,
             interpreter_address: 0x000055a8293dbe20,
-            threadstate_address: 0x000055a82745fe18};
+            threadstate_address: 0x000055a82745fe18,
+        };
 
         let config = Config::default();
         let traces = python_core.get_stack(&config).unwrap();

@@ -1,13 +1,12 @@
-
+use regex::Regex;
 use std;
 use std::collections::{BTreeMap, HashMap};
-use regex::Regex;
 
 use anyhow::Error;
 use lazy_static::lazy_static;
 
-use crate::utils::resolve_filename;
 use crate::stack_trace::Frame;
+use crate::utils::resolve_filename;
 
 pub struct SourceMaps {
     maps: HashMap<String, Option<SourceMap>>,
@@ -16,7 +15,7 @@ pub struct SourceMaps {
 impl SourceMaps {
     pub fn new() -> SourceMaps {
         let maps = HashMap::new();
-        SourceMaps{maps}
+        SourceMaps { maps }
     }
 
     pub fn translate(&mut self, frame: &mut Frame) {
@@ -67,7 +66,7 @@ impl SourceMaps {
 }
 
 struct SourceMap {
-    lookup: BTreeMap<u32, (String, u32)>
+    lookup: BTreeMap<u32, (String, u32)>,
 }
 
 impl SourceMap {
@@ -76,7 +75,11 @@ impl SourceMap {
         SourceMap::from_contents(&contents, filename, module)
     }
 
-    pub fn from_contents(contents: &str, cpp_filename: &str, module: &Option<String>) -> Result<SourceMap, Error> {
+    pub fn from_contents(
+        contents: &str,
+        cpp_filename: &str,
+        module: &Option<String>,
+    ) -> Result<SourceMap, Error> {
         lazy_static! {
             static ref RE: Regex = Regex::new(r#"^\s*/\* "(.+\..+)":([0-9]+)"#).unwrap();
         }
@@ -108,7 +111,7 @@ impl SourceMap {
         }
 
         lookup.insert(line_count + 1, ("".to_owned(), 0));
-        Ok(SourceMap{lookup})
+        Ok(SourceMap { lookup })
     }
 
     pub fn lookup(&self, lineno: u32) -> Option<&(String, u32)> {
@@ -116,25 +119,38 @@ impl SourceMap {
             // handle EOF
             Some((_, (_, 0))) => None,
             Some((_, val)) => Some(val),
-            None => None
+            None => None,
         }
     }
 }
 
 pub fn ignore_frame(name: &str) -> bool {
-    let ignorable = ["__Pyx_PyFunction_FastCallDict", "__Pyx_PyObject_CallOneArg",
-        "__Pyx_PyObject_Call", "__Pyx_PyObject_Call", "__pyx_FusedFunction_call"];
+    let ignorable = [
+        "__Pyx_PyFunction_FastCallDict",
+        "__Pyx_PyObject_CallOneArg",
+        "__Pyx_PyObject_Call",
+        "__Pyx_PyObject_Call",
+        "__pyx_FusedFunction_call",
+    ];
 
     ignorable.iter().any(|&f| f == name)
 }
 
 pub fn demangle(name: &str) -> &str {
     // slice off any leading cython prefix.
-    let prefixes = ["__pyx_fuse_1_0__pyx_pw", "__pyx_fuse_0__pyx_f", "__pyx_fuse_1__pyx_f",
-                    "__pyx_pf", "__pyx_pw", "__pyx_f", "___pyx_f", "___pyx_pw"];
+    let prefixes = [
+        "__pyx_fuse_1_0__pyx_pw",
+        "__pyx_fuse_0__pyx_f",
+        "__pyx_fuse_1__pyx_f",
+        "__pyx_pf",
+        "__pyx_pw",
+        "__pyx_f",
+        "___pyx_f",
+        "___pyx_pw",
+    ];
     let mut current = match prefixes.iter().find(|&prefix| name.starts_with(prefix)) {
         Some(prefix) => &name[prefix.len()..],
-        None => return name
+        None => return name,
     };
 
     let mut next = current;
@@ -166,8 +182,8 @@ pub fn demangle(name: &str) -> &str {
                     break;
                 }
                 next = &next[digits + digit_index..];
-            },
-            Err(_) => { break }
+            }
+            Err(_) => break,
         };
     }
     debug!("cython_demangle(\"{}\") -> \"{}\"", name, current);
@@ -175,7 +191,11 @@ pub fn demangle(name: &str) -> &str {
     current
 }
 
-fn resolve_cython_file(cpp_filename: &str, cython_filename: &str, module: &Option<String>) -> String {
+fn resolve_cython_file(
+    cpp_filename: &str,
+    cython_filename: &str,
+    module: &Option<String>,
+) -> String {
     let cython_path = std::path::PathBuf::from(cython_filename);
     if let Some(ext) = cython_path.extension() {
         let mut path_buf = std::path::PathBuf::from(cpp_filename);
@@ -187,10 +207,9 @@ fn resolve_cython_file(cpp_filename: &str, cython_filename: &str, module: &Optio
 
     match module {
         Some(module) => {
-            resolve_filename(cython_filename, module)
-                .unwrap_or_else(|| cython_filename.to_owned())
-        },
-        None => cython_filename.to_owned()
+            resolve_filename(cython_filename, module).unwrap_or_else(|| cython_filename.to_owned())
+        }
+        None => cython_filename.to_owned(),
     }
 }
 
@@ -200,34 +219,58 @@ mod tests {
     #[test]
     fn test_demangle() {
         // all of these were wrong at certain points when writing cython_demangle =(
-        assert_eq!(demangle("__pyx_pf_8implicit_4_als_30_least_squares_cg"), "_least_squares_cg");
-        assert_eq!(demangle("__pyx_pw_8implicit_4_als_5least_squares_cg"), "least_squares_cg");
-        assert_eq!(demangle("__pyx_fuse_1_0__pyx_pw_8implicit_4_als_31_least_squares_cg"), "_least_squares_cg");
-        assert_eq!(demangle("__pyx_f_6mtrand_cont0_array"), "mtrand_cont0_array");
+        assert_eq!(
+            demangle("__pyx_pf_8implicit_4_als_30_least_squares_cg"),
+            "_least_squares_cg"
+        );
+        assert_eq!(
+            demangle("__pyx_pw_8implicit_4_als_5least_squares_cg"),
+            "least_squares_cg"
+        );
+        assert_eq!(
+            demangle("__pyx_fuse_1_0__pyx_pw_8implicit_4_als_31_least_squares_cg"),
+            "_least_squares_cg"
+        );
+        assert_eq!(
+            demangle("__pyx_f_6mtrand_cont0_array"),
+            "mtrand_cont0_array"
+        );
         // in both of these cases we should ideally slice off the module (_als/bpr), but it gets tricky
         // implementation wise
-        assert_eq!(demangle("__pyx_fuse_0__pyx_f_8implicit_4_als_axpy"), "_als_axpy");
-        assert_eq!(demangle("__pyx_fuse_1__pyx_f_8implicit_3bpr_has_non_zero"), "bpr_has_non_zero");
+        assert_eq!(
+            demangle("__pyx_fuse_0__pyx_f_8implicit_4_als_axpy"),
+            "_als_axpy"
+        );
+        assert_eq!(
+            demangle("__pyx_fuse_1__pyx_f_8implicit_3bpr_has_non_zero"),
+            "bpr_has_non_zero"
+        );
     }
 
     #[test]
     fn test_source_map() {
-        let map = SourceMap::from_contents(include_str!("../ci/testdata/cython_test.c"), "cython_test.c", &None).unwrap();
+        let map = SourceMap::from_contents(
+            include_str!("../ci/testdata/cython_test.c"),
+            "cython_test.c",
+            &None,
+        )
+        .unwrap();
 
         // we don't have info on cython line numbers until line 1261
         assert_eq!(map.lookup(1000), None);
         // past the end of the file should also return none
         assert_eq!(map.lookup(10000), None);
 
-        let lookup = |lineno: u32, cython_file: &str, cython_line: u32| {
-            match map.lookup(lineno) {
-                Some((file, line)) => {
-                    assert_eq!(file, cython_file);
-                    assert_eq!(line, &cython_line);
-                },
-                None => {
-                    panic!("Failed to lookup line {} (expected {}:{})", lineno, cython_file, cython_line);
-                }
+        let lookup = |lineno: u32, cython_file: &str, cython_line: u32| match map.lookup(lineno) {
+            Some((file, line)) => {
+                assert_eq!(file, cython_file);
+                assert_eq!(line, &cython_line);
+            }
+            None => {
+                panic!(
+                    "Failed to lookup line {} (expected {}:{})",
+                    lineno, cython_file, cython_line
+                );
             }
         };
         lookup(1298, "cython_test.pyx", 6);

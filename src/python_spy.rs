@@ -1,26 +1,30 @@
-use std;
-use std::collections::HashMap;
-#[cfg(all(target_os="linux", unwind))]
-use std::collections::HashSet;
-use std::path::Path;
-#[cfg(all(target_os="linux", unwind))]
-use std::iter::FromIterator;
 #[cfg(windows)]
 use regex::RegexBuilder;
+use std;
+use std::collections::HashMap;
+#[cfg(all(target_os = "linux", unwind))]
+use std::collections::HashSet;
+#[cfg(all(target_os = "linux", unwind))]
+use std::iter::FromIterator;
+use std::path::Path;
 
-use anyhow::{Error, Result, Context};
-use remoteprocess::{Process, ProcessMemory, Pid, Tid};
+use anyhow::{Context, Error, Result};
+use remoteprocess::{Pid, Process, ProcessMemory, Tid};
 
 use crate::config::{Config, LockingStrategy};
 #[cfg(unwind)]
 use crate::native_stack_trace::NativeStack;
-use crate::python_bindings::{v2_7_15, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0, v3_9_5, v3_10_0, v3_11_0};
+use crate::python_bindings::{
+    v2_7_15, v3_10_0, v3_11_0, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0, v3_9_5,
+};
 use crate::python_data_access::format_variable;
 use crate::python_interpreters::{InterpreterState, ThreadState};
+use crate::python_process_info::{
+    get_interpreter_address, get_python_version, get_threadstate_address, PythonProcessInfo,
+};
 use crate::python_threading::thread_name_lookup;
-use crate::stack_trace::{StackTrace, get_stack_trace, get_gil_threadid};
+use crate::stack_trace::{get_gil_threadid, get_stack_trace, StackTrace};
 use crate::version::Version;
-use crate::python_process_info::{PythonProcessInfo, get_python_version, get_interpreter_address, get_threadstate_address};
 
 /// Lets you retrieve stack traces of a running python program
 pub struct PythonSpy {
@@ -37,8 +41,8 @@ pub struct PythonSpy {
     pub short_filenames: HashMap<String, Option<String>>,
     pub python_thread_ids: HashMap<u64, Tid>,
     pub python_thread_names: HashMap<u64, String>,
-    #[cfg(target_os="linux")]
-    pub dockerized: bool
+    #[cfg(target_os = "linux")]
+    pub dockerized: bool,
 }
 
 impl PythonSpy {
@@ -53,7 +57,7 @@ impl PythonSpy {
         // lock the process when loading up on freebsd (rather than locking
         // on every memory read). Needs done after getting python process info
         // because procmaps also tries to attach w/ ptrace on freebsd
-        #[cfg(target_os="freebsd")]
+        #[cfg(target_os = "freebsd")]
         let _lock = process.lock();
 
         let version = get_python_version(&python_info, &process)?;
@@ -61,7 +65,7 @@ impl PythonSpy {
 
         let interpreter_address = get_interpreter_address(&python_info, &process, &version)?;
         info!("Found interpreter at 0x{:016x}", interpreter_address);
-    
+
         // lets us figure out which thread has the GIL
         let threadstate_address = get_threadstate_address(&python_info, &version, config)?;
 
@@ -69,28 +73,38 @@ impl PythonSpy {
 
         #[cfg(unwind)]
         let native = if config.native {
-            Some(NativeStack::new(pid, python_info.python_binary, python_info.libpython_binary)?)
+            Some(NativeStack::new(
+                pid,
+                python_info.python_binary,
+                python_info.libpython_binary,
+            )?)
         } else {
             None
         };
 
-        Ok(PythonSpy{pid, process, version, interpreter_address, threadstate_address,
-                     python_filename: python_info.python_filename,
-                     version_string,
-                     #[cfg(unwind)]
-                     native,
-                     #[cfg(target_os="linux")]
-                     dockerized: python_info.dockerized,
-                     config: config.clone(),
-                     short_filenames: HashMap::new(),
-                     python_thread_ids: HashMap::new(),
-                     python_thread_names: HashMap::new()})
+        Ok(PythonSpy {
+            pid,
+            process,
+            version,
+            interpreter_address,
+            threadstate_address,
+            python_filename: python_info.python_filename,
+            version_string,
+            #[cfg(unwind)]
+            native,
+            #[cfg(target_os = "linux")]
+            dockerized: python_info.dockerized,
+            config: config.clone(),
+            short_filenames: HashMap::new(),
+            python_thread_ids: HashMap::new(),
+            python_thread_names: HashMap::new(),
+        })
     }
 
     /// Creates a PythonSpy object, retrying up to max_retries times.
     /// Mainly useful for the case where the process is just started and
     /// symbols or the python interpreter might not be loaded yet.
-    pub fn retry_new(pid: Pid, config: &Config, max_retries:u64) -> Result<PythonSpy, Error> {
+    pub fn retry_new(pid: Pid, config: &Config, max_retries: u64) -> Result<PythonSpy, Error> {
         let mut retries = 0;
         loop {
             let err = match PythonSpy::new(pid, config) {
@@ -98,10 +112,10 @@ impl PythonSpy {
                     // verify that we can load a stack trace before returning success
                     match process.get_stack_traces() {
                         Ok(_) => return Ok(process),
-                        Err(err) => err
+                        Err(err) => err,
                     }
-                },
-                Err(err) => err
+                }
+                Err(err) => err,
             };
 
             // If we failed, retry a couple times before returning the last error
@@ -118,25 +132,57 @@ impl PythonSpy {
     pub fn get_stack_traces(&mut self) -> Result<Vec<StackTrace>, Error> {
         match self.version {
             // ABI for 2.3/2.4/2.5/2.6/2.7 is compatible for our purpose
-            Version{major: 2, minor: 3..=7, ..} => self._get_stack_traces::<v2_7_15::_is>(),
-            Version{major: 3, minor: 3, ..} => self._get_stack_traces::<v3_3_7::_is>(),
+            Version {
+                major: 2,
+                minor: 3..=7,
+                ..
+            } => self._get_stack_traces::<v2_7_15::_is>(),
+            Version {
+                major: 3, minor: 3, ..
+            } => self._get_stack_traces::<v3_3_7::_is>(),
             // ABI for 3.4 and 3.5 is the same for our purposes
-            Version{major: 3, minor: 4, ..} => self._get_stack_traces::<v3_5_5::_is>(),
-            Version{major: 3, minor: 5, ..} => self._get_stack_traces::<v3_5_5::_is>(),
-            Version{major: 3, minor: 6, ..} => self._get_stack_traces::<v3_6_6::_is>(),
-            Version{major: 3, minor: 7, ..} => self._get_stack_traces::<v3_7_0::_is>(),
+            Version {
+                major: 3, minor: 4, ..
+            } => self._get_stack_traces::<v3_5_5::_is>(),
+            Version {
+                major: 3, minor: 5, ..
+            } => self._get_stack_traces::<v3_5_5::_is>(),
+            Version {
+                major: 3, minor: 6, ..
+            } => self._get_stack_traces::<v3_6_6::_is>(),
+            Version {
+                major: 3, minor: 7, ..
+            } => self._get_stack_traces::<v3_7_0::_is>(),
             // v3.8.0a1 to v3.8.0a3 is compatible with 3.7 ABI, but later versions of 3.8.0 aren't
-            Version{major: 3, minor: 8, patch: 0, ..} => {
-                match self.version.release_flags.as_ref() {
-                    "a1" | "a2" | "a3" => self._get_stack_traces::<v3_7_0::_is>(),
-                    _ => self._get_stack_traces::<v3_8_0::_is>()
-                }
-            }
-            Version{major: 3, minor: 8, ..} => self._get_stack_traces::<v3_8_0::_is>(),
-            Version{major: 3, minor: 9, ..} => self._get_stack_traces::<v3_9_5::_is>(),
-            Version{major: 3, minor: 10, ..} => self._get_stack_traces::<v3_10_0::_is>(),
-            Version{major: 3, minor: 11, ..} => self._get_stack_traces::<v3_11_0::_is>(),
-            _ => Err(format_err!("Unsupported version of Python: {}", self.version)),
+            Version {
+                major: 3,
+                minor: 8,
+                patch: 0,
+                ..
+            } => match self.version.release_flags.as_ref() {
+                "a1" | "a2" | "a3" => self._get_stack_traces::<v3_7_0::_is>(),
+                _ => self._get_stack_traces::<v3_8_0::_is>(),
+            },
+            Version {
+                major: 3, minor: 8, ..
+            } => self._get_stack_traces::<v3_8_0::_is>(),
+            Version {
+                major: 3, minor: 9, ..
+            } => self._get_stack_traces::<v3_9_5::_is>(),
+            Version {
+                major: 3,
+                minor: 10,
+                ..
+            } => self._get_stack_traces::<v3_10_0::_is>(),
+            Version {
+                major: 3,
+                minor: 11,
+                ..
+            } => self._get_stack_traces::<v3_11_0::_is>(),
+            _ => Err(format_err!(
+                "Unsupported version of Python: {}",
+                self.version
+            )),
         }
     }
 
@@ -162,18 +208,29 @@ impl PythonSpy {
         // TODO: hoist most of this code out to stack_trace.rs, and
         // then annotate the output of that with things like native stack traces etc
         //      have moved in gil / locals etc
-        let gil_thread_id = get_gil_threadid::<I, Process>(self.threadstate_address, &self.process)?;
+        let gil_thread_id =
+            get_gil_threadid::<I, Process>(self.threadstate_address, &self.process)?;
 
         // Get the python interpreter, and loop over all the python threads
-        let interp: I = self.process.copy_struct(self.interpreter_address)
-           .context("Failed to copy PyInterpreterState from process")?;
+        let interp: I = self
+            .process
+            .copy_struct(self.interpreter_address)
+            .context("Failed to copy PyInterpreterState from process")?;
 
         let mut traces = Vec::new();
         let mut threads = interp.head();
         while !threads.is_null() {
             // Get the stack trace of the python thread
-            let thread = self.process.copy_pointer(threads).context("Failed to copy PyThreadState")?;
-            let mut trace = get_stack_trace(&thread, &self.process, self.config.dump_locals > 0, self.config.lineno)?;
+            let thread = self
+                .process
+                .copy_pointer(threads)
+                .context("Failed to copy PyThreadState")?;
+            let mut trace = get_stack_trace(
+                &thread,
+                &self.process,
+                self.config.dump_locals > 0,
+                self.config.lineno,
+            )?;
 
             // Try getting the native thread id
             let python_thread_id = thread.thread_id();
@@ -226,7 +283,9 @@ impl PythonSpy {
             {
                 if self.config.native {
                     if let Some(native) = self.native.as_mut() {
-                        let thread_id = trace.os_thread_id.ok_or_else(|| format_err!("failed to get os threadid"))?;
+                        let thread_id = trace
+                            .os_thread_id
+                            .ok_or_else(|| format_err!("failed to get os threadid"))?;
                         let os_thread = remoteprocess::Thread::new(thread_id as Tid)?;
                         trace.frames = native.merge_native_thread(&trace.frames, &os_thread)?
                     }
@@ -238,7 +297,12 @@ impl PythonSpy {
                 if let Some(locals) = frame.locals.as_mut() {
                     let max_length = (128 * self.config.dump_locals) as isize;
                     for local in locals {
-                        let repr = format_variable::<I, Process>(&self.process, &self.version, local.addr, max_length);
+                        let repr = format_variable::<I, Process>(
+                            &self.process,
+                            &self.version,
+                            local.addr,
+                            max_length,
+                        );
                         local.repr = Some(repr.unwrap_or("?".to_owned()));
                     }
                 }
@@ -266,22 +330,31 @@ impl PythonSpy {
             false
         } else {
             let frame = &frames[0];
-            (frame.name == "wait" && frame.filename.ends_with("threading.py")) ||
-            (frame.name == "select" && frame.filename.ends_with("selectors.py")) ||
-            (frame.name == "poll" && (frame.filename.ends_with("asyncore.py") ||
-                                    frame.filename.contains("zmq") ||
-                                    frame.filename.contains("gevent") ||
-                                    frame.filename.contains("tornado")))
+            (frame.name == "wait" && frame.filename.ends_with("threading.py"))
+                || (frame.name == "select" && frame.filename.ends_with("selectors.py"))
+                || (frame.name == "poll"
+                    && (frame.filename.ends_with("asyncore.py")
+                        || frame.filename.contains("zmq")
+                        || frame.filename.contains("gevent")
+                        || frame.filename.contains("tornado")))
         }
     }
 
     #[cfg(windows)]
-    fn _get_os_thread_id<I: InterpreterState>(&mut self, python_thread_id: u64, _interp: &I) -> Result<Option<Tid>, Error> {
+    fn _get_os_thread_id<I: InterpreterState>(
+        &mut self,
+        python_thread_id: u64,
+        _interp: &I,
+    ) -> Result<Option<Tid>, Error> {
         Ok(Some(python_thread_id as Tid))
     }
 
-    #[cfg(target_os="macos")]
-    fn _get_os_thread_id<I: InterpreterState>(&mut self, python_thread_id: u64, _interp: &I) -> Result<Option<Tid>, Error> {
+    #[cfg(target_os = "macos")]
+    fn _get_os_thread_id<I: InterpreterState>(
+        &mut self,
+        python_thread_id: u64,
+        _interp: &I,
+    ) -> Result<Option<Tid>, Error> {
         // If we've already know this threadid, we're good
         if let Some(thread_id) = self.python_thread_ids.get(&python_thread_id) {
             return Ok(Some(*thread_id));
@@ -300,13 +373,21 @@ impl PythonSpy {
         Ok(None)
     }
 
-    #[cfg(all(target_os="linux", not(unwind)))]
-    fn _get_os_thread_id<I: InterpreterState>(&mut self, _python_thread_id: u64, _interp: &I) -> Result<Option<Tid>, Error> {
+    #[cfg(all(target_os = "linux", not(unwind)))]
+    fn _get_os_thread_id<I: InterpreterState>(
+        &mut self,
+        _python_thread_id: u64,
+        _interp: &I,
+    ) -> Result<Option<Tid>, Error> {
         Ok(None)
     }
 
-    #[cfg(all(target_os="linux", unwind))]
-    fn _get_os_thread_id<I: InterpreterState>(&mut self, python_thread_id: u64, interp: &I) -> Result<Option<Tid>, Error> {
+    #[cfg(all(target_os = "linux", unwind))]
+    fn _get_os_thread_id<I: InterpreterState>(
+        &mut self,
+        python_thread_id: u64,
+        interp: &I,
+    ) -> Result<Option<Tid>, Error> {
         // in nonblocking mode, we can't get the threadid reliably (method here requires reading the RBX
         // register which requires a ptrace attach). fallback to heuristic thread activity here
         if self.config.blocking == LockingStrategy::NonBlocking {
@@ -327,13 +408,17 @@ impl PythonSpy {
         let mut all_python_threads = HashSet::new();
         let mut threads = interp.head();
         while !threads.is_null() {
-            let thread = self.process.copy_pointer(threads).context("Failed to copy PyThreadState")?;
+            let thread = self
+                .process
+                .copy_pointer(threads)
+                .context("Failed to copy PyThreadState")?;
             let current = thread.thread_id();
             all_python_threads.insert(current);
             threads = thread.next();
         }
 
-        let processed_os_threads: HashSet<Tid> = HashSet::from_iter(self.python_thread_ids.values().map(|x| *x));
+        let processed_os_threads: HashSet<Tid> =
+            HashSet::from_iter(self.python_thread_ids.values().map(|x| *x));
 
         let unwinder = self.process.unwinder()?;
 
@@ -349,8 +434,10 @@ impl PythonSpy {
                     if pthread_id != 0 {
                         self.python_thread_ids.insert(pthread_id, threadid);
                     }
-                },
-                Err(e) => { warn!("Failed to get get_pthread_id for {}: {}", threadid, e); }
+                }
+                Err(e) => {
+                    warn!("Failed to get get_pthread_id for {}: {}", threadid, e);
+                }
             };
         }
 
@@ -380,9 +467,13 @@ impl PythonSpy {
         Ok(None)
     }
 
-
-    #[cfg(all(target_os="linux", unwind))]
-    pub fn _get_pthread_id(&self, unwinder: &remoteprocess::Unwinder, thread: &remoteprocess::Thread, threadids: &HashSet<u64>) -> Result<u64, Error> {
+    #[cfg(all(target_os = "linux", unwind))]
+    pub fn _get_pthread_id(
+        &self,
+        unwinder: &remoteprocess::Unwinder,
+        thread: &remoteprocess::Thread,
+        threadids: &HashSet<u64>,
+    ) -> Result<u64, Error> {
         let mut pthread_id = 0;
 
         let mut cursor = unwinder.cursor(thread)?;
@@ -400,8 +491,12 @@ impl PythonSpy {
         Ok(pthread_id)
     }
 
-    #[cfg(target_os="freebsd")]
-    fn _get_os_thread_id<I: InterpreterState>(&mut self, _python_thread_id: u64, _interp: &I) -> Result<Option<Tid>, Error> {
+    #[cfg(target_os = "freebsd")]
+    fn _get_os_thread_id<I: InterpreterState>(
+        &mut self,
+        _python_thread_id: u64,
+        _interp: &I,
+    ) -> Result<Option<Tid>, Error> {
         Ok(None)
     }
 
@@ -409,8 +504,11 @@ impl PythonSpy {
         match self.python_thread_names.get(&python_thread_id) {
             Some(thread_name) => Some(thread_name.clone()),
             None => {
-                self.python_thread_names = thread_name_lookup(self).unwrap_or_else(|| HashMap::new());
-                self.python_thread_names.get(&python_thread_id).map(|name| name.clone())
+                self.python_thread_names =
+                    thread_name_lookup(self).unwrap_or_else(|| HashMap::new());
+                self.python_thread_names
+                    .get(&python_thread_id)
+                    .map(|name| name.clone())
             }
         }
     }
@@ -430,10 +528,10 @@ impl PythonSpy {
         }
 
         // on linux the process could be running in docker, access the filename through procfs
-        #[cfg(target_os="linux")]
+        #[cfg(target_os = "linux")]
         let filename_storage;
 
-        #[cfg(target_os="linux")]
+        #[cfg(target_os = "linux")]
         let filename = if self.dockerized {
             filename_storage = format!("/proc/{}/root{}", self.pid, filename);
             if Path::new(&filename_storage).exists() {
@@ -460,7 +558,8 @@ impl PythonSpy {
             .ok()
             .map(|p| p.to_string_lossy().to_string());
 
-        self.short_filenames.insert(filename.to_owned(), shortened.clone());
+        self.short_filenames
+            .insert(filename.to_owned(), shortened.clone());
         shortened
     }
 }

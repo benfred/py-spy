@@ -9,5 +9,5 @@ repos:
       - repo: https://github.com/doublify/pre-commit-rust
         rev: v1.0
         hooks:
-#        - id: fmt
+        - id: fmt
         - id: cargo-check
