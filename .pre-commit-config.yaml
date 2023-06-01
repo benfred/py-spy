@@ -11,3 +11,11 @@ repos:
         hooks:
         - id: fmt
         - id: cargo-check
+      - repo: local
+        hooks:
+        - id: cargo-clippy
+          name: cargo clippy
+          entry: cargo clippy -- -D warnings
+          language: system
+          files: \.rs$
+          pass_filenames: false
