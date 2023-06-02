@@ -214,7 +214,12 @@ pub fn get_gil_threadid<I: InterpreterState, P: ProcessMemory>(threadstate_addre
 
 impl ProcessInfo {
     pub fn to_frame(&self) -> Frame {
-        Frame{name: format!("process {}:\"{}\"", self.pid, self.command_line),
+        let name = if self.parent.is_none() {
+            format!("process {}:\"{}\"", self.pid, self.command_line)
+        } else {
+            "subprocess".to_string()
+        };
+        Frame{name,
             filename: String::from(""),
             module: None, short_filename: None, line: 0, locals: None}
     }
