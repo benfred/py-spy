@@ -97,10 +97,10 @@ impl PythonProcessInfo {
             // use filename through /proc/pid/exe which works across docker namespaces and
             // handles if the file was deleted
             #[cfg(target_os = "linux")]
-            let filename = &std::path::PathBuf::from(format!("/proc/{}/exe", process.pid));
+            let filename = std::path::PathBuf::from(format!("/proc/{}/exe", process.pid));
 
             // TODO: consistent types? u64 -> usize? for map.start etc
-            let python_binary = parse_binary(filename, map.start() as u64, map.size() as u64);
+            let python_binary = parse_binary(&filename, map.start() as u64, map.size() as u64);
 
             // windows symbols are stored in separate files (.pdb), load
             #[cfg(windows)]
