@@ -127,7 +127,7 @@ impl PythonProcessInfo {
                 }
             });
 
-            (python_binary, filename.clone())
+            (python_binary, filename)
         };
 
         // likewise handle libpython for python versions compiled with --enabled-shared
