@@ -125,6 +125,7 @@ impl PythonProcessInfo {
                 if pb.bss_addr != 0 {
                     pb.bss_addr -= offset;
                 }
+                pb
             });
 
             (python_binary, filename)
