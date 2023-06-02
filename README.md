@@ -36,8 +36,8 @@ can be installed with ```apk add py-spy --update-cache --repository http://dl-3.
 ## Usage
 
 py-spy works from the command line and takes either the PID of the program you want to sample from
-or the command line of the python program you want to run. py-spy has three subcommands
-```record```, ```top``` and ```dump```:
+or the command line of the python program you want to run. py-spy has four subcommands
+```record```, ```pyroscope```, ```top``` and ```dump```:
 
 ### record
 
@@ -59,6 +59,20 @@ You can change the file format to generate
 [speedscope](https://github.com/jlfwong/speedscope) profiles or raw data with the ```--format``` parameter.
 See ```py-spy record --help``` for information on other options including changing
 the sampling rate, filtering to only include threads that hold the GIL, profiling native C extensions,
+showing thread-ids, profiling subprocesses and more.
+
+### pyroscope
+
+py-spy supports sending profiles to a [pyroscope](https://pyroscope.io) instance using the ```pyroscope``` command. For example, you can profile your python process by running:
+
+``` bash
+py-spy pyroscope -si --pyroscope_url http://localhost:4040 --pyroscope_app app --pyroscope_tags 'a,b' --pyroscope_report_interval 1000 python myprogram.py
+```
+
+The pyroscope reporting interval is relative the the number of samples, for example if the sampling rate is 100 and the report interval is 1000, an aggregated report is uploaded to pyroscope every 1000 samples, aka every 10 seconds.
+
+See ```py-spy pyroscope --help``` for information on other options including changing
+the sampling rate, reporting interval, filtering to only include threads that hold the GIL, profiling native C extensions,
 showing thread-ids, profiling subprocesses and more.
 
 ### top
