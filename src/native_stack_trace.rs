@@ -36,7 +36,7 @@ impl NativeStack {
         let unwinder = process.unwinder()?;
         let symbolicator = process.symbolicator()?;
 
-        return Ok(NativeStack {
+        Ok(NativeStack {
             cython_maps,
             unwinder,
             symbolicator,
@@ -45,7 +45,7 @@ impl NativeStack {
             libpython,
             process,
             symbol_cache: LruCache::new(65536),
-        });
+        })
     }
 
     pub fn merge_native_thread(
@@ -62,7 +62,7 @@ impl NativeStack {
         let native_stack = self.get_thread(thread)?;
 
         // TODO: merging the two stack together could happen outside of thread lock
-        return self.merge_native_stack(frames, native_stack);
+        self.merge_native_stack(frames, native_stack)
     }
     pub fn merge_native_stack(
         &mut self,
@@ -75,7 +75,7 @@ impl NativeStack {
         // merge the native_stack and python stack together
         for addr in native_stack {
             // check in the symbol cache if we have looked up this symbol yet
-            let cached_symbol = self.symbol_cache.get(&addr).map(|f| f.clone());
+            let cached_symbol = self.symbol_cache.get(&addr).cloned();
 
             // merges a remoteprocess::StackFrame into the current merged vec
             let is_python_addr = self.python.as_ref().map_or(false, |m| m.contains(addr))
@@ -220,7 +220,7 @@ impl NativeStack {
                 // which is replaced by the function from the python stack
                 // note: we're splitting on both _ and . to handle symbols like
                 // _PyEval_EvalFrameDefault.cold.2962
-                let mut tokens = function.split(&['_', '.'][..]).filter(|&x| x.len() > 0);
+                let mut tokens = function.split(&['_', '.'][..]).filter(|&x| !x.is_empty());
                 match tokens.next() {
                     Some("PyEval") => match tokens.next() {
                         Some("EvalFrameDefault") => MergeType::MergePythonFrame,
@@ -268,11 +268,11 @@ impl NativeStack {
                         }
                     }
                 }
-                let name = demangled.as_ref().unwrap_or_else(|| &func);
+                let name = demangled.as_ref().unwrap_or(func);
                 if cython::ignore_frame(name) {
                     return None;
                 }
-                let name = cython::demangle(&name).to_owned();
+                let name = cython::demangle(name).to_owned();
                 Some(Frame {
                     filename,
                     line,

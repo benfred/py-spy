@@ -1,5 +1,4 @@
 use regex::Regex;
-use std;
 use std::collections::{BTreeMap, HashMap};
 
 use anyhow::Error;
@@ -41,8 +40,7 @@ impl SourceMaps {
             }
             return false;
         }
-
-        return true;
+        true
     }
 
     // loads the corresponding cython source map for the frame
@@ -89,7 +87,7 @@ impl SourceMap {
 
         let mut line_count = 0;
         for (lineno, line) in contents.lines().enumerate() {
-            if let Some(captures) = RE.captures(&line) {
+            if let Some(captures) = RE.captures(line) {
                 let cython_file = captures.get(1).map_or("", |m| m.as_str());
                 let cython_line = captures.get(2).map_or("", |m| m.as_str());
 
@@ -164,8 +162,8 @@ pub fn demangle(name: &str) -> &str {
         }
 
         let mut digit_index = 1;
-        while let Some(ch) = chars.next() {
-            if !ch.is_digit(10) {
+        for ch in chars {
+            if !ch.is_ascii_digit() {
                 break;
             }
             digit_index += 1;
@@ -199,7 +197,7 @@ fn resolve_cython_file(
     let cython_path = std::path::PathBuf::from(cython_filename);
     if let Some(ext) = cython_path.extension() {
         let mut path_buf = std::path::PathBuf::from(cpp_filename);
-        path_buf.set_extension(&ext);
+        path_buf.set_extension(ext);
         if path_buf.ends_with(&cython_path) && path_buf.exists() {
             return path_buf.to_string_lossy().to_string();
         }

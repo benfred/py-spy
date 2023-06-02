@@ -22,7 +22,7 @@ jobs:
         with:
             commit-message: Update tested python versions
             title: Update tested python versions
-            branch: update-python-versons
+            branch: update-python-versions
             labels: |
                 skip-changelog
                 dependencies

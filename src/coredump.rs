@@ -8,10 +8,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Error, Result};
 use console::style;
-use goblin;
-use libc;
 use log::info;
-use remoteprocess;
 use remoteprocess::ProcessMemory;
 
 use crate::binary_parser::{parse_binary, BinaryInfo};
@@ -89,33 +86,31 @@ impl CoreDump {
         let mut filenames = HashMap::new();
         let mut psinfo = None;
         let mut status = Vec::new();
-        for note in notes {
-            if let Ok(note) = note {
-                if note.n_type == goblin::elf::note::NT_PRPSINFO {
-                    psinfo = Some(unsafe { *(note.desc.as_ptr() as *const elfcore::elf_prpsinfo) });
-                } else if note.n_type == goblin::elf::note::NT_PRSTATUS {
-                    let thread_status =
-                        unsafe { *(note.desc.as_ptr() as *const elfcore::elf_prstatus) };
-                    status.push(thread_status);
-                } else if note.n_type == goblin::elf::note::NT_FILE {
-                    let data = note.desc;
-                    let ptrs = data.as_ptr() as *const usize;
+        for note in notes.flatten() {
+            if note.n_type == goblin::elf::note::NT_PRPSINFO {
+                psinfo = Some(unsafe { *(note.desc.as_ptr() as *const elfcore::elf_prpsinfo) });
+            } else if note.n_type == goblin::elf::note::NT_PRSTATUS {
+                let thread_status =
+                    unsafe { *(note.desc.as_ptr() as *const elfcore::elf_prstatus) };
+                status.push(thread_status);
+            } else if note.n_type == goblin::elf::note::NT_FILE {
+                let data = note.desc;
+                let ptrs = data.as_ptr() as *const usize;
 
-                    let count = unsafe { *ptrs };
-                    let _page_size = unsafe { *ptrs.offset(1) };
+                let count = unsafe { *ptrs };
+                let _page_size = unsafe { *ptrs.offset(1) };
 
-                    let string_table = &data[(std::mem::size_of::<usize>() * (2 + count * 3))..];
+                let string_table = &data[(std::mem::size_of::<usize>() * (2 + count * 3))..];
 
-                    for (i, filename) in string_table.split(|chr| *chr == 0).enumerate() {
-                        if i < count {
-                            let i = i as isize;
-                            let start = unsafe { *ptrs.offset(i * 3 + 2) };
-                            let _end = unsafe { *ptrs.offset(i * 3 + 3) };
-                            let _page_offset = unsafe { *ptrs.offset(i * 3 + 4) };
+                for (i, filename) in string_table.split(|chr| *chr == 0).enumerate() {
+                    if i < count {
+                        let i = i as isize;
+                        let start = unsafe { *ptrs.offset(i * 3 + 2) };
+                        let _end = unsafe { *ptrs.offset(i * 3 + 3) };
+                        let _page_offset = unsafe { *ptrs.offset(i * 3 + 4) };
 
-                            let pathname = Path::new(&OsStr::from_bytes(filename)).to_path_buf();
-                            filenames.insert(start, pathname);
-                        }
+                        let pathname = Path::new(&OsStr::from_bytes(filename)).to_path_buf();
+                        filenames.insert(start, pathname);
                     }
                 }
             }
@@ -234,7 +229,7 @@ impl PythonCoreDump {
             python_binary,
             libpython_binary,
             maps: Box::new(core.maps.clone()),
-            python_filename: python_filename,
+            python_filename,
             dockerized: false,
         };
 
@@ -272,7 +267,7 @@ impl PythonCoreDump {
         }
 
         // different versions have different layouts, check as appropriate
-        Ok(match self.version {
+        match self.version {
             Version {
                 major: 2,
                 minor: 3..=7,
@@ -312,7 +307,7 @@ impl PythonCoreDump {
                 "Unsupported version of Python: {}",
                 self.version
             )),
-        }?)
+        }
     }
 
     fn _get_stack<I: InterpreterState>(&self, config: &Config) -> Result<Vec<StackTrace>, Error> {
@@ -337,7 +332,7 @@ impl PythonCoreDump {
                             local.addr,
                             max_length,
                         );
-                        local.repr = Some(repr.unwrap_or("?".to_owned()));
+                        local.repr = Some(repr.unwrap_or_else(|_| "?".to_owned()));
                     }
                 }
             }
@@ -351,13 +346,12 @@ impl PythonCoreDump {
             return Ok(());
         }
 
-        for status in &self.core.status {
+        if let Some(status) = self.core.status.first() {
             println!(
                 "Signal {}: {}",
                 style(status.pr_cursig).bold().yellow(),
                 self.core.filename.display()
             );
-            break;
         }
 
         if let Some(psinfo) = self.core.psinfo {
@@ -368,9 +362,9 @@ impl PythonCoreDump {
             );
         }
         println!("Python v{}", style(&self.version).bold());
-        println!("");
+        println!();
         for trace in traces.iter().rev() {
-            print_trace(&trace, false);
+            print_trace(trace, false);
         }
         Ok(())
     }

@@ -3,7 +3,6 @@ use std::fs::File;
 use std::path::Path;
 
 use anyhow::Error;
-use goblin;
 use goblin::Object;
 use memmap::Mmap;
 
@@ -74,8 +73,8 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
                     let (name, value) = symbol?;
                     // almost every symbol we care about starts with an extra _, remove to normalize
                     // with the entries seen on linux/windows
-                    if name.starts_with('_') {
-                        symbols.insert(name[1..].to_string(), value.n_value + offset);
+                    if let Some(stripped_name) = name.strip_prefix('_') {
+                        symbols.insert(stripped_name.to_string(), value.n_value + offset);
                     }
                 }
             }
@@ -94,7 +93,7 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
             let bss_header = elf
                 .section_headers
                 .iter()
-                .find(|ref header| header.sh_type == goblin::elf::section_header::SHT_NOBITS)
+                .find(|header| header.sh_type == goblin::elf::section_header::SHT_NOBITS)
                 .ok_or_else(|| {
                     format_err!(
                         "Failed to find BSS section header in {}",
@@ -105,7 +104,7 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
             let program_header = elf
                 .program_headers
                 .iter()
-                .find(|ref header| {
+                .find(|header| {
                     header.p_type == goblin::elf::program_header::PT_LOAD
                         && header.p_flags & goblin::elf::program_header::PF_X != 0
                 })
@@ -118,7 +117,7 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
 
             // p_vaddr may be larger than the map address in case when the header has an offset and
             // the map address is relatively small. In this case we can default to 0.
-            let offset = offset.checked_sub(program_header.p_vaddr).unwrap_or(0);
+            let offset = offset.saturating_sub(program_header.p_vaddr);
 
             for sym in elf.syms.iter() {
                 let name = elf.strtab[sym.st_name].to_string();
@@ -142,14 +141,14 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
             for export in pe.exports {
                 if let Some(name) = export.name {
                     if let Some(export_offset) = export.offset {
-                        symbols.insert(name.to_string(), export_offset as u64 + offset as u64);
+                        symbols.insert(name.to_string(), export_offset as u64 + offset);
                     }
                 }
             }
 
             pe.sections
                 .iter()
-                .find(|ref section| section.name.starts_with(b".data"))
+                .find(|section| section.name.starts_with(b".data"))
                 .ok_or_else(|| {
                     format_err!(
                         "Failed to find .data section in PE binary of {}",

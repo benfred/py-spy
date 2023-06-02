@@ -1,3 +1,5 @@
+#![allow(clippy::type_complexity)]
+
 use std::collections::HashMap;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
@@ -48,7 +50,7 @@ impl Sampler {
             // have the Send trait implemented on linux
             let mut spy = match PythonSpy::retry_new(pid, &config, 20) {
                 Ok(spy) => {
-                    if let Err(_) = initialized_tx.send(Ok(spy.version.clone())) {
+                    if initialized_tx.send(Ok(spy.version.clone())).is_err() {
                         return;
                     }
                     spy
@@ -79,7 +81,7 @@ impl Sampler {
                 let late = sleep.err();
                 if tx
                     .send(Sample {
-                        traces: traces,
+                        traces,
                         sampling_errors,
                         late,
                     })
@@ -106,13 +108,13 @@ impl Sampler {
         // Initialize a PythonSpy object per child, and build up the process tree
         let mut spies = HashMap::new();
         let mut retries = 10;
-        spies.insert(pid, PythonSpyThread::new(pid, None, &config)?);
+        spies.insert(pid, PythonSpyThread::new(pid, None, config)?);
 
         loop {
             for (childpid, parentpid) in process.child_processes()? {
                 // If we can't create the child process, don't worry about it
                 // can happen with zombie child processes etc
-                match PythonSpyThread::new(childpid, Some(parentpid), &config) {
+                match PythonSpyThread::new(childpid, Some(parentpid), config) {
                     Ok(spy) => {
                         spies.insert(childpid, spy);
                     }
@@ -203,7 +205,7 @@ impl Sampler {
                     match spy.collect() {
                         Some(Ok(mut t)) => traces.append(&mut t),
                         Some(Err(e)) => {
-                            let errors = sampling_errors.get_or_insert_with(|| Vec::new());
+                            let errors = sampling_errors.get_or_insert_with(Vec::new);
                             errors.push((spy.process.pid, e));
                         }
                         None => {}
@@ -292,14 +294,14 @@ impl PythonSpyThread {
         let command_line = process
             .cmdline()
             .map(|x| x.join(" "))
-            .unwrap_or("".to_owned());
+            .unwrap_or_else(|_| "".to_owned());
 
         thread::spawn(move || {
             // We need to create this object inside the thread here since PythonSpy objects don't
             // have the Send trait implemented on linux
             let mut spy = match PythonSpy::retry_new(pid, &config, 5) {
                 Ok(spy) => {
-                    if let Err(_) = initialized_tx.send(Ok(spy.version.clone())) {
+                    if initialized_tx.send(Ok(spy.version.clone())).is_err() {
                         return;
                     }
                     spy
@@ -313,14 +315,12 @@ impl PythonSpyThread {
 
             for _ in notify_rx.iter() {
                 let result = spy.get_stack_traces();
-                if let Err(_) = result {
-                    if spy.process.exe().is_err() {
-                        info!(
-                            "stopped sampling pid {} because the process exited",
-                            spy.pid
-                        );
-                        break;
-                    }
+                if result.is_err() && spy.process.exe().is_err() {
+                    info!(
+                        "stopped sampling pid {} because the process exited",
+                        spy.pid
+                    );
+                    break;
                 }
                 if sample_tx.send(result).is_err() {
                     break;

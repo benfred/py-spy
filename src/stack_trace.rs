@@ -1,4 +1,3 @@
-use std;
 use std::sync::Arc;
 
 use anyhow::{Context, Error, Result};
@@ -136,7 +135,7 @@ where
 
         let line = match lineno {
             LineNo::NoLine => 0,
-            LineNo::FirstLineNo => code.first_lineno(),
+            LineNo::First => code.first_lineno(),
             LineNo::LastInstruction => match get_line_number(&code, frame.lasti(), process) {
                 Ok(line) => line,
                 Err(e) => {

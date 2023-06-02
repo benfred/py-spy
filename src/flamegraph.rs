@@ -26,7 +26,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-use std;
 use std::collections::HashMap;
 use std::io::Write;
 
@@ -56,12 +55,12 @@ impl Flamegraph {
             .rev()
             .map(|frame| {
                 let filename = match &frame.short_filename {
-                    Some(f) => &f,
+                    Some(f) => f,
                     None => &frame.filename,
                 };
                 if self.show_linenumbers && frame.line != 0 {
                     format!("{} ({}:{})", frame.name, filename, frame.line)
-                } else if filename.len() > 0 {
+                } else if !filename.is_empty() {
                     format!("{} ({})", frame.name, filename)
                 } else {
                     frame.name.clone()

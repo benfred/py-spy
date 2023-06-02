@@ -1,5 +1,4 @@
-use std;
-
+#![allow(clippy::unnecessary_cast)]
 use anyhow::Error;
 
 use crate::python_interpreters::{
@@ -333,8 +332,8 @@ where
         || (version.major == 2 && (flags & PY_TPFLAGS_BYTES_SUBCLASS != 0))
     {
         let value = copy_string(addr as *const I::StringObject, process)?
-            .replace("\"", "\\\"")
-            .replace("\n", "\\n");
+            .replace('\'', "\\\"")
+            .replace('\n', "\\n");
         if value.len() as isize >= max_length - 5 {
             format!("\"{}...\"", &value[..(max_length - 5) as usize])
         } else {
@@ -419,12 +418,14 @@ pub mod tests {
     // python stores data after pybytesobject/pyasciiobject. hack by initializing a 4k buffer for testing.
     // TODO: get better at Rust and figure out a better solution
     #[allow(dead_code)]
+    #[repr(C)]
     pub struct AllocatedPyByteObject {
         pub base: PyBytesObject,
         pub storage: [u8; 4096],
     }
 
     #[allow(dead_code)]
+    #[repr(C)] // Rust can optimize the layout of this struct and break our pointer arithmetic
     pub struct AllocatedPyASCIIObject {
         pub base: PyASCIIObject,
         pub storage: [u8; 4096],

@@ -187,6 +187,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
         (true, _) => ProgressBar::hidden(),
         (false, RecordDuration::Seconds(samples)) => ProgressBar::new(*samples),
         (false, RecordDuration::Unlimited) => {
+            #[allow(clippy::let_and_return)]
             let progress = ProgressBar::new_spinner();
 
             // The spinner on windows doesn't look great: was replaced by a [?] character at least on
@@ -266,7 +267,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
                 });
             }
 
-            if let Some(process_info) = trace.process_info.as_ref().map(|x| x) {
+            if let Some(process_info) = trace.process_info.as_ref() {
                 trace.frames.push(process_info.to_frame());
                 let mut parent = process_info.parent.as_ref();
                 while parent.is_some() {
@@ -278,7 +279,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
             }
 
             samples += 1;
-            output.increment(&trace)?;
+            output.increment(trace)?;
         }
 
         if let Some(sampling_errors) = sample.sampling_errors {

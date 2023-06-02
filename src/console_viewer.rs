@@ -1,4 +1,3 @@
-use std;
 use std::collections::HashMap;
 use std::io;
 use std::io::{Read, Write};
@@ -108,7 +107,7 @@ impl ConsoleViewer {
 
             update_function_statistics(&mut self.stats.line_counts, trace, |frame| {
                 let filename = match &frame.short_filename {
-                    Some(f) => &f,
+                    Some(f) => f,
                     None => &frame.filename,
                 };
                 if frame.line != 0 {
@@ -120,7 +119,7 @@ impl ConsoleViewer {
 
             update_function_statistics(&mut self.stats.function_counts, trace, |frame| {
                 let filename = match &frame.short_filename {
-                    Some(f) => &f,
+                    Some(f) => f,
                     None => &frame.filename,
                 };
                 format!("{} ({})", frame.name, filename)
@@ -246,11 +245,7 @@ impl ConsoleViewer {
         } else {
             header_lines + height as usize / 2
         };
-        let max_function_width = if width > 50 {
-            width as usize - 35
-        } else {
-            width as usize
-        };
+        let max_function_width = if width > 50 { width - 35 } else { width };
 
         out!(
             "{:>7}{:>8}{:>9}{:>11}{:width$}",
@@ -284,7 +279,7 @@ impl ConsoleViewer {
             out!(
                 "{:width$}",
                 style(" Keyboard Shortcuts ").reverse(),
-                width = width as usize
+                width = width
             );
             out!();
             out!("{:^12}{:<}", style("key").green(), style("action").green());

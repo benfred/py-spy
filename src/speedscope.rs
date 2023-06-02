@@ -35,7 +35,6 @@ use remoteprocess::{Pid, Tid};
 
 use anyhow::Error;
 use serde_derive::{Deserialize, Serialize};
-use serde_json;
 
 use crate::config::Config;
 
@@ -130,7 +129,7 @@ enum ValueUnit {
 impl SpeedscopeFile {
     pub fn new(
         samples: &HashMap<(Pid, Tid), Vec<Vec<usize>>>,
-        frames: &Vec<Frame>,
+        frames: &[Frame],
         thread_name_map: &HashMap<(Pid, Tid), String>,
         sample_rate: u64,
     ) -> SpeedscopeFile {
@@ -140,7 +139,7 @@ impl SpeedscopeFile {
                 let end_value = samples.len();
                 // we sample at 100 Hz, so scale the end value and weights to match the time unit
                 let scaled_end_value = end_value as f64 / sample_rate as f64;
-                let weights: Vec<f64> = (&samples)
+                let weights: Vec<f64> = samples
                     .iter()
                     .map(|_s| 1_f64 / sample_rate as f64)
                     .collect();
@@ -167,9 +166,9 @@ impl SpeedscopeFile {
             active_profile_index: None,
             name: Some("py-spy profile".to_string()),
             exporter: Some(format!("py-spy@{}", env!("CARGO_PKG_VERSION"))),
-            profiles: profiles,
+            profiles,
             shared: Shared {
-                frames: frames.clone(),
+                frames: frames.to_owned(),
             },
         }
     }
@@ -223,7 +222,7 @@ impl Stats {
                 }
                 *self.frame_to_index.entry(key).or_insert_with(|| {
                     let len = frames.len();
-                    frames.push(Frame::new(&frame, show_line_numbers));
+                    frames.push(Frame::new(frame, show_line_numbers));
                     len
                 })
             })
@@ -234,7 +233,7 @@ impl Stats {
 
         self.samples
             .entry(key)
-            .or_insert_with(|| vec![])
+            .or_insert_with(std::vec::Vec::new)
             .push(frame_indices);
         let subprocesses = self.config.subprocesses;
         self.thread_name_map.entry(key).or_insert_with(|| {

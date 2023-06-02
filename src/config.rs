@@ -116,7 +116,7 @@ pub enum RecordDuration {
 #[derive(Debug, Clone, Eq, PartialEq, Copy)]
 pub enum LineNo {
     NoLine,
-    FirstLineNo,
+    First,
     LastInstruction,
 }
 
@@ -464,7 +464,7 @@ impl Config {
                 config.lineno = if matches.occurrences_of("nolineno") > 0 {
                     LineNo::NoLine
                 } else if matches.occurrences_of("function") > 0 {
-                    LineNo::FirstLineNo
+                    LineNo::First
                 } else {
                     LineNo::LastInstruction
                 };
