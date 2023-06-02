@@ -16,3 +16,7 @@ classifiers = [
 
 [tool.maturin]
 bindings = "bin"
+
+[tool.codespell]
+ignore-words-list = "crate"
+skip = "./.git,./.github,./target,./ci/testdata,./images/"
