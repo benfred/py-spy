@@ -18,9 +18,9 @@ clap_complete="3.2"
 console = "0.15"
 ctrlc = "3"
 indicatif = "0.16"
-env_logger = "0.9"
-goblin = "0.5.3"
-inferno = "0.11.7"
+env_logger = "0.10"
+goblin = "0.6.1"
+inferno = "0.11.15"
 lazy_static = "1.4.0"
 libc = "0.2"
 log = "0.4"
@@ -35,7 +35,7 @@ serde_derive = "1.0"
 serde_json = "1.0"
 rand = "0.8"
 rand_distr = "0.4"
-remoteprocess = {version="0.4.10", features=["unwind"]}
+remoteprocess = {version="0.4.11", features=["unwind"]}
 chrono = "0.4.19"
 reqwest = { version = "0.11", features = ["blocking"] }
 tokio = { version = "1", features = ["full"] }
