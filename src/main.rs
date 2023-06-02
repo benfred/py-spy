@@ -37,10 +37,7 @@ use console::style;
 
 use config::{Config, FileFormat, RecordDuration};
 use console_viewer::ConsoleViewer;
-use console_viewer::ConsoleViewer;
 use reqwest::StatusCode;
-use stack_trace::{Frame, StackTrace};
-use stack_trace::{Frame, StackTrace};
 use stack_trace::{Frame, StackTrace};
 
 use chrono::{Local, SecondsFormat};
