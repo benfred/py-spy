@@ -1,5 +1,6 @@
 use anyhow::Error;
 use std::collections::HashSet;
+use std::num::NonZeroUsize;
 
 use cpp_demangle::{BorrowedSymbol, DemangleOptions};
 use lazy_static::lazy_static;
@@ -44,7 +45,7 @@ impl NativeStack {
             python,
             libpython,
             process,
-            symbol_cache: LruCache::new(65536),
+            symbol_cache: LruCache::new(NonZeroUsize::new(65536).unwrap()),
         })
     }
 
