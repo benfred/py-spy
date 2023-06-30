@@ -438,16 +438,14 @@ fn should_spy_process(pid: Pid, monitor_config: &Config) -> bool {
         }
         match get_process_name(pid) {
             Ok(proc_name) => {
-                whitelist.iter().any(|item|item.eq_ignore_ascii_case(&proc_name))
+                return whitelist.iter().any(|item|item.eq_ignore_ascii_case(&proc_name));
             }
             Err(_) => {
                 warn!("Failed to get process name for PID: {}", pid);
-                false
+                return false;
             }
         }
     } else {
         return true;
     }
-
-
 }
