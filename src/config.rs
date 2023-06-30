@@ -42,6 +42,8 @@ pub struct Config {
     #[doc(hidden)]
     pub subprocesses: bool,
     #[doc(hidden)]
+    pub whitelist: Option<Vec<String>>,
+    #[doc(hidden)]
     pub gil_only: bool,
     #[doc(hidden)]
     pub hide_progress: bool,
@@ -134,6 +136,7 @@ impl Default for Config {
             dump_json: false,
             dump_locals: 0,
             subprocesses: false,
+            whitelist: None,
             full_filenames: false,
             lineno: LineNo::LastInstruction,
             refresh_seconds: 1.0,
@@ -183,6 +186,12 @@ impl Config {
             .short('s')
             .long("subprocesses")
             .help("Profile subprocesses of the original process");
+
+        let whitelist = Arg::new("whitelist")
+            .short('w')
+            .long("whitelist")
+            .help("A comma separated list of subprocess names to spy on")
+            .takes_value(true);
 
         let full_filenames = Arg::new("full_filenames").long("full-filenames").help(
             "Show full Python filenames, instead of shortening to show only the package part",
@@ -245,6 +254,7 @@ impl Config {
             )
             .arg(rate.clone())
             .arg(subprocesses.clone())
+            .arg(whitelist.clone())
             .arg(Arg::new("function").short('F').long("function").help(
                 "Aggregate samples by function's first line number, instead of current line number",
             ))
@@ -280,6 +290,7 @@ impl Config {
             .arg(pid.clone().required_unless_present("python_program"))
             .arg(rate.clone())
             .arg(subprocesses.clone())
+            .arg(whitelist.clone())
             .arg(full_filenames.clone())
             .arg(gil.clone())
             .arg(idle.clone())
@@ -315,7 +326,8 @@ impl Config {
                 .short('j')
                 .long("json")
                 .help("Format output as JSON"))
-            .arg(subprocesses.clone());
+            .arg(subprocesses.clone())
+            .arg(whitelist.clone());
 
         let completions = Command::new("completions")
             .about("Generate shell completions")
@@ -422,6 +434,9 @@ impl Config {
 
         config.subprocesses = matches.occurrences_of("subprocesses") > 0;
         config.command = subcommand.to_owned();
+        config.whitelist =  matches.value_of("whitelist")
+            .map(|p| p.split(',').map(String::from).collect());
+        
 
         // options that can be shared between subcommands
         config.pid = matches
