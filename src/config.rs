@@ -435,8 +435,7 @@ impl Config {
         config.subprocesses = matches.occurrences_of("subprocesses") > 0;
         config.command = subcommand.to_owned();
         config.whitelist =  matches.value_of("whitelist")
-            .map(|p| p.split(',').map(String::from).collect());
-        
+            .map(|p| p.split(',').map(|s| String::from(s.trim())).filter(|s| !s.is_empty()).collect());
 
         // options that can be shared between subcommands
         config.pid = matches

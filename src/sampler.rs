@@ -161,7 +161,7 @@ impl Sampler {
                                 continue; // Already in set
                             }
 
-                            if is_process_whitelisted(childpid, &monitor_config) {
+                            if should_spy_process(childpid, &monitor_config) {
                                 match PythonSpyThread::new(childpid, Some(parentpid), &monitor_config) {
                                     Ok(spy) => {
                                         spies.insert(childpid, spy);
@@ -430,22 +430,24 @@ fn get_process_name(pid: Pid) -> Result<String, Error>{
     Ok(exe_name.to_str().unwrap().into())
 }
 
-// True if no/empty whitelist, or processs name in whitelist
-fn is_process_whitelisted(pid: Pid, monitor_config: &Config) -> bool {
-    if monitor_config.whitelist.is_none(){
+// Decide if we should spy on a process, given its process id
+fn should_spy_process(pid: Pid, monitor_config: &Config) -> bool {
+    if let Some(whitelist) = monitor_config.whitelist.as_ref() {
+        if whitelist.len() == 0 {
+            return true;
+        }
+        match get_process_name(pid) {
+            Ok(proc_name) => {
+                whitelist.iter().any(|item|item.eq_ignore_ascii_case(&proc_name))
+            }
+            Err(_) => {
+                warn!("Failed to get process name for PID: {}", pid);
+                false
+            }
+        }
+    } else {
         return true;
     }
-    let whitelist = monitor_config.whitelist.as_ref().unwrap();
-    if whitelist.len() == 0 {
-        return true;
-    }
-    match get_process_name(pid) {
-        Ok(proc_name) => {
-            whitelist.iter().any(|item|item.eq_ignore_ascii_case(&proc_name))
-        }
-        Err(_) => {
-            warn!("Failed to get process name for PID: {}", pid);
-            false
-        }
-    }
+
+
 }
