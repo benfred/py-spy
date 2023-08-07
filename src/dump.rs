@@ -11,7 +11,7 @@ fn get_stack_traces_with_config(pid: Pid, config: &Config) -> Result<Vec<StackTr
     let mut process = PythonSpy::new(pid, config)?;
     let mut traces = process.get_stack_traces()?;
     if config.subprocesses {
-        let sub_results: Result<Vec<Vec<StackTrace>>, Error> = process
+        let unflattened: Result<Vec<Vec<StackTrace>>, Error> = process
             .process
             .child_processes()
             .expect("failed to get subprocesses")
@@ -27,7 +27,7 @@ fn get_stack_traces_with_config(pid: Pid, config: &Config) -> Result<Vec<StackTr
                 }
             })
             .collect();
-        let mut subtraces = sub_results?.into_iter().flatten().collect();
+        let mut subtraces = unflattened?.into_iter().flatten().collect();
         traces.append(&mut subtraces);
     }
 
