@@ -659,7 +659,7 @@ pub fn get_windows_python_symbols(
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 pub fn is_python_lib(pathname: &str) -> bool {
     lazy_static! {
-        static ref RE: Regex = Regex::new(r"/libpython\d.\d\d?(m|d|u)?.so").unwrap();
+        static ref RE: Regex = Regex::new(r"/libpython\d.\d\d?(m|d|u)?(-pyston\d.\d)?.so").unwrap();
     }
     RE.is_match(pathname)
 }
@@ -667,7 +667,8 @@ pub fn is_python_lib(pathname: &str) -> bool {
 #[cfg(target_os = "macos")]
 pub fn is_python_lib(pathname: &str) -> bool {
     lazy_static! {
-        static ref RE: Regex = Regex::new(r"/libpython\d.\d\d?(m|d|u)?.(dylib|so)$").unwrap();
+        static ref RE: Regex =
+            Regex::new(r"/libpython\d.\d\d?(m|d|u)?(-pyston\d.\d)?.(dylib|so)$").unwrap();
     }
     RE.is_match(pathname) || is_python_framework(pathname)
 }
@@ -714,7 +715,10 @@ mod tests {
     #[test]
     fn test_is_python_lib() {
         // libpython bundled by pyinstaller https://github.com/benfred/py-spy/issues/42
-        assert!(is_python_lib("/tmp/_MEIOqzg01/libpython2.7.so.1.0"));
+        assert!(is_python_lib("/usr/lib/libpython3.8-pyston2.3.so.1.0"));
+
+        // test pyston based libpython
+        assert!(is_python_lib("/usr/lib/libpython2.7u.so"));
 
         // test debug/malloc/unicode flags
         assert!(is_python_lib("./libpython2.7.so"));
