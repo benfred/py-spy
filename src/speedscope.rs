@@ -231,10 +231,7 @@ impl Stats {
 
         let key = (stack.pid as Pid, stack.thread_id as Tid);
 
-        self.samples
-            .entry(key)
-            .or_insert_with(std::vec::Vec::new)
-            .push(frame_indices);
+        self.samples.entry(key).or_default().push(frame_indices);
         let subprocesses = self.config.subprocesses;
         self.thread_name_map.entry(key).or_insert_with(|| {
             let thread_name = stack
