@@ -193,7 +193,9 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
             // my system. Replace unicode spinners with just how many seconds have elapsed
             #[cfg(windows)]
             progress.set_style(
-                indicatif::ProgressStyle::default_spinner().template("[{elapsed}] {msg}"),
+                indicatif::ProgressStyle::default_spinner()
+                    .template("[{elapsed}] {msg}")
+                    .unwrap(),
             );
             progress
         }
