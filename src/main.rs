@@ -256,8 +256,13 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
 
             if config.include_thread_ids {
                 let threadid = trace.format_threadid();
+                let thread_fmt = if let Some(thread_name) = &trace.thread_name {
+                    format!("thread ({}): {}", threadid, thread_name)
+                } else {
+                    format!("thread ({})", threadid)
+                };
                 trace.frames.push(Frame {
-                    name: format!("thread ({})", threadid),
+                    name: thread_fmt,
                     filename: String::from(""),
                     module: None,
                     short_filename: None,
