@@ -15,7 +15,7 @@ impl Version {
     pub fn scan_bytes(data: &[u8]) -> Result<Version, Error> {
         lazy_static! {
             static ref RE: Regex = Regex::new(
-                r"((2|3)\.(3|4|5|6|7|8|9|10|11)\.(\d{1,2}))((a|b|c|rc)\d{1,2})?\+? (.{1,64})"
+                r"((2|3)\.(3|4|5|6|7|8|9|10|11)\.(\d{1,2}))((a|b|c|rc)\d{1,2})?(\+(?:[0-9a-z-]+(?:[.][0-9a-z-]+)*)?)? (.{1,64})"
             )
             .unwrap();
         }
@@ -137,6 +137,28 @@ mod tests {
                 major: 2,
                 minor: 7,
                 patch: 15,
+                release_flags: "".to_owned()
+            }
+        );
+
+        let version = Version::scan_bytes(b"2.7.10+dcba (default)").unwrap();
+        assert_eq!(
+            version,
+            Version {
+                major: 2,
+                minor: 7,
+                patch: 10,
+                release_flags: "".to_owned()
+            }
+        );
+
+        let version = Version::scan_bytes(b"2.7.10+5-4.abcd (default)").unwrap();
+        assert_eq!(
+            version,
+            Version {
+                major: 2,
+                minor: 7,
+                patch: 10,
                 release_flags: "".to_owned()
             }
         );
