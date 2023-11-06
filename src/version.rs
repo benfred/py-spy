@@ -9,6 +9,7 @@ pub struct Version {
     pub minor: u64,
     pub patch: u64,
     pub release_flags: String,
+    pub build_metadata: Option<String>,
 }
 
 impl Version {
@@ -28,6 +29,11 @@ impl Version {
             let major = std::str::from_utf8(&cap[2])?.parse::<u64>()?;
             let minor = std::str::from_utf8(&cap[3])?.parse::<u64>()?;
             let patch = std::str::from_utf8(&cap[4])?.parse::<u64>()?;
+            let build_metadata = if let Some(s) = cap.get(7) {
+                Some(std::str::from_utf8(&s.as_bytes()[1..])?.to_owned())
+            } else {
+                None
+            };
 
             let version = std::str::from_utf8(&cap[0])?;
             info!("Found matching version string '{}'", version);
@@ -47,6 +53,7 @@ impl Version {
                 minor,
                 patch,
                 release_flags: release.to_owned(),
+                build_metadata,
             });
         }
         Err(format_err!("failed to find version string"))
@@ -59,7 +66,11 @@ impl std::fmt::Display for Version {
             f,
             "{}.{}.{}{}",
             self.major, self.minor, self.patch, self.release_flags
-        )
+        )?;
+        if let Some(build_metadata) = &self.build_metadata {
+            write!(f, "+{}", build_metadata,)?
+        }
+        Ok(())
     }
 }
 
@@ -75,7 +86,8 @@ mod tests {
                 major: 2,
                 minor: 7,
                 patch: 10,
-                release_flags: "".to_owned()
+                release_flags: "".to_owned(),
+                build_metadata: None,
             }
         );
 
@@ -89,7 +101,8 @@ mod tests {
                 major: 3,
                 minor: 6,
                 patch: 3,
-                release_flags: "".to_owned()
+                release_flags: "".to_owned(),
+                build_metadata: None,
             }
         );
 
@@ -102,7 +115,8 @@ mod tests {
                 major: 3,
                 minor: 7,
                 patch: 0,
-                release_flags: "rc1".to_owned()
+                release_flags: "rc1".to_owned(),
+                build_metadata: None,
             }
         );
 
@@ -115,7 +129,8 @@ mod tests {
                 major: 3,
                 minor: 10,
                 patch: 0,
-                release_flags: "rc1".to_owned()
+                release_flags: "rc1".to_owned(),
+                build_metadata: None,
             }
         );
 
@@ -137,7 +152,8 @@ mod tests {
                 major: 2,
                 minor: 7,
                 patch: 15,
-                release_flags: "".to_owned()
+                release_flags: "".to_owned(),
+                build_metadata: Some("".to_owned()),
             }
         );
 
@@ -148,7 +164,8 @@ mod tests {
                 major: 2,
                 minor: 7,
                 patch: 10,
-                release_flags: "".to_owned()
+                release_flags: "".to_owned(),
+                build_metadata: Some("dcba".to_owned()),
             }
         );
 
@@ -159,7 +176,20 @@ mod tests {
                 major: 2,
                 minor: 7,
                 patch: 10,
-                release_flags: "".to_owned()
+                release_flags: "".to_owned(),
+                build_metadata: Some("5-4.abcd".to_owned()),
+            }
+        );
+
+        let version = Version::scan_bytes(b"2.8.5+cinder (default)").unwrap();
+        assert_eq!(
+            version,
+            Version {
+                major: 2,
+                minor: 8,
+                patch: 5,
+                release_flags: "".to_owned(),
+                build_metadata: Some("cinder".to_owned()),
             }
         );
     }
