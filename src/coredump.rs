@@ -441,6 +441,7 @@ mod test {
             minor: 9,
             patch: 13,
             release_flags: "".to_owned(),
+            build_metadata: None,
         };
         let python_core = PythonCoreDump {
             core,
