@@ -337,7 +337,7 @@ impl PythonSpy {
         #[cfg(unwind)]
         if self.config.native_all {
             if let Some(native) = self.native.as_mut() {
-                native.add_native_only_threads(&self.process, &traces);
+                native.add_native_only_threads(&self.process, &mut traces)?;
             }
         }
 

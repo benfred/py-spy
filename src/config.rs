@@ -165,13 +165,13 @@ impl Config {
             .takes_value(true);
 
         #[cfg(unwind)]
-            let native = Arg::new("native")
+        let native = Arg::new("native")
             .short('n')
             .long("native")
             .help("Collect stack traces from native extensions written in Cython, C or C++");
 
         #[cfg(unwind)]
-            let native_all = Arg::new("native-all")
+        let native_all = Arg::new("native-all")
             .short('N')
             .long("native-all")
             .help("Collect stack traces from native-only threads. Implies `--native`.");
