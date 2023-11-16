@@ -293,6 +293,7 @@ impl PythonSpy {
             // Merge in the native stack frames if necessary
             #[cfg(unwind)]
             {
+                println!("Got native all config {}", self.config.native_all);
                 if self.config.native {
                     if let Some(native) = self.native.as_mut() {
                         let thread_id = trace
