@@ -345,6 +345,13 @@ impl Config {
         #[cfg(unwind)]
         let dump = dump.arg(native.clone());
 
+        #[cfg(unwind)]
+        let record = record.arg(native_all.clone());
+        #[cfg(unwind)]
+        let top = top.arg(native_all.clone());
+        #[cfg(unwind)]
+        let dump = dump.arg(native_all.clone());
+
         // Nonblocking isn't an option for freebsd, remove
         #[cfg(not(target_os = "freebsd"))]
         let record = record.arg(nonblocking.clone());
