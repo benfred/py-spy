@@ -47,6 +47,8 @@ pub struct Frame {
     pub line: i32,
     /// Local Variables associated with the frame
     pub locals: Option<Vec<LocalVariable>>,
+    /// If this is an entry frame. Each entry frame corresponds to one native frame.
+    pub is_entry: bool,
 }
 
 #[derive(Debug, Hash, Eq, PartialEq, Ord, PartialOrd, Clone, Serialize)]
@@ -158,6 +160,8 @@ where
             None
         };
 
+        let is_entry = frame.is_entry();
+
         frames.push(Frame {
             name,
             filename,
@@ -165,6 +169,7 @@ where
             short_filename: None,
             module: None,
             locals,
+            is_entry,
         });
         if frames.len() > 4096 {
             return Err(format_err!("Max frame recursion depth reached"));
@@ -278,6 +283,7 @@ impl ProcessInfo {
             short_filename: None,
             line: 0,
             locals: None,
+            is_entry: true,
         }
     }
 }
