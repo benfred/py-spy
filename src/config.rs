@@ -173,7 +173,7 @@ impl Config {
         #[cfg(unwind)]
             let native_all = Arg::new("native-all")
             .short('N')
-            .long("native=all")
+            .long("native-all")
             .help("Collect stack traces from native-only threads. Implies `--native`.");
 
         #[cfg(not(target_os="freebsd"))]
