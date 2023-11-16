@@ -249,8 +249,11 @@ impl PythonSpy {
 
             // python 3.11+ has the native thread id directly on the PyThreadState object,
             // for older versions of python, try using OS specific code to get the native
-            // thread id (doesn't work on freebsd, or on arm/i686 processors on linux)
-            if trace.os_thread_id.is_none() {
+            // thread id (doesn't work on freebsd, or on arm/i686 processors on linux).
+            // On native profiling of forked processes where the fork happens in native code,
+            // Python 3.11+'s native thread ID is not always updated. In that case, also re-fetch
+            // the native thread ID from the OS.
+            if trace.os_thread_id.is_none() || self.config.native {
                 let mut os_thread_id = self._get_os_thread_id(python_thread_id, &interp)?;
 
                 // linux can see issues where pthread_ids get recycled for new OS threads,
