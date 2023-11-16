@@ -242,6 +242,10 @@ impl NativeStack {
         }
     }
 
+    pub fn add_native_only_threads(&self, process: &remoteprocess::Process, traces: &Vec<&remoteprocess::StackFrame>) {
+        todo!()
+    }
+
     /// translates a native frame into a optional frame. none indicates we should ignore this frame
     fn translate_native_frame(&self, frame: &remoteprocess::StackFrame) -> Option<Frame> {
         match &frame.function {
