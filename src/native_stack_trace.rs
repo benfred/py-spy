@@ -95,16 +95,14 @@ impl NativeStack {
                         // check will pick up - and report overall totals mismatch)
 
                         // Merge all python frames until we hit one with `is_entry`.
-                        let mut is_entry = false;
-                        while !is_entry && python_frame_index < frames.len() {
-                            is_entry = frames[python_frame_index].is_entry;
+                        while python_frame_index < frames.len() {
                             merged.push(frames[python_frame_index].clone());
 
-                            // We always increase `python_frame_index` outside the loop,
-                            // so inside we should only increase when we don't continue.
-                            if !is_entry {
-                                python_frame_index += 1;
+                            if frames[python_frame_index].is_entry {
+                                break;
                             }
+
+                            python_frame_index += 1;
                         }
                         python_frame_index += 1;
                     }
