@@ -151,6 +151,7 @@ impl NativeStack {
                         short_filename: None,
                         module: None,
                         locals: None,
+                        is_entry: true,
                     });
                 });
 
@@ -291,6 +292,7 @@ impl NativeStack {
                     short_filename: None,
                     module: Some(frame.module.clone()),
                     locals: None,
+                    is_entry: true,
                 })
             }
             None => Some(Frame {
@@ -300,6 +302,7 @@ impl NativeStack {
                 line: 0,
                 short_filename: None,
                 module: Some(frame.module.clone()),
+                is_entry: true,
             }),
         }
     }

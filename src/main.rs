@@ -284,6 +284,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
                     short_filename: None,
                     line: 0,
                     locals: None,
+                    is_entry: true,
                 });
             }
 
