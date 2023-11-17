@@ -1,18 +1,16 @@
 #!/usr/bin/env bash
 
-source ~/.bash_profile
+source "$HOME/.cargo/env"
 
 set -e
 
 python --version
 cargo --version
 
-export CARGO_HOME="/vagrant/.cargo"
-mkdir -p $CARGO_HOME
-
 cd /vagrant
 
 if [ -f build-artifacts.tar ]; then
+  echo "Unpacking cached build artifacts..."
   tar xf build-artifacts.tar
   rm -f build-artifacts.tar
 fi
@@ -20,4 +18,9 @@ fi
 cargo build --release --workspace --all-targets
 cargo test --release
 
+set +e
 tar cf build-artifacts.tar target
+tar rf build-artifacts.tar "$HOME/.cargo/git"
+tar rf build-artifacts.tar "$HOME/.cargo/registry"
+
+exit 0
