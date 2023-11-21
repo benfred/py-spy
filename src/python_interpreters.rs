@@ -363,7 +363,7 @@ impl FrameObject for v3_12_0::_PyInterpreterFrame {
     }
     fn is_entry(&self) -> bool {
         // https://github.com/python/cpython/pull/108036#issuecomment-1684458828
-        const FRAME_OWNED_BY_CSTACK: i8 = 3;
+        const FRAME_OWNED_BY_CSTACK: ::std::os::raw::c_char = 3;
         self.owner == FRAME_OWNED_BY_CSTACK
     }
 }

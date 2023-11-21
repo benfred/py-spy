@@ -81,7 +81,7 @@ pub fn copy_long<P: ProcessMemory>(
             (
                 size,
                 negative,
-                value.long_value.ob_digit[0],
+                value.long_value.ob_digit[0] as u32,
                 std::mem::size_of_val(&value),
             )
         }
@@ -95,7 +95,7 @@ pub fn copy_long<P: ProcessMemory>(
             (
                 size,
                 negative,
-                value.ob_digit[0],
+                value.ob_digit[0] as u32,
                 std::mem::size_of_val(&value),
             )
         }
