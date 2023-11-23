@@ -318,6 +318,7 @@ where
                             minor,
                             patch: 0,
                             release_flags: "".to_owned(),
+                            build_metadata: None,
                         });
                     }
                 }
