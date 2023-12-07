@@ -69,6 +69,7 @@ pub enum FileFormat {
     flamegraph,
     raw,
     speedscope,
+    chrometrace,
 }
 
 impl FileFormat {

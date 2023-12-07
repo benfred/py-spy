@@ -4,6 +4,7 @@ extern crate anyhow;
 extern crate log;
 
 mod binary_parser;
+mod chrometrace;
 mod config;
 mod console_viewer;
 #[cfg(target_os = "linux")]
@@ -108,6 +109,15 @@ impl Recorder for flamegraph::Flamegraph {
     }
 }
 
+impl Recorder for chrometrace::Chrometrace {
+    fn increment(&mut self, trace: &StackTrace) -> Result<(), Error> {
+        Ok(self.increment(trace)?)
+    }
+    fn write(&self, w: &mut dyn Write) -> Result<(), Error> {
+        self.write(w)
+    }
+}
+
 pub struct RawFlamegraph(flamegraph::Flamegraph);
 
 impl Recorder for RawFlamegraph {
@@ -129,6 +139,9 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
         Some(FileFormat::raw) => Box::new(RawFlamegraph(flamegraph::Flamegraph::new(
             config.show_line_numbers,
         ))),
+        Some(FileFormat::chrometrace) => {
+            Box::new(chrometrace::Chrometrace::new(config.show_line_numbers))
+        }
         None => return Err(format_err!("A file format is required to record samples")),
     };
 
@@ -139,6 +152,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
                 Some(FileFormat::flamegraph) => "svg",
                 Some(FileFormat::speedscope) => "json",
                 Some(FileFormat::raw) => "txt",
+                Some(FileFormat::chrometrace) => "json",
                 None => return Err(format_err!("A file format is required to record samples")),
             };
             let local_time = Local::now().to_rfc3339_opts(SecondsFormat::Secs, true);
@@ -193,7 +207,9 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
             // my system. Replace unicode spinners with just how many seconds have elapsed
             #[cfg(windows)]
             progress.set_style(
-                indicatif::ProgressStyle::default_spinner().template("[{elapsed}] {msg}"),
+                indicatif::ProgressStyle::default_spinner()
+                    .template("[{elapsed}] {msg}")
+                    .unwrap(),
             );
             progress
         }
@@ -256,13 +272,19 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
 
             if config.include_thread_ids {
                 let threadid = trace.format_threadid();
+                let thread_fmt = if let Some(thread_name) = &trace.thread_name {
+                    format!("thread ({}): {}", threadid, thread_name)
+                } else {
+                    format!("thread ({})", threadid)
+                };
                 trace.frames.push(Frame {
-                    name: format!("thread ({})", threadid),
+                    name: thread_fmt,
                     filename: String::from(""),
                     module: None,
                     short_filename: None,
                     line: 0,
                     locals: None,
+                    is_entry: true,
                 });
             }
 
@@ -334,6 +356,13 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
                 lede, filename, samples, errors
             );
             println!("{}You can use the flamegraph.pl script from https://github.com/brendangregg/flamegraph to generate a SVG", lede);
+        }
+        FileFormat::chrometrace => {
+            println!(
+                "{}Wrote chrome trace to '{}'. Samples: {} Errors: {}",
+                lede, filename, samples, errors
+            );
+            println!("{}Visit chrome://tracing to view", lede);
         }
     };
 

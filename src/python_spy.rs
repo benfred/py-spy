@@ -189,9 +189,14 @@ impl PythonSpy {
     fn _get_stack_traces<I: InterpreterState>(&mut self) -> Result<Vec<StackTrace>, Error> {
         // Query the OS to get if each thread in the process is running or not
         let mut thread_activity = HashMap::new();
-        for thread in self.process.threads()?.iter() {
-            let threadid: Tid = thread.id()?;
-            thread_activity.insert(threadid, thread.active()?);
+        if self.config.gil_only {
+            // Don't need to collect thread activity if we're only getting the
+            // GIL thread: If we're holding the GIL we're by definition active.
+        } else {
+            for thread in self.process.threads()?.iter() {
+                let threadid: Tid = thread.id()?;
+                thread_activity.insert(threadid, thread.active()?);
+            }
         }
 
         // Lock the process if appropriate. Note we have to lock AFTER getting the thread
@@ -224,6 +229,15 @@ impl PythonSpy {
                 .process
                 .copy_pointer(threads)
                 .context("Failed to copy PyThreadState")?;
+            threads = thread.next();
+
+            let python_thread_id = thread.thread_id();
+            let owns_gil = python_thread_id == gil_thread_id;
+
+            if self.config.gil_only && !owns_gil {
+                continue;
+            }
+
             let mut trace = get_stack_trace(
                 &thread,
                 &self.process,
@@ -232,7 +246,6 @@ impl PythonSpy {
             )?;
 
             // Try getting the native thread id
-            let python_thread_id = thread.thread_id();
 
             // python 3.11+ has the native thread id directly on the PyThreadState object,
             // for older versions of python, try using OS specific code to get the native
@@ -255,7 +268,7 @@ impl PythonSpy {
             }
 
             trace.thread_name = self._get_python_thread_name(python_thread_id);
-            trace.owns_gil = trace.thread_id == gil_thread_id;
+            trace.owns_gil = owns_gil;
             trace.pid = self.process.pid;
 
             // Figure out if the thread is sleeping from the OS if possible
@@ -314,7 +327,11 @@ impl PythonSpy {
                 return Err(format_err!("Max thread recursion depth reached"));
             }
 
-            threads = thread.next();
+            if self.config.gil_only {
+                // There's only one GIL thread and we've captured it, so we can
+                // stop now
+                break;
+            }
         }
         Ok(traces)
     }
