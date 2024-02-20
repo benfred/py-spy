@@ -1,6 +1,6 @@
 extern crate py_spy;
-use py_spy::{Config, Pid, PythonSpy};
 use std::collections::HashSet;
+use py_spy::{Config, PythonSpy, Pid};
 
 struct ScriptRunner {
     #[allow(dead_code)]
@@ -9,16 +9,11 @@ struct ScriptRunner {
 
 impl ScriptRunner {
     fn new(process_name: &str, filename: &str) -> ScriptRunner {
-        let child = std::process::Command::new(process_name)
-            .arg(filename)
-            .spawn()
-            .unwrap();
-        ScriptRunner { child }
+        let child = std::process::Command::new(process_name).arg(filename).spawn().unwrap();
+        ScriptRunner{child}
     }
 
-    fn id(&self) -> Pid {
-        self.child.id() as _
-    }
+    fn id(&self) -> Pid { self.child.id() as _ }
 }
 
 impl Drop for ScriptRunner {
@@ -32,7 +27,7 @@ impl Drop for ScriptRunner {
 struct TestRunner {
     #[allow(dead_code)]
     child: ScriptRunner,
-    spy: PythonSpy,
+    spy: PythonSpy
 }
 
 impl TestRunner {
@@ -40,13 +35,13 @@ impl TestRunner {
         let child = ScriptRunner::new("python", filename);
         std::thread::sleep(std::time::Duration::from_millis(400));
         let spy = PythonSpy::retry_new(child.id(), &config, 20).unwrap();
-        TestRunner { child, spy }
+        TestRunner{child, spy}
     }
 }
 
 #[test]
 fn test_busy_loop() {
-    #[cfg(target_os = "macos")]
+    #[cfg(target_os="macos")]
     {
         // We need root permissions here to run this on OSX
         if unsafe { libc::geteuid() } != 0 {
@@ -70,10 +65,7 @@ fn test_thread_reuse() {
     // and this caused errors on native unwind (since the native thread had
     // exited). Test that this works with a simple script that creates
     // a couple short lived threads, and then profiling with native enabled
-    let config = Config {
-        native: true,
-        ..Default::default()
-    };
+    let config = Config{native: true, ..Default::default()};
     let mut runner = TestRunner::new(config, "./tests/scripts/thread_reuse.py");
 
     let mut errors = 0;
@@ -94,7 +86,7 @@ fn test_thread_reuse() {
 
 #[test]
 fn test_long_sleep() {
-    #[cfg(target_os = "macos")]
+    #[cfg(target_os="macos")]
     {
         // We need root permissions here to run this on OSX
         if unsafe { libc::geteuid() } != 0 {
@@ -110,24 +102,18 @@ fn test_long_sleep() {
 
     // Make sure the stack trace is what we expect
     assert_eq!(trace.frames[0].name, "longsleep");
-    assert_eq!(
-        trace.frames[0].short_filename,
-        Some("longsleep.py".to_owned())
-    );
+    assert_eq!(trace.frames[0].short_filename, Some("longsleep.py".to_owned()));
     assert_eq!(trace.frames[0].line, 5);
 
     assert_eq!(trace.frames[1].name, "<module>");
     assert_eq!(trace.frames[1].line, 9);
-    assert_eq!(
-        trace.frames[1].short_filename,
-        Some("longsleep.py".to_owned())
-    );
+    assert_eq!(trace.frames[1].short_filename, Some("longsleep.py".to_owned()));
 
     assert!(!traces[0].owns_gil);
 
     // we should reliably be able to detect the thread is sleeping on osx/windows
     // linux+freebsd is trickier
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[cfg(any(target_os="macos", target_os="windows"))]
     assert!(!traces[0].active);
 }
 
@@ -168,7 +154,7 @@ fn test_thread_names() {
 
 #[test]
 fn test_recursive() {
-    #[cfg(target_os = "macos")]
+    #[cfg(target_os="macos")]
     {
         // We need root permissions here to run this on OSX
         if unsafe { libc::geteuid() } != 0 {
@@ -178,7 +164,7 @@ fn test_recursive() {
 
     // there used to be a problem where the top-level functions being returned
     // weren't actually entry points: https://github.com/benfred/py-spy/issues/56
-    // This was fixed by locking the process while we are profiling it. Test that
+    // This was fixed by locking the process while we are profling it. Test that
     // the fix works by generating some samples from a program that would exhibit
     // this behaviour
     let mut runner = TestRunner::new(Config::default(), "./tests/scripts/recursive.py");
@@ -190,7 +176,7 @@ fn test_recursive() {
 
         assert!(trace.frames.len() <= 22);
 
-        let top_level_frame = &trace.frames[trace.frames.len() - 1];
+        let top_level_frame = &trace.frames[trace.frames.len()-1];
         assert_eq!(top_level_frame.name, "<module>");
         assert!((top_level_frame.line == 8) || (top_level_frame.line == 7));
 
@@ -200,7 +186,7 @@ fn test_recursive() {
 
 #[test]
 fn test_unicode() {
-    #[cfg(target_os = "macos")]
+    #[cfg(target_os="macos")]
     {
         if unsafe { libc::geteuid() } != 0 {
             return;
@@ -213,25 +199,19 @@ fn test_unicode() {
     let trace = &traces[0];
 
     assert_eq!(trace.frames[0].name, "function1");
-    assert_eq!(
-        trace.frames[0].short_filename,
-        Some("unicode💩.py".to_owned())
-    );
+    assert_eq!(trace.frames[0].short_filename, Some("unicode💩.py".to_owned()));
     assert_eq!(trace.frames[0].line, 6);
 
     assert_eq!(trace.frames[1].name, "<module>");
     assert_eq!(trace.frames[1].line, 9);
-    assert_eq!(
-        trace.frames[1].short_filename,
-        Some("unicode💩.py".to_owned())
-    );
+    assert_eq!(trace.frames[1].short_filename, Some("unicode💩.py".to_owned()));
 
     assert!(!traces[0].owns_gil);
 }
 
 #[test]
 fn test_local_vars() {
-    #[cfg(target_os = "macos")]
+    #[cfg(target_os="macos")]
     {
         // We need root permissions here to run this on OSX
         if unsafe { libc::geteuid() } != 0 {
@@ -239,10 +219,7 @@ fn test_local_vars() {
         }
     }
 
-    let config = Config {
-        dump_locals: 1,
-        ..Default::default()
-    };
+    let config = Config{dump_locals: 1, ..Default::default()};
     let mut runner = TestRunner::new(config, "./tests/scripts/local_vars.py");
 
     let traces = runner.spy.get_stack_traces().unwrap();
@@ -300,17 +277,14 @@ fn test_local_vars() {
 
     // we only support dictionary lookup on python 3.6+ right now
     if runner.spy.version.major == 3 && runner.spy.version.minor >= 6 {
-        assert_eq!(
-            local5.repr,
-            Some("{\"a\": False, \"b\": (1, 2, 3)}".to_owned())
-        );
+        assert_eq!(local5.repr, Some("{\"a\": False, \"b\": (1, 2, 3)}".to_owned()));
     }
 }
 
-#[cfg(not(target_os = "freebsd"))]
+#[cfg(not(target_os="freebsd"))]
 #[test]
 fn test_subprocesses() {
-    #[cfg(target_os = "macos")]
+    #[cfg(target_os="macos")]
     {
         // We need root permissions here to run this on OSX
         if unsafe { libc::geteuid() } != 0 {
@@ -322,10 +296,7 @@ fn test_subprocesses() {
     // was in a zombie state. Verify that this works now
     let process = ScriptRunner::new("python", "./tests/scripts/subprocesses.py");
     std::thread::sleep(std::time::Duration::from_millis(1000));
-    let config = Config {
-        subprocesses: true,
-        ..Default::default()
-    };
+    let config = Config{subprocesses: true, ..Default::default()};
     let sampler = py_spy::sampler::Sampler::new(process.id(), &config).unwrap();
     std::thread::sleep(std::time::Duration::from_millis(1000));
 
@@ -347,10 +318,10 @@ fn test_subprocesses() {
     }
 }
 
-#[cfg(not(target_os = "freebsd"))]
+#[cfg(not(target_os="freebsd"))]
 #[test]
 fn test_subprocesses_zombiechild() {
-    #[cfg(target_os = "macos")]
+    #[cfg(target_os="macos")]
     {
         // We need root permissions here to run this on OSX
         if unsafe { libc::geteuid() } != 0 {
@@ -362,26 +333,20 @@ fn test_subprocesses_zombiechild() {
     // was in a zombie state. Verify that this works now
     let process = ScriptRunner::new("python", "./tests/scripts/subprocesses_zombie_child.py");
     std::thread::sleep(std::time::Duration::from_millis(200));
-    let config = Config {
-        subprocesses: true,
-        ..Default::default()
-    };
+    let config = Config{subprocesses: true, ..Default::default()};
     let _sampler = py_spy::sampler::Sampler::new(process.id(), &config).unwrap();
 }
 
 #[test]
 fn test_negative_linenumber_increment() {
-    #[cfg(target_os = "macos")]
+    #[cfg(target_os="macos")]
     {
         // We need root permissions here to run this on OSX
         if unsafe { libc::geteuid() } != 0 {
             return;
         }
     }
-    let mut runner = TestRunner::new(
-        Config::default(),
-        "./tests/scripts/negative_linenumber_offsets.py",
-    );
+        let mut runner = TestRunner::new(Config::default(), "./tests/scripts/negative_linenumber_offsets.py");
 
     let traces = runner.spy.get_stack_traces().unwrap();
     assert_eq!(traces.len(), 1);
@@ -395,25 +360,22 @@ fn test_negative_linenumber_increment() {
             assert!(trace.frames[1].line >= 5 && trace.frames[0].line <= 10);
             assert_eq!(trace.frames[2].name, "<module>");
             assert_eq!(trace.frames[2].line, 13)
-        }
+        },
         2 => {
             assert_eq!(trace.frames[0].name, "f");
             assert!(trace.frames[0].line >= 5 && trace.frames[0].line <= 10);
             assert_eq!(trace.frames[1].name, "<module>");
             assert_eq!(trace.frames[1].line, 13);
-        }
-        _ => panic!("Unknown python major version"),
+        },
+        _ => panic!("Unknown python major version")
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(target_os="linux")]
 #[test]
 fn test_delayed_subprocess() {
     let process = ScriptRunner::new("bash", "./tests/scripts/delayed_launch.sh");
-    let config = Config {
-        subprocesses: true,
-        ..Default::default()
-    };
+    let config = Config{subprocesses: true, ..Default::default()};
     let sampler = py_spy::sampler::Sampler::new(process.id(), &config).unwrap();
     for sample in sampler {
         // should have one trace from the subprocess

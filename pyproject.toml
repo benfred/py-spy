@@ -1,5 +1,5 @@
 [build-system]
-requires = ["maturin>=1.0,<2.0"]
+requires = ["maturin>=0.11,<0.12"]
 build-backend = "maturin"
 
 [project]
@@ -16,7 +16,3 @@ classifiers = [
 
 [tool.maturin]
 bindings = "bin"
-
-[tool.codespell]
-ignore-words-list = "crate"
-skip = "./.git,./.github,./target,./ci/testdata,./images/"

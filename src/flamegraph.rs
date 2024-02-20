@@ -26,8 +26,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-use std::collections::HashMap;
 use std::io::Write;
+use std;
+use std::collections::HashMap;
+
 
 use anyhow::Error;
 use inferno::flamegraph::{Direction, Options};
@@ -41,47 +43,32 @@ pub struct Flamegraph {
 
 impl Flamegraph {
     pub fn new(show_linenumbers: bool) -> Flamegraph {
-        Flamegraph {
-            counts: HashMap::new(),
-            show_linenumbers,
-        }
+        Flamegraph { counts: HashMap::new(), show_linenumbers }
     }
 
     pub fn increment(&mut self, trace: &StackTrace) -> std::io::Result<()> {
         // convert the frame into a single ';' delimited String
-        let frame = trace
-            .frames
-            .iter()
-            .rev()
-            .map(|frame| {
-                let filename = match &frame.short_filename {
-                    Some(f) => f,
-                    None => &frame.filename,
-                };
-                if self.show_linenumbers && frame.line != 0 {
-                    format!("{} ({}:{})", frame.name, filename, frame.line)
-                } else if !filename.is_empty() {
-                    format!("{} ({})", frame.name, filename)
-                } else {
-                    frame.name.clone()
-                }
-            })
-            .collect::<Vec<String>>()
-            .join(";");
+        let frame = trace.frames.iter().rev().map(|frame| {
+            let filename = match &frame.short_filename { Some(f) => &f, None => &frame.filename };
+            if self.show_linenumbers && frame.line != 0 {
+                format!("{} ({}:{})", frame.name, filename, frame.line)
+            } else if filename.len() > 0 {
+                format!("{} ({})", frame.name, filename)
+            } else {
+                frame.name.clone()
+            }
+        }).collect::<Vec<String>>().join(";");
         // update counts for that frame
         *self.counts.entry(frame).or_insert(0) += 1;
         Ok(())
     }
 
     fn get_lines(&self) -> Vec<String> {
-        self.counts
-            .iter()
-            .map(|(k, v)| format!("{} {}", k, v))
-            .collect()
+        self.counts.iter().map(|(k, v)| format!("{} {}", k, v)).collect()
     }
 
     pub fn write(&self, w: &mut dyn Write) -> Result<(), Error> {
-        let mut opts = Options::default();
+        let mut opts =  Options::default();
         opts.direction = Direction::Inverted;
         opts.min_width = 0.1;
         opts.title = std::env::args().collect::<Vec<String>>().join(" ");

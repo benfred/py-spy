@@ -1,15 +1,16 @@
+use std;
 use std::collections::HashMap;
+use std::vec::Vec;
 use std::io;
 use std::io::{Read, Write};
-use std::sync::{atomic, Arc, Mutex};
+use std::sync::{Mutex, Arc, atomic};
 use std::thread;
-use std::vec::Vec;
 
 use anyhow::Error;
-use console::{style, Term};
+use console::{Term, style};
 
 use crate::config::Config;
-use crate::stack_trace::{Frame, StackTrace};
+use crate::stack_trace::{StackTrace, Frame};
 use crate::version::Version;
 
 pub struct ConsoleViewer {
@@ -22,16 +23,14 @@ pub struct ConsoleViewer {
     options: Arc<Mutex<Options>>,
     stats: Stats,
     subprocesses: bool,
-    config: Config,
+    config: Config
 }
 
 impl ConsoleViewer {
-    pub fn new(
-        show_linenumbers: bool,
-        python_command: &str,
-        version: &Option<Version>,
-        config: &Config,
-    ) -> io::Result<ConsoleViewer> {
+    pub fn new(show_linenumbers: bool,
+               python_command: &str,
+               version: &Option<Version>,
+               config: &Config) -> io::Result<ConsoleViewer> {
         let sampling_rate = 1.0 / (config.sampling_rate as f64);
         let running = Arc::new(atomic::AtomicBool::new(true));
         let options = Arc::new(Mutex::new(Options::new(show_linenumbers)));
@@ -56,7 +55,7 @@ impl ConsoleViewer {
                         '2' => options.sort_column = 2,
                         '3' => options.sort_column = 3,
                         '4' => options.sort_column = 4,
-                        _ => {}
+                        _ => {},
                     }
 
                     options.reset_style = previous_usage != options.usage;
@@ -64,17 +63,13 @@ impl ConsoleViewer {
             }
         });
 
-        Ok(ConsoleViewer {
-            console_config: os_impl::ConsoleConfig::new()?,
-            version: version.clone(),
-            command: python_command.to_owned(),
-            running,
-            options,
-            sampling_rate,
-            subprocesses: config.subprocesses,
-            stats: Stats::new(),
-            config: config.clone(),
-        })
+        Ok(ConsoleViewer{console_config: os_impl::ConsoleConfig::new()?,
+                         version: version.clone(),
+                         command: python_command.to_owned(),
+                         running, options, sampling_rate,
+                         subprocesses: config.subprocesses,
+                         stats: Stats::new(),
+                         config: config.clone()})
     }
 
     pub fn increment(&mut self, traces: &[StackTrace]) -> Result<(), Error> {
@@ -106,10 +101,7 @@ impl ConsoleViewer {
             }
 
             update_function_statistics(&mut self.stats.line_counts, trace, |frame| {
-                let filename = match &frame.short_filename {
-                    Some(f) => f,
-                    None => &frame.filename,
-                };
+                let filename = match &frame.short_filename { Some(f) => &f, None => &frame.filename };
                 if frame.line != 0 {
                     format!("{} ({}:{})", frame.name, filename, frame.line)
                 } else {
@@ -118,10 +110,7 @@ impl ConsoleViewer {
             });
 
             update_function_statistics(&mut self.stats.function_counts, trace, |frame| {
-                let filename = match &frame.short_filename {
-                    Some(f) => f,
-                    None => &frame.filename,
-                };
+                let filename = match &frame.short_filename { Some(f) => &f, None => &frame.filename };
                 format!("{} ({})", frame.name, filename)
             });
         }
@@ -133,13 +122,8 @@ impl ConsoleViewer {
         // Get the top aggregate function calls (either by line or by function as )
         let mut options = self.options.lock().unwrap();
         options.dirty = false;
-        let counts = if options.show_linenumbers {
-            &self.stats.line_counts
-        } else {
-            &self.stats.function_counts
-        };
-        let mut counts: Vec<(&FunctionStatistics, &str)> =
-            counts.iter().map(|(x, y)| (y, x.as_ref())).collect();
+        let counts = if options.show_linenumbers { &self.stats.line_counts } else { &self.stats.function_counts };
+        let mut counts:Vec<(&FunctionStatistics, &str)> = counts.iter().map(|(x,y)| (y, x.as_ref())).collect();
 
         // TODO: subsort ?
         match options.sort_column {
@@ -147,7 +131,7 @@ impl ConsoleViewer {
             2 => counts.sort_unstable_by(|a, b| b.0.current_total.cmp(&a.0.current_total)),
             3 => counts.sort_unstable_by(|a, b| b.0.overall_own.cmp(&a.0.overall_own)),
             4 => counts.sort_unstable_by(|a, b| b.0.overall_total.cmp(&a.0.overall_total)),
-            _ => panic!("unknown sort column. this really shouldn't happen"),
+            _ => panic!("unknown sort column. this really shouldn't happen")
         }
         let term = Term::stdout();
         let (height, width) = term.size();
@@ -180,33 +164,23 @@ impl ConsoleViewer {
         }
 
         if self.subprocesses {
-            out!(
-                "Collecting samples from '{}' and subprocesses",
-                style(&self.command).green()
-            );
+             out!("Collecting samples from '{}' and subprocesses", style(&self.command).green());
         } else {
-            out!(
-                "Collecting samples from '{}' (python v{})",
-                style(&self.command).green(),
-                self.version.as_ref().unwrap()
-            );
+            out!("Collecting samples from '{}' (python v{})", style(&self.command).green(), self.version.as_ref().unwrap());
         }
 
         let error_rate = self.stats.errors as f64 / self.stats.overall_samples as f64;
         if error_rate >= 0.01 && self.stats.overall_samples > 100 {
             let error_string = self.stats.last_error.as_ref().unwrap();
-            out!(
-                "Total Samples {}, Error Rate {:.2}% ({})",
-                style(self.stats.overall_samples).bold(),
-                style(error_rate * 100.0).bold().red(),
-                style(error_string).bold()
-            );
+            out!("Total Samples {}, Error Rate {:.2}% ({})",
+                 style(self.stats.overall_samples).bold(),
+                 style(error_rate * 100.0).bold().red(),
+                 style(error_string).bold());
         } else {
-            out!("Total Samples {}", style(self.stats.overall_samples).bold());
+             out!("Total Samples {}", style(self.stats.overall_samples).bold());
         }
 
-        out!(
-            "GIL: {:.2}%, Active: {:>.2}%, Threads: {}{}",
+        out!("GIL: {:.2}%, Active: {:>.2}%, Threads: {}{}",
             style(100.0 * self.stats.gil as f64 / self.stats.current_samples as f64).bold(),
             style(100.0 * self.stats.active as f64 / self.stats.current_samples as f64).bold(),
             style(self.stats.threads).bold(),
@@ -214,8 +188,7 @@ impl ConsoleViewer {
                 format!(", Processes {}", style(self.stats.processes).bold())
             } else {
                 "".to_owned()
-            }
-        );
+            });
 
         out!();
 
@@ -240,91 +213,51 @@ impl ConsoleViewer {
 
         // If we aren't at least 50 characters wide, lets use two lines per entry
         // Otherwise, truncate the filename so that it doesn't wrap around to the next line
-        let header_lines = if width > 50 {
-            header_lines
-        } else {
-            header_lines + height as usize / 2
-        };
-        let max_function_width = if width > 50 { width - 35 } else { width };
+        let header_lines =       if width > 50 { header_lines } else { header_lines + height as usize / 2 };
+        let max_function_width = if width > 50 { width as usize - 35 } else { width as usize };
 
-        out!(
-            "{:>7}{:>8}{:>9}{:>11}{:width$}",
-            percent_own_header,
-            percent_total_header,
-            time_own_header,
-            time_total_header,
-            function_header,
-            width = max_function_width
-        );
+        out!("{:>7}{:>8}{:>9}{:>11}{:width$}", percent_own_header, percent_total_header,
+             time_own_header, time_total_header, function_header, width=max_function_width);
 
         let mut written = 0;
         for (samples, label) in counts.iter().take(height as usize - header_lines) {
-            out!(
-                "{:>6.2}% {:>6.2}% {:>7}s {:>8}s   {:.width$}",
+            out!("{:>6.2}% {:>6.2}% {:>7}s {:>8}s   {:.width$}",
                 100.0 * samples.current_own as f64 / (self.stats.current_samples as f64),
                 100.0 * samples.current_total as f64 / (self.stats.current_samples as f64),
                 display_time(samples.overall_own as f64 * self.sampling_rate),
                 display_time(samples.overall_total as f64 * self.sampling_rate),
-                label,
-                width = max_function_width - 2
-            );
-            written += 1;
+                label, width=max_function_width - 2);
+                written += 1;
         }
-        for _ in written..height as usize - header_lines {
+        for _ in written.. height as usize - header_lines {
             out!();
         }
 
         out!();
         if options.usage {
-            out!(
-                "{:width$}",
-                style(" Keyboard Shortcuts ").reverse(),
-                width = width
-            );
+            out!("{:width$}", style(" Keyboard Shortcuts ").reverse(), width=width as usize);
             out!();
             out!("{:^12}{:<}", style("key").green(), style("action").green());
-            out!(
-                "{:^12}{:<}",
-                "1",
-                "Sort by %Own (% of time currently spent in the function)"
-            );
-            out!(
-                "{:^12}{:<}",
-                "2",
-                "Sort by %Total (% of time currently in the function and its children)"
-            );
-            out!(
-                "{:^12}{:<}",
-                "3",
-                "Sort by OwnTime (Overall time spent in the function)"
-            );
-            out!(
-                "{:^12}{:<}",
-                "4",
-                "Sort by TotalTime (Overall time spent in the function and its children)"
-            );
-            out!(
-                "{:^12}{:<}",
-                "L,l",
-                "Toggle between aggregating by line number or by function"
-            );
+            out!("{:^12}{:<}", "1", "Sort by %Own (% of time currently spent in the function)");
+            out!("{:^12}{:<}", "2", "Sort by %Total (% of time currently in the function and its children)");
+            out!("{:^12}{:<}", "3", "Sort by OwnTime (Overall time spent in the function)");
+            out!("{:^12}{:<}", "4", "Sort by TotalTime (Overall time spent in the function and its children)");
+            out!("{:^12}{:<}", "L,l", "Toggle between aggregating by line number or by function");
             out!("{:^12}{:<}", "R,r", "Reset statistics");
             out!("{:^12}{:<}", "X,x", "Exit this help screen");
             out!();
             //println!("{:^12}{:<}", "Control-C", "Quit py-spy");
         } else {
-            out!(
-                "Press {} to quit, or {} for help.",
-                style("Control-C").bold().reverse(),
-                style("?").bold().reverse()
-            );
+            out!("Press {} to quit, or {} for help.",
+                 style("Control-C").bold().reverse(),
+                 style("?").bold().reverse());
         }
         std::io::stdout().flush()?;
 
         Ok(())
     }
 
-    pub fn increment_error(&mut self, err: &Error) -> Result<(), Error> {
+    pub fn increment_error(&mut self, err: &Error) ->  Result<(), Error> {
         self.maybe_reset();
         self.stats.errors += 1;
         self.stats.last_error = Some(format!("{}", err));
@@ -340,10 +273,8 @@ impl ConsoleViewer {
         // update faster if we only have a few samples, or if we changed options
         match self.stats.overall_samples {
             10 | 100 | 500 => true,
-            _ => {
-                self.options.lock().unwrap().dirty
-                    || self.stats.elapsed >= self.config.refresh_seconds
-            }
+            _ => self.options.lock().unwrap().dirty ||
+                 self.stats.elapsed >= 1.0
         }
     }
 
@@ -380,16 +311,11 @@ struct FunctionStatistics {
     current_own: u64,
     current_total: u64,
     overall_own: u64,
-    overall_total: u64,
+    overall_total: u64
 }
 
-fn update_function_statistics<K>(
-    counts: &mut HashMap<String, FunctionStatistics>,
-    trace: &StackTrace,
-    key_func: K,
-) where
-    K: Fn(&Frame) -> String,
-{
+fn update_function_statistics<K>(counts: &mut HashMap<String, FunctionStatistics>, trace: &StackTrace, key_func: K)
+    where K: Fn(&Frame) -> String {
     // we need to deduplicate (so we don't overcount cumulative stats with recursive function calls)
     let mut current = HashMap::new();
     for (i, frame) in trace.frames.iter().enumerate() {
@@ -398,12 +324,8 @@ fn update_function_statistics<K>(
     }
 
     for (key, order) in current {
-        let entry = counts.entry(key).or_insert_with(|| FunctionStatistics {
-            current_own: 0,
-            current_total: 0,
-            overall_own: 0,
-            overall_total: 0,
-        });
+        let entry = counts.entry(key).or_insert_with(|| FunctionStatistics{current_own: 0, current_total: 0,
+                                                                           overall_own: 0, overall_total: 0});
         entry.current_total += 1;
         entry.overall_total += 1;
 
@@ -441,34 +363,16 @@ struct Stats {
 
 impl Options {
     fn new(show_linenumbers: bool) -> Options {
-        Options {
-            dirty: false,
-            usage: false,
-            reset: false,
-            sort_column: 3,
-            show_linenumbers,
-            reset_style: false,
-        }
+        Options{dirty: false, usage: false, reset: false, sort_column: 3, show_linenumbers, reset_style: false}
     }
 }
 
 impl Stats {
     fn new() -> Stats {
-        Stats {
-            current_samples: 0,
-            overall_samples: 0,
-            elapsed: 0.,
-            errors: 0,
-            late_samples: 0,
-            threads: 0,
-            processes: 0,
-            gil: 0,
-            active: 0,
-            line_counts: HashMap::new(),
-            function_counts: HashMap::new(),
-            last_error: None,
-            last_delay: None,
-        }
+        Stats{current_samples: 0, overall_samples: 0, elapsed: 0.,
+              errors: 0, late_samples: 0, threads: 0, processes: 0, gil: 0, active: 0,
+              line_counts: HashMap::new(), function_counts: HashMap::new(),
+              last_error: None, last_delay: None}
     }
 
     pub fn reset_current(&mut self) {
@@ -517,11 +421,11 @@ for doing this:
 #[cfg(unix)]
 mod os_impl {
     use super::*;
-    use termios::{tcsetattr, Termios, ECHO, ICANON, TCSANOW};
+    use termios::{Termios, TCSANOW, ECHO, ICANON, tcsetattr};
 
     pub struct ConsoleConfig {
         termios: Termios,
-        stdin: i32,
+        stdin: i32
     }
 
     impl ConsoleConfig {
@@ -541,7 +445,7 @@ mod os_impl {
                 println!();
             }
 
-            Ok(ConsoleConfig { termios, stdin })
+            Ok(ConsoleConfig{termios, stdin})
         }
 
         pub fn reset_cursor(&self) -> io::Result<()> {
@@ -562,21 +466,19 @@ mod os_impl {
 #[cfg(windows)]
 mod os_impl {
     use super::*;
-    use winapi::shared::minwindef::DWORD;
-    use winapi::um::consoleapi::{GetConsoleMode, SetConsoleMode};
-    use winapi::um::handleapi::INVALID_HANDLE_VALUE;
-    use winapi::um::processenv::GetStdHandle;
+    use winapi::shared::minwindef::{DWORD};
+    use winapi::um::winnt::{HANDLE};
     use winapi::um::winbase::{STD_INPUT_HANDLE, STD_OUTPUT_HANDLE};
-    use winapi::um::wincon::{
-        FillConsoleOutputAttribute, GetConsoleScreenBufferInfo, SetConsoleCursorPosition,
-        CONSOLE_SCREEN_BUFFER_INFO, COORD, ENABLE_ECHO_INPUT, ENABLE_LINE_INPUT,
-    };
-    use winapi::um::winnt::HANDLE;
+    use winapi::um::processenv::GetStdHandle;
+    use winapi::um::handleapi::INVALID_HANDLE_VALUE;
+    use winapi::um::consoleapi::{GetConsoleMode, SetConsoleMode};
+    use winapi::um::wincon::{ENABLE_LINE_INPUT, ENABLE_ECHO_INPUT, CONSOLE_SCREEN_BUFFER_INFO, SetConsoleCursorPosition,
+                             GetConsoleScreenBufferInfo, COORD, FillConsoleOutputAttribute};
 
     pub struct ConsoleConfig {
         stdin: HANDLE,
         mode: DWORD,
-        top_left: COORD,
+        top_left: COORD
     }
 
     impl ConsoleConfig {
@@ -613,17 +515,9 @@ mod os_impl {
                 // Figure out a consistent spot in the terminal buffer to write output to
                 let mut top_left = csbi.dwCursorPosition;
                 top_left.X = 0;
-                top_left.Y = if top_left.Y > height {
-                    top_left.Y - height
-                } else {
-                    0
-                };
+                top_left.Y = if top_left.Y > height { top_left.Y - height } else { 0 };
 
-                Ok(ConsoleConfig {
-                    stdin,
-                    mode,
-                    top_left,
-                })
+                Ok(ConsoleConfig{stdin, mode, top_left})
             }
         }
 
@@ -649,17 +543,8 @@ mod os_impl {
                 }
 
                 let mut written: DWORD = 0;
-                let console_size = ((1 + csbi.srWindow.Bottom - csbi.srWindow.Top)
-                    * (csbi.srWindow.Right - csbi.srWindow.Left))
-                    as DWORD;
-                if FillConsoleOutputAttribute(
-                    stdout,
-                    csbi.wAttributes,
-                    console_size,
-                    self.top_left,
-                    &mut written,
-                ) == 0
-                {
+                let console_size = ((1 + csbi.srWindow.Bottom - csbi.srWindow.Top) * (csbi.srWindow.Right - csbi.srWindow.Left)) as DWORD;
+                if FillConsoleOutputAttribute(stdout, csbi.wAttributes, console_size, self.top_left, &mut written) == 0 {
                     return Err(io::Error::last_os_error());
                 }
                 Ok(())
@@ -669,9 +554,7 @@ mod os_impl {
 
     impl Drop for ConsoleConfig {
         fn drop(&mut self) {
-            unsafe {
-                SetConsoleMode(self.stdin, self.mode);
-            }
+            unsafe { SetConsoleMode(self.stdin, self.mode); }
         }
     }
 }

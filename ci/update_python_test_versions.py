@@ -15,7 +15,7 @@ def get_github_python_versions():
     raw_versions = [v["version"] for v in versions_json]
     versions = []
     for version_str in raw_versions: 
-        if "-" in version_str:
+        if "-" in version_str and version_str != "3.11.0-beta.5":
             continue
 
         major, minor, patch = parse_version(version_str)
@@ -38,7 +38,6 @@ if __name__ == "__main__":
         pathlib.Path(__file__).parent.parent / ".github" / "workflows" / "build.yml"
     )
 
-
     transformed = []
     for line in open(build_yml):
         if line.startswith("        python-version: ["):
@@ -49,18 +48,6 @@ if __name__ == "__main__":
                 print("New:", newversions)
             line = newversions
         transformed.append(line)
-
-    # also automatically exclude v3.11.* from running on OSX,
-    # since it currently fails in GHA on SIP errors
-    exclusions = []
-    for v in versions:
-        if v.startswith("3.11"):
-            exclusions.append("          - os: macos-latest\n")
-            exclusions.append(f"            python-version: {v}\n")
-    test_wheels = transformed.index("  test-wheels:\n")
-    first_line = transformed.index("        exclude:\n", test_wheels)
-    last_line = transformed.index("\n", first_line)
-    transformed = transformed[:first_line+1] + exclusions + transformed[last_line:]
 
     with open(build_yml, "w") as o:
         o.write("".join(transformed))

@@ -153,7 +153,6 @@ def extract_bindings(cpython_path, version, configure=False):
         o.write("#![allow(clippy::default_trait_access)]\n")
         o.write("#![allow(clippy::cast_lossless)]\n")
         o.write("#![allow(clippy::trivially_copy_pass_by_ref)]\n\n")
-        o.write("#![allow(clippy::upper_case_acronyms)]\n\n")
         o.write(open(os.path.join(cpython_path, "bindgen_output.rs")).read())
 
 
