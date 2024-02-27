@@ -124,9 +124,11 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
                     )
                 })?;
 
-            // p_vaddr may be larger than the map address in case when the header has an offset and
-            // the map address is relatively small. In this case we can default to 0.
-            let offset = offset.saturating_sub(program_header.p_vaddr);
+            // Align the virtual address offset, then subtract it from the offset
+            // to get real offset for symbol addresses in the file.
+            let aligned_vaddr =
+                program_header.p_vaddr - (program_header.p_vaddr % page_size::get() as u64);
+            let offset = offset - aligned_vaddr;
 
             for sym in elf.syms.iter() {
                 let name = elf.strtab[sym.st_name].to_string();
