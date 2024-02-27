@@ -8,14 +8,14 @@ import re
 import tempfile
 import unittest
 from collections import defaultdict, namedtuple
-from distutils.spawn import find_executable
+from shutil import which
 
 Frame = namedtuple("Frame", ["file", "name", "line", "col"])
 
 # disable gil checks on windows - just rely on active
 # (doesn't seem to be working quite right - TODO: investigate)
 GIL = ["--gil"] if not sys.platform.startswith("win") else []
-PYSPY = find_executable("py-spy")
+PYSPY = which("py-spy")
 
 
 class TestPyspy(unittest.TestCase):
