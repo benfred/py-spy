@@ -237,6 +237,13 @@ fn test_cyrillic() {
             return;
         }
     }
+
+    // Identifiers with characters outside the ASCII range are supported from Python 3
+    let runner = TestRunner::new(Config::default(), "./tests/scripts/longsleep.py");
+    if runner.spy.version.major == 2 {
+        return;
+    }
+
     let mut runner = TestRunner::new(Config::default(), "./tests/scripts/cyrillic.py");
 
     let traces = runner.spy.get_stack_traces().unwrap();
