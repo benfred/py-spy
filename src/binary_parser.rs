@@ -129,10 +129,18 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
             let offset = offset.saturating_sub(program_header.p_vaddr);
 
             for sym in elf.syms.iter() {
+                // Only count defined symbols.
+                if sym.st_shndx == goblin::elf::section_header::SHN_UNDEF as usize {
+                    continue;
+                }
                 let name = elf.strtab[sym.st_name].to_string();
                 symbols.insert(name, sym.st_value + offset);
             }
             for dynsym in elf.dynsyms.iter() {
+                // Only count defined symbols.
+                if dynsym.st_shndx == goblin::elf::section_header::SHN_UNDEF as usize {
+                    continue;
+                }
                 let name = elf.dynstrtab[dynsym.st_name].to_string();
                 symbols.insert(name, dynsym.st_value + offset);
             }
