@@ -95,7 +95,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [i686-musl, armv7-musleabihf, aarch64-musl, x86_64-musl]
+        target: [i686-musl, armv7-musleabihf, aarch64-musl, x86_64-musl, powerpc64le-musl]
     container:
       image: docker://benfred/rust-musl-cross:${{ matrix.target }}
       env:
