@@ -6,9 +6,9 @@ use remoteprocess::{Pid, ProcessMemory};
 use serde_derive::Serialize;
 
 use crate::config::{Config, LineNo};
-use crate::python_data_access::{copy_bytes, copy_string};
+use crate::python_data_access::{copy_bytes, copy_string, extract_type_name};
 use crate::python_interpreters::{
-    CodeObject, FrameObject, InterpreterState, ThreadState, TupleObject,
+    CodeObject, FrameObject, InterpreterState, Object, ThreadState, TupleObject, TypeObject,
 };
 
 /// Call stack for a single python thread
@@ -66,6 +66,8 @@ pub struct ProcessInfo {
     pub parent: Option<Box<ProcessInfo>>,
 }
 
+const PY_TPFLAGS_TYPE_SUBCLASS: usize = 1 << 31;
+
 /// Given an InterpreterState, this function returns a vector of stack traces for each thread
 pub fn get_stack_traces<I, P>(
     interpreter: &I,
@@ -84,13 +86,20 @@ where
 
     let lineno = config.map(|c| c.lineno).unwrap_or(LineNo::NoLine);
     let dump_locals = config.map(|c| c.dump_locals).unwrap_or(0);
+    let include_class_name = config.map(|c| c.include_class_name).unwrap_or(false);
 
     while !threads.is_null() {
         let thread = process
             .copy_pointer(threads)
             .context("Failed to copy PyThreadState")?;
 
-        let mut trace = get_stack_trace(&thread, process, dump_locals > 0, lineno)?;
+        let mut trace = get_stack_trace::<I, <I as InterpreterState>::ThreadState, P>(
+            &thread,
+            process,
+            dump_locals > 0,
+            lineno,
+            include_class_name,
+        )?;
         trace.owns_gil = trace.thread_id == gil_thread_id;
 
         ret.push(trace);
@@ -104,13 +113,15 @@ where
 }
 
 /// Gets a stack trace for an individual thread
-pub fn get_stack_trace<T, P>(
+pub fn get_stack_trace<I, T, P>(
     thread: &T,
     process: &P,
     copy_locals: bool,
     lineno: LineNo,
+    include_class_name: bool,
 ) -> Result<StackTrace, Error>
 where
+    I: InterpreterState,
     T: ThreadState,
     P: ProcessMemory,
 {
@@ -133,7 +144,7 @@ where
             .context("Failed to copy PyCodeObject")?;
 
         let filename = copy_string(code.filename(), process).context("Failed to copy filename")?;
-        let name = copy_string(code.name(), process).context("Failed to copy function name")?;
+        let mut name = copy_string(code.name(), process).context("Failed to copy function name")?;
 
         let line = match lineno {
             LineNo::NoLine => 0,
@@ -154,8 +165,28 @@ where
             },
         };
 
-        let locals = if copy_locals {
-            Some(get_locals(&code, frame_ptr, &frame, process)?)
+        // Grab locals, which may be needed for locals display or to find the class if the fn is
+        // a method.
+        let locals = if copy_locals || (include_class_name && code.argcount() > 0) {
+            // Only copy the first local if we only want to find the class name.
+            let first_var_only = !copy_locals;
+            let found_locals = get_locals(&code, frame_ptr, &frame, process, first_var_only)?;
+
+            if include_class_name && !found_locals.is_empty() {
+                let first_arg = &found_locals[0];
+                if let Some(class_name) =
+                    get_class_name_from_arg::<I, P>(process, first_arg)?.as_ref()
+                {
+                    // e.g. 'method' is turned into 'ClassName.method'
+                    name = format!("{}.{}", class_name, name);
+                }
+            }
+
+            if copy_locals {
+                Some(found_locals)
+            } else {
+                None
+            }
         } else {
             None
         };
@@ -229,6 +260,7 @@ fn get_locals<C: CodeObject, F: FrameObject, P: ProcessMemory>(
     frameptr: *const F,
     frame: &F,
     process: &P,
+    first_var_only: bool,
 ) -> Result<Vec<LocalVariable>, Error> {
     let local_count = code.nlocals() as usize;
     let argcount = code.argcount() as usize;
@@ -239,7 +271,12 @@ fn get_locals<C: CodeObject, F: FrameObject, P: ProcessMemory>(
 
     let mut ret = Vec::new();
 
-    for i in 0..local_count {
+    let vars_to_copy = if first_var_only {
+        std::cmp::min(local_count, 1)
+    } else {
+        local_count
+    };
+    for i in 0..vars_to_copy {
         let nameptr: *const C::StringObject =
             process.copy_struct(varnames.address(code.varnames() as usize, i))?;
         let name = copy_string(nameptr, process)?;
@@ -255,6 +292,47 @@ fn get_locals<C: CodeObject, F: FrameObject, P: ProcessMemory>(
         });
     }
     Ok(ret)
+}
+
+/// Get class from a `self` or `cls` argument, as long as its type matches expectations.
+fn get_class_name_from_arg<I, P>(
+    process: &P,
+    first_local: &LocalVariable,
+) -> Result<Option<String>, Error>
+where
+    I: InterpreterState,
+    P: ProcessMemory,
+{
+    // If the first variable isn't an argument, there are no arguments, so the fn isn't a normal
+    // method or a class method.
+    if !first_local.arg {
+        return Ok(None);
+    }
+
+    let first_arg_name = &first_local.name;
+    if first_arg_name != "self" && first_arg_name != "cls" {
+        return Ok(None);
+    }
+
+    let value: I::Object = process.copy_struct(first_local.addr)?;
+    let mut value_type = process.copy_pointer(value.ob_type())?;
+    let is_type = value_type.flags() & PY_TPFLAGS_TYPE_SUBCLASS != 0;
+
+    // validate that the first argument is:
+    // - an instance of something else than `type` if it is called "self"
+    // - an instance of `type` if it is called "cls"
+    match (first_arg_name.as_str(), is_type) {
+        ("self", false) => {}
+        ("cls", true) => {
+            // Copy the remote argument struct, but this time as PyTypeObject, rather than PyObject
+            value_type = process.copy_struct(first_local.addr)?;
+        }
+        _ => {
+            return Ok(None);
+        }
+    }
+
+    Ok(Some(extract_type_name(process, &value_type)?))
 }
 
 pub fn get_gil_threadid<I: InterpreterState, P: ProcessMemory>(

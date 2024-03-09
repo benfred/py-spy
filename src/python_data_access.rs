@@ -276,6 +276,24 @@ const PY_TPFLAGS_BYTES_SUBCLASS: usize = 1 << 27;
 const PY_TPFLAGS_STRING_SUBCLASS: usize = 1 << 28;
 const PY_TPFLAGS_DICT_SUBCLASS: usize = 1 << 29;
 
+/// Get the type name (truncating to 128 bytes if longer)
+pub fn extract_type_name<T, P>(process: &P, value_type: &T) -> Result<String, Error>
+where
+    T: TypeObject,
+    P: ProcessMemory,
+{
+    let max_type_len = 128;
+    let value_type_name = process.copy(value_type.name() as usize, max_type_len)?;
+    let length = value_type_name
+        .iter()
+        .position(|&x| x == 0)
+        .unwrap_or(max_type_len);
+
+    let string = String::from_utf8(value_type_name[..length].to_vec())?;
+
+    Ok(string)
+}
+
 /// Converts a python variable in the other process to a human readable string
 pub fn format_variable<I, P>(
     process: &P,
@@ -296,14 +314,7 @@ where
     let value: I::Object = process.copy_struct(addr)?;
     let value_type = process.copy_pointer(value.ob_type())?;
 
-    // get the typename (truncating to 128 bytes if longer)
-    let max_type_len = 128;
-    let value_type_name = process.copy(value_type.name() as usize, max_type_len)?;
-    let length = value_type_name
-        .iter()
-        .position(|&x| x == 0)
-        .unwrap_or(max_type_len);
-    let value_type_name = std::str::from_utf8(&value_type_name[..length])?;
+    let value_type_name = extract_type_name(process, &value_type)?;
 
     let format_int = |value: i64| {
         if value_type_name == "bool" {

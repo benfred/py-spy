@@ -238,11 +238,12 @@ impl PythonSpy {
                 continue;
             }
 
-            let mut trace = get_stack_trace(
+            let mut trace = get_stack_trace::<I, <I as InterpreterState>::ThreadState, Process>(
                 &thread,
                 &self.process,
                 self.config.dump_locals > 0,
                 self.config.lineno,
+                self.config.include_class_name,
             )?;
 
             // Try getting the native thread id

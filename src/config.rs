@@ -56,6 +56,8 @@ pub struct Config {
     #[doc(hidden)]
     pub lineno: LineNo,
     #[doc(hidden)]
+    pub include_class_name: bool,
+    #[doc(hidden)]
     pub refresh_seconds: f64,
     #[doc(hidden)]
     pub core_filename: Option<String>,
@@ -137,6 +139,7 @@ impl Default for Config {
             subprocesses: false,
             full_filenames: false,
             lineno: LineNo::LastInstruction,
+            include_class_name: false,
             refresh_seconds: 1.0,
             core_filename: None,
         }
@@ -188,6 +191,9 @@ impl Config {
         let full_filenames = Arg::new("full_filenames").long("full-filenames").help(
             "Show full Python filenames, instead of shortening to show only the package part",
         );
+        let include_class_name = Arg::new("include_class_name").long("class-name").help(
+            "Prepend class name to method names as long as the `self`/`cls` argument naming convention is followed (doesn't work for staticmethods)",
+        );
         let program = Arg::new("python_program")
             .help("commandline of a python program to run")
             .multiple_values(true);
@@ -215,6 +221,7 @@ impl Config {
             .arg(program.clone())
             .arg(pid.clone().required_unless_present("python_program"))
             .arg(full_filenames.clone())
+            .arg(include_class_name.clone())
             .arg(
                 Arg::new("output")
                     .short('o')
@@ -282,6 +289,7 @@ impl Config {
             .arg(rate.clone())
             .arg(subprocesses.clone())
             .arg(full_filenames.clone())
+            .arg(include_class_name.clone())
             .arg(gil.clone())
             .arg(idle.clone())
             .arg(top_delay.clone());
@@ -307,6 +315,7 @@ impl Config {
         );
 
         let dump = dump.arg(full_filenames.clone())
+            .arg(include_class_name.clone())
             .arg(Arg::new("locals")
                 .short('l')
                 .long("locals")
@@ -429,6 +438,7 @@ impl Config {
             .value_of("pid")
             .map(|p| p.parse().expect("invalid pid"));
         config.full_filenames = matches.occurrences_of("full_filenames") > 0;
+        config.include_class_name = matches.occurrences_of("include_class_name") > 0;
         if cfg!(unwind) {
             config.native = matches.occurrences_of("native") > 0;
         }
