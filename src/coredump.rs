@@ -88,26 +88,30 @@ impl CoreDump {
         let mut status = Vec::new();
         for note in notes.flatten() {
             if note.n_type == goblin::elf::note::NT_PRPSINFO {
-                psinfo = Some(unsafe { *(note.desc.as_ptr() as *const elfcore::elf_prpsinfo) });
+                psinfo = Some(unsafe {
+                    std::ptr::read_unaligned(note.desc.as_ptr() as *const elfcore::elf_prpsinfo)
+                });
             } else if note.n_type == goblin::elf::note::NT_PRSTATUS {
-                let thread_status =
-                    unsafe { *(note.desc.as_ptr() as *const elfcore::elf_prstatus) };
+                let thread_status: elfcore::elf_prstatus = unsafe {
+                    std::ptr::read_unaligned(note.desc.as_ptr() as *const elfcore::elf_prstatus)
+                };
                 status.push(thread_status);
             } else if note.n_type == goblin::elf::note::NT_FILE {
                 let data = note.desc;
                 let ptrs = data.as_ptr() as *const usize;
 
-                let count = unsafe { *ptrs };
-                let _page_size = unsafe { *ptrs.offset(1) };
+                let count = unsafe { std::ptr::read_unaligned(ptrs) };
+                let _page_size = unsafe { std::ptr::read_unaligned(ptrs.offset(1)) };
 
                 let string_table = &data[(std::mem::size_of::<usize>() * (2 + count * 3))..];
 
                 for (i, filename) in string_table.split(|chr| *chr == 0).enumerate() {
                     if i < count {
                         let i = i as isize;
-                        let start = unsafe { *ptrs.offset(i * 3 + 2) };
-                        let _end = unsafe { *ptrs.offset(i * 3 + 3) };
-                        let _page_offset = unsafe { *ptrs.offset(i * 3 + 4) };
+                        let start = unsafe { std::ptr::read_unaligned(ptrs.offset(i * 3 + 2)) };
+                        let _end = unsafe { std::ptr::read_unaligned(ptrs.offset(i * 3 + 3)) };
+                        let _page_offset =
+                            unsafe { std::ptr::read_unaligned(ptrs.offset(i * 3 + 4)) };
 
                         let pathname = Path::new(&OsStr::from_bytes(filename)).to_path_buf();
                         filenames.insert(start, pathname);
