@@ -464,6 +464,7 @@ fn sample_pyroscope(pid: remoteprocess::Pid, config: &Config) -> Result<(), Erro
                     short_filename: None,
                     line: 0,
                     locals: None,
+                    is_entry: true
                 });
             }
 
