@@ -222,7 +222,10 @@ pub mod pyruntime {
             },
             Version {
                 major: 3, minor: 8, ..
-            } => Some(1368),
+            } => match version.build_metadata.as_deref() {
+                Some("cinder") => Some(1384),
+                _ => Some(1368),
+            },
             Version {
                 major: 3,
                 minor: 9..=10,

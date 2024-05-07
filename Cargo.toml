@@ -17,30 +17,30 @@ clap = {version="3.2", features=["wrap_help", "cargo", "derive"]}
 clap_complete="3.2"
 console = "0.15"
 ctrlc = "3"
-indicatif = "0.16"
+indicatif = "0.17"
 env_logger = "0.10"
-goblin = "0.6.1"
-inferno = "0.11.15"
+goblin = "0.7.1"
+inferno = "0.11.17"
 lazy_static = "1.4.0"
 libc = "0.2"
 log = "0.4"
-lru = "0.7"
+lru = "0.10"
 regex = ">=1.6.0"
-tempfile = "3.0.3"
-proc-maps = "0.2.1"
+tempfile = "3.6.0"
+proc-maps = "0.3.2"
 memmap = "0.7.0"
-cpp_demangle = "0.3"
+cpp_demangle = "0.4"
 serde = {version="1.0", features=["rc"]}
 serde_derive = "1.0"
 serde_json = "1.0"
 rand = "0.8"
 rand_distr = "0.4"
-remoteprocess = {version="0.4.11", features=["unwind"]}
-chrono = "0.4.19"
 reqwest = { version = "0.11", features = ["blocking"] }
 tokio = { version = "1", features = ["full"] }
 signal-hook = "0.3.17"
 nix = {version="0.28.0", features = ["signal"] }
+remoteprocess = {version="0.4.12", features=["unwind"]}
+chrono = "0.4.26"
 
 [dev-dependencies]
 py-spy-testdata = "0.1.0"

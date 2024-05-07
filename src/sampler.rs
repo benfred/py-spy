@@ -56,7 +56,7 @@ impl Sampler {
                     spy
                 }
                 Err(e) => {
-                    let _ = initialized_tx.send(Err(e)).is_err();
+                    initialized_tx.send(Err(e)).unwrap();
                     return;
                 }
             };
@@ -308,7 +308,7 @@ impl PythonSpyThread {
                 }
                 Err(e) => {
                     warn!("Failed to profile python from process {}: {}", pid, e);
-                    let _ = initialized_tx.send(Err(e)).is_err();
+                    initialized_tx.send(Err(e)).unwrap();
                     return;
                 }
             };
