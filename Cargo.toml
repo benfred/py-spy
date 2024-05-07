@@ -39,6 +39,8 @@ remoteprocess = {version="0.4.11", features=["unwind"]}
 chrono = "0.4.19"
 reqwest = { version = "0.11", features = ["blocking"] }
 tokio = { version = "1", features = ["full"] }
+signal-hook = "0.3.17"
+nix = {version="0.28.0", features = ["signal"] }
 
 [dev-dependencies]
 py-spy-testdata = "0.1.0"

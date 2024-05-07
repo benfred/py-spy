@@ -37,7 +37,11 @@ use console::style;
 
 use config::{Config, FileFormat, RecordDuration};
 use console_viewer::ConsoleViewer;
+use libc::{SIGINT, SIGTERM};
 use reqwest::StatusCode;
+use signal_hook::iterator::Signals;
+use nix::unistd::Pid;
+use nix::sys::signal::{self, Signal};
 use stack_trace::{Frame, StackTrace};
 
 use chrono::{Local, SecondsFormat};
@@ -596,6 +600,15 @@ fn pyspy_main() -> Result<(), Error> {
         let mut command = command
             .spawn()
             .map_err(|e| format_err!("Failed to create process '{}': {}", subprocess[0], e))?;
+
+        let mut signals = Signals::new(&[SIGINT, SIGTERM])?;
+        let child_pid = command.id();
+        std::thread::spawn(move || {
+            for sig in signals.forever() {
+                signal::kill(Pid::from_raw(child_pid.try_into().unwrap()), Signal::try_from(sig).unwrap()).unwrap();
+                println!("Received signal {:?}", sig);
+            }
+        });
 
         #[cfg(target_os = "macos")]
         {
