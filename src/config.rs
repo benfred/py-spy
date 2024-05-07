@@ -549,7 +549,7 @@ impl Config {
             config.native = matches.occurrences_of("native") > 0;
         }
 
-        config.capture_output = config.command != "record" || matches.occurrences_of("capture") > 0;
+        config.capture_output = (config.command != "record" && config.command != "pyroscope" ) || matches.occurrences_of("capture") > 0;
         if !config.capture_output {
             config.hide_progress = true;
         }
