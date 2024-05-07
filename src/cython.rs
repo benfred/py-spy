@@ -34,7 +34,7 @@ impl SourceMaps {
         if let Some(map) = self.maps.get(&frame.filename) {
             if let Some(map) = map {
                 if let Some((file, line)) = map.lookup(line) {
-                    frame.filename = file.clone();
+                    frame.filename.clone_from(file);
                     frame.line = *line as i32;
                 }
             }

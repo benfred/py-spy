@@ -233,7 +233,7 @@ impl Stats {
 
         self.samples
             .entry(key)
-            .or_insert_with(std::vec::Vec::new)
+            .or_default()
             .push(frame_indices);
         let subprocesses = self.config.subprocesses;
         self.thread_name_map.entry(key).or_insert_with(|| {

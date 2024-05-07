@@ -435,7 +435,7 @@ mod test {
         // we won't have the python binary for the core dump here,
         // so we can't (yet) figure out the interpreter address & version.
         // Manually specify here to test out instead
-        let core = CoreDump::new(&get_coredump_path("python_3_9_threads")).unwrap();
+        let core = CoreDump::new(get_coredump_path("python_3_9_threads")).unwrap();
         let version = Version {
             major: 3,
             minor: 9,

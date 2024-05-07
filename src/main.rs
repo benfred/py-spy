@@ -434,7 +434,7 @@ fn sample_pyroscope(pid: remoteprocess::Pid, config: &Config) -> Result<(), Erro
                 });
             }
 
-            if let Some(process_info) = trace.process_info.as_ref().map(|x| x) {
+            if let Some(process_info) = trace.process_info.as_ref() {
                 trace.frames.push(process_info.to_frame());
                 let mut parent = process_info.parent.as_ref();
                 while parent.is_some() {
@@ -446,7 +446,7 @@ fn sample_pyroscope(pid: remoteprocess::Pid, config: &Config) -> Result<(), Erro
             }
 
             samples += 1;
-            output.increment(&trace)?;
+            output.increment(trace)?;
         }
 
         send_samples += 1;

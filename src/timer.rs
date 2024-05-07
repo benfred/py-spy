@@ -2,7 +2,6 @@ use std::time::{Duration, Instant};
 #[cfg(windows)]
 use winapi::um::timeapi;
 
-use rand;
 use rand_distr::{Distribution, Exp};
 
 /// Timer is an iterator that sleeps an appropriate amount of time between iterations

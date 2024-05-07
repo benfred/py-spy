@@ -537,7 +537,7 @@ impl Config {
         }
 
         config.subprocesses = matches.occurrences_of("subprocesses") > 0;
-        config.command = subcommand.to_owned();
+        subcommand.clone_into(&mut config.command);
 
         // options that can be shared between subcommands
         config.pid = matches
@@ -639,14 +639,14 @@ mod tests {
         );
 
         // test out overriding these params by setting flags
-        assert_eq!(config.include_idle, false);
-        assert_eq!(config.gil_only, false);
-        assert_eq!(config.include_thread_ids, false);
+        assert!(!config.include_idle);
+        assert!(!config.gil_only);
+        assert!(!config.include_thread_ids);
 
         let config_flags = get_config("py-spy r -p 1234 -o foo --idle --gil --threads").unwrap();
-        assert_eq!(config_flags.include_idle, true);
-        assert_eq!(config_flags.gil_only, true);
-        assert_eq!(config_flags.include_thread_ids, true);
+        assert!(config_flags.include_idle);
+        assert!(config_flags.gil_only);
+        assert!(config_flags.include_thread_ids);
     }
 
     #[test]
