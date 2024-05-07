@@ -470,7 +470,7 @@ pub mod tests {
         };
         unsafe {
             let ptr = &mut ret as *mut AllocatedPyASCIIObject as *mut u8;
-            let dst = ptr.offset(std::mem::size_of::<PyASCIIObject>() as isize);
+            let dst = ptr.add(std::mem::size_of::<PyASCIIObject>());
             copy_nonoverlapping(bytes.as_ptr(), dst, bytes.len());
         }
         ret
