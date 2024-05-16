@@ -244,6 +244,109 @@ macro_rules! PythonCodeObjectImpl {
     };
 }
 
+fn read_varint(index: &mut usize, table: &[u8]) -> usize {
+    let mut ret: usize;
+    let mut byte = table[*index];
+    let mut shift = 0;
+    *index += 1;
+    ret = (byte & 63) as usize;
+
+    while byte & 64 != 0 {
+        byte = table[*index];
+        *index += 1;
+        shift += 6;
+        ret += ((byte & 63) as usize) << shift;
+    }
+    ret
+}
+
+fn read_signed_varint(index: &mut usize, table: &[u8]) -> isize {
+    let unsigned_val = read_varint(index, table);
+    if unsigned_val & 1 != 0 {
+        -((unsigned_val >> 1) as isize)
+    } else {
+        (unsigned_val >> 1) as isize
+    }
+}
+
+// Use for 3.11 and 3.12
+macro_rules! CompactCodeObjectImpl {
+    ($py: ident, $bytesobject: ident, $stringobject: ident) => {
+        impl CodeObject for $py::PyCodeObject {
+            type BytesObject = $py::$bytesobject;
+            type StringObject = $py::$stringobject;
+            type TupleObject = $py::PyTupleObject;
+
+            fn name(&self) -> *mut Self::StringObject {
+                self.co_name as *mut Self::StringObject
+            }
+            fn filename(&self) -> *mut Self::StringObject {
+                self.co_filename as *mut Self::StringObject
+            }
+            fn line_table(&self) -> *mut Self::BytesObject {
+                self.co_linetable as *mut Self::BytesObject
+            }
+            fn first_lineno(&self) -> i32 {
+                self.co_firstlineno
+            }
+            fn nlocals(&self) -> i32 {
+                self.co_nlocals
+            }
+            fn argcount(&self) -> i32 {
+                self.co_argcount
+            }
+            fn varnames(&self) -> *mut Self::TupleObject {
+                self.co_localsplusnames as *mut Self::TupleObject
+            }
+
+            fn get_line_number(&self, lasti: i32, table: &[u8]) -> i32 {
+                // unpack compressed table format from python 3.11
+                // https://github.com/python/cpython/pull/91666/files
+                let lasti = lasti - offset_of(self, &self.co_code_adaptive) as i32;
+                let mut line_number: i32 = self.first_lineno();
+                let mut bytecode_address: i32 = 0;
+
+                let mut index: usize = 0;
+                loop {
+                    if index >= table.len() {
+                        break;
+                    }
+                    let byte = table[index];
+                    index += 1;
+
+                    let delta = ((byte & 7) as i32) + 1;
+                    bytecode_address += delta * 2;
+                    let code = (byte >> 3) & 15;
+                    let line_delta = match code {
+                        15 => 0,
+                        14 => {
+                            let delta = read_signed_varint(&mut index, table);
+                            read_varint(&mut index, table); // end line
+                            read_varint(&mut index, table); // start column
+                            read_varint(&mut index, table); // end column
+                            delta
+                        }
+                        13 => read_signed_varint(&mut index, table),
+                        10..=12 => {
+                            index += 2; // start column / end column
+                            (code - 10).into()
+                        }
+                        _ => {
+                            index += 1; // column
+                            0
+                        }
+                    };
+                    line_number += line_delta as i32;
+                    if bytecode_address >= lasti {
+                        break;
+                    }
+                }
+                line_number
+            }
+        }
+    };
+}
+
 // String/Byte/List/Tuple handling for Python 3.3+
 macro_rules! Python3Impl {
     ($py: ident) => {
@@ -387,64 +490,7 @@ impl TypeObject for v3_12_0::PyTypeObject {
     }
 }
 
-impl CodeObject for v3_12_0::PyCodeObject {
-    type BytesObject = v3_12_0::PyBytesObject;
-    type StringObject = v3_12_0::PyUnicodeObject;
-    type TupleObject = v3_12_0::PyTupleObject;
-
-    fn name(&self) -> *mut Self::StringObject {
-        self.co_name as *mut Self::StringObject
-    }
-    fn filename(&self) -> *mut Self::StringObject {
-        self.co_filename as *mut Self::StringObject
-    }
-    fn line_table(&self) -> *mut Self::BytesObject {
-        self.co_linetable as *mut Self::BytesObject
-    }
-    fn first_lineno(&self) -> i32 {
-        self.co_firstlineno
-    }
-    fn nlocals(&self) -> i32 {
-        self.co_nlocals
-    }
-    fn argcount(&self) -> i32 {
-        self.co_argcount
-    }
-    fn varnames(&self) -> *mut Self::TupleObject {
-        self.co_localsplusnames as *mut Self::TupleObject
-    }
-    fn get_line_number(&self, lasti: i32, table: &[u8]) -> i32 {
-        // in Python 3.10 we need to double the lasti instruction value here (and no I don't know why)
-        // https://github.com/python/cpython/blob/7b88f63e1dd4006b1a08b9c9f087dd13449ecc76/Python/ceval.c#L5999
-        // Whereas in python versions up to 3.9 we didn't.
-        // https://github.com/python/cpython/blob/3.9/Python/ceval.c#L4713-L4714
-        let lasti = 2 * lasti as i32;
-
-        // unpack the line table. format is specified here:
-        // https://github.com/python/cpython/blob/3.10/Objects/lnotab_notes.txt
-        let size = table.len();
-        let mut i = 0;
-        let mut line_number: i32 = self.first_lineno();
-        let mut bytecode_address: i32 = 0;
-        while (i + 1) < size {
-            let delta: u8 = table[i];
-            let line_delta: i8 = unsafe { std::mem::transmute(table[i + 1]) };
-            i += 2;
-
-            if line_delta == -128 {
-                continue;
-            }
-
-            line_number += i32::from(line_delta);
-            bytecode_address += i32::from(delta);
-            if bytecode_address > lasti {
-                break;
-            }
-        }
-
-        line_number
-    }
-}
+CompactCodeObjectImpl!(v3_12_0, PyBytesObject, PyUnicodeObject);
 
 // Python 3.11
 // Python3.11 is sufficiently different from previous versions that we can't use the macros above
@@ -530,103 +576,7 @@ impl TypeObject for v3_11_0::PyTypeObject {
     }
 }
 
-fn read_varint(index: &mut usize, table: &[u8]) -> usize {
-    let mut ret: usize;
-    let mut byte = table[*index];
-    let mut shift = 0;
-    *index += 1;
-    ret = (byte & 63) as usize;
-
-    while byte & 64 != 0 {
-        byte = table[*index];
-        *index += 1;
-        shift += 6;
-        ret += ((byte & 63) as usize) << shift;
-    }
-    ret
-}
-
-fn read_signed_varint(index: &mut usize, table: &[u8]) -> isize {
-    let unsigned_val = read_varint(index, table);
-    if unsigned_val & 1 != 0 {
-        -((unsigned_val >> 1) as isize)
-    } else {
-        (unsigned_val >> 1) as isize
-    }
-}
-
-impl CodeObject for v3_11_0::PyCodeObject {
-    type BytesObject = v3_11_0::PyBytesObject;
-    type StringObject = v3_11_0::PyUnicodeObject;
-    type TupleObject = v3_11_0::PyTupleObject;
-
-    fn name(&self) -> *mut Self::StringObject {
-        self.co_name as *mut Self::StringObject
-    }
-    fn filename(&self) -> *mut Self::StringObject {
-        self.co_filename as *mut Self::StringObject
-    }
-    fn line_table(&self) -> *mut Self::BytesObject {
-        self.co_linetable as *mut Self::BytesObject
-    }
-    fn first_lineno(&self) -> i32 {
-        self.co_firstlineno
-    }
-    fn nlocals(&self) -> i32 {
-        self.co_nlocals
-    }
-    fn argcount(&self) -> i32 {
-        self.co_argcount
-    }
-    fn varnames(&self) -> *mut Self::TupleObject {
-        self.co_localsplusnames as *mut Self::TupleObject
-    }
-
-    fn get_line_number(&self, lasti: i32, table: &[u8]) -> i32 {
-        // unpack compressed table format from python 3.11
-        // https://github.com/python/cpython/pull/91666/files
-        let lasti = lasti - offset_of(self, &self.co_code_adaptive) as i32;
-        let mut line_number: i32 = self.first_lineno();
-        let mut bytecode_address: i32 = 0;
-
-        let mut index: usize = 0;
-        loop {
-            if index >= table.len() {
-                break;
-            }
-            let byte = table[index];
-            index += 1;
-
-            let delta = ((byte & 7) as i32) + 1;
-            bytecode_address += delta * 2;
-            let code = (byte >> 3) & 15;
-            let line_delta = match code {
-                15 => 0,
-                14 => {
-                    let delta = read_signed_varint(&mut index, table);
-                    read_varint(&mut index, table); // end line
-                    read_varint(&mut index, table); // start column
-                    read_varint(&mut index, table); // end column
-                    delta
-                }
-                13 => read_signed_varint(&mut index, table),
-                10..=12 => {
-                    index += 2; // start column / end column
-                    (code - 10).into()
-                }
-                _ => {
-                    index += 1; // column
-                    0
-                }
-            };
-            line_number += line_delta as i32;
-            if bytecode_address >= lasti {
-                break;
-            }
-        }
-        line_number
-    }
-}
+CompactCodeObjectImpl!(v3_11_0, PyBytesObject, PyUnicodeObject);
 
 // Python 3.10
 Python3Impl!(v3_10_0);
