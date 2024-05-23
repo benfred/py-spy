@@ -18,6 +18,9 @@ pub struct Config {
     /// the native stack traces
     pub native: bool,
 
+    /// Whether or not to also print native-only threads. Using this implies `native`.
+    pub native_all: bool,
+
     // The following config options only apply when using py-spy as an application
     #[doc(hidden)]
     pub command: String,
@@ -127,6 +130,7 @@ impl Default for Config {
             sampling_rate: 100,
             duration: RecordDuration::Unlimited,
             native: false,
+            native_all: false,
             gil_only: false,
             include_idle: false,
             include_thread_ids: false,
@@ -165,6 +169,12 @@ impl Config {
             .short('n')
             .long("native")
             .help("Collect stack traces from native extensions written in Cython, C or C++");
+
+        #[cfg(unwind)]
+        let native_all = Arg::new("native-all")
+            .short('N')
+            .long("native-all")
+            .help("Collect stack traces from native-only threads. Implies `--native`.");
 
         #[cfg(not(target_os="freebsd"))]
         let nonblocking = Arg::new("nonblocking")
@@ -335,6 +345,13 @@ impl Config {
         #[cfg(unwind)]
         let dump = dump.arg(native.clone());
 
+        #[cfg(unwind)]
+        let record = record.arg(native_all.clone());
+        #[cfg(unwind)]
+        let top = top.arg(native_all.clone());
+        #[cfg(unwind)]
+        let dump = dump.arg(native_all.clone());
+
         // Nonblocking isn't an option for freebsd, remove
         #[cfg(not(target_os = "freebsd"))]
         let record = record.arg(nonblocking.clone());
@@ -430,7 +447,8 @@ impl Config {
             .map(|p| p.parse().expect("invalid pid"));
         config.full_filenames = matches.occurrences_of("full_filenames") > 0;
         if cfg!(unwind) {
-            config.native = matches.occurrences_of("native") > 0;
+            config.native_all = matches.occurrences_of("native-all") > 0;
+            config.native = config.native_all || matches.occurrences_of("native") > 0;
         }
 
         config.capture_output = config.command != "record" || matches.occurrences_of("capture") > 0;
