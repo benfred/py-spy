@@ -47,6 +47,7 @@ pub trait FrameObject {
     fn code(&self) -> *mut Self::CodeObject;
     fn lasti(&self) -> i32;
     fn back(&self) -> *mut Self;
+    fn is_entry(&self) -> bool;
 }
 
 pub trait CodeObject {
@@ -156,6 +157,9 @@ macro_rules! PythonCommonImpl {
             }
             fn back(&self) -> *mut Self {
                 self.f_back
+            }
+            fn is_entry(&self) -> bool {
+                true
             }
         }
 
@@ -356,6 +360,9 @@ impl FrameObject for v3_11_0::_PyInterpreterFrame {
     }
     fn back(&self) -> *mut Self {
         self.previous
+    }
+    fn is_entry(&self) -> bool {
+        self.is_entry
     }
 }
 

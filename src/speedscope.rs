@@ -288,6 +288,7 @@ mod tests {
             short_filename: None,
             line: 0,
             locals: None,
+            is_entry: true,
         };
 
         let trace = stack_trace::StackTrace {

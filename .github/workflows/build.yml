@@ -118,46 +118,49 @@ jobs:
         path: dist
 
   build-freebsd:
-    runs-on: macos-latest
+    runs-on: ubuntu-22.04
     needs: [lint]
     timeout-minutes: 30
     strategy:
       matrix:
-        include:
-          - box: fbsd_13_1
-            release: FreeBSD-13.1-STABLE
-            url: https://github.com/rbspy/freebsd-vagrant-box/releases/download/20221112/fbsd_13_1.box
+        box:
+          - freebsd-14
     steps:
       - uses: actions/checkout@v3
       - name: Cache Vagrant box
         uses: actions/cache@v3.0.4
         with:
-          path: ~/.vagrant.d
-          key: ${{ matrix.box }}-vagrant-boxes-20221112-${{ hashFiles('ci/Vagrantfile') }}
+          path: .vagrant.d
+          key: ${{ matrix.box }}-vagrant-boxes-20231115-${{ hashFiles('ci/Vagrantfile') }}
           restore-keys: |
-            ${{ matrix.box }}-vagrant-boxes-20221112-
+            ${{ matrix.box }}-vagrant-boxes-20231115-
       - name: Cache Cargo and build artifacts
         uses: actions/cache@v3.0.4
         with:
           path: build-artifacts.tar
-          key: ${{ matrix.box }}-cargo-20221112-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ matrix.box }}-cargo-20231115-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ matrix.box }}-cargo-20221112-
-      - name: Set up VM
+            ${{ matrix.box }}-cargo-20231115-
+      - name: Display CPU info
+        run: lscpu
+      - name: Install VM tools
         run: |
-          brew install vagrant
-          vagrant plugin install vagrant-vbguest
+          sudo apt-get update -qq
+          sudo apt-get install -qq -o=Dpkg::Use-Pty=0 moreutils
+          sudo chronic apt-get install -qq -o=Dpkg::Use-Pty=0 vagrant virtualbox qemu libvirt-daemon-system
+      - name: Set up VM
+        shell: sudo bash {0}
+        run: |
+          vagrant plugin install vagrant-libvirt
           vagrant plugin install vagrant-scp
-
           ln -sf ci/Vagrantfile Vagrantfile
-
-          if [ ! -d ~/.vagrant.d/boxes/rbspy-VAGRANTSLASH-${{ matrix.release }} ]; then
-            vagrant box add --no-tty rbspy/${{ matrix.release }} ${{ matrix.url }}
-          fi
-          vagrant up ${{ matrix.box }}
+          vagrant status
+          vagrant up --no-tty --provider libvirt ${{ matrix.box }}
       - name: Build and test
+        shell: sudo bash {0}
         run: vagrant ssh ${{ matrix.box }} -- bash /vagrant/ci/test_freebsd.sh
       - name: Retrieve build artifacts for caching purposes
+        shell: sudo bash {0}
         run: |
           vagrant scp ${{ matrix.box }}:/vagrant/build-artifacts.tar build-artifacts.tar
           ls -ahl build-artifacts.tar
