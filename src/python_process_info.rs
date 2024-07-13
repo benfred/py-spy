@@ -136,7 +136,17 @@ impl PythonProcessInfo {
             let libmap = maps.iter().find(|m| {
                 if let Some(pathname) = m.filename() {
                     if let Some(pathname) = pathname.to_str() {
-                        return is_python_lib(pathname) && m.is_exec();
+                        cfg_if::cfg_if! {
+                            if #[cfg(windows)] {
+                                // On windows we use utilize RVA (relative
+                                // virtual addresses), so we need to know just
+                                // the base address.
+                                return is_python_lib(pathname);
+                            } else {
+                                return is_python_lib(pathname) && m.is_exec();
+                            }
+
+                        };
                     }
                 }
                 false
