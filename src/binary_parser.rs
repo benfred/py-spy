@@ -6,6 +6,7 @@ use anyhow::Error;
 use goblin::Object;
 use memmap::Mmap;
 
+#[allow(dead_code)]
 pub struct BinaryInfo {
     pub filename: std::path::PathBuf,
     pub symbols: HashMap<String, u64>,

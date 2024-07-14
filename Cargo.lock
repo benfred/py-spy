@@ -1158,7 +1158,7 @@ checksum = "436b050e76ed2903236f032a59761c1eb99e1b0aead2c257922771dab1fc8c78"
 [[package]]
 name = "remoteprocess"
 version = "0.4.13"
-source = "git+https://github.com/akhramov/remoteprocess?branch=feature/windows-aarch64#4b7cfbf55816a94a81e3e433fbaea4ad21b4d9c8"
+source = "git+https://github.com/akhramov/remoteprocess?branch=feature/windows-aarch64#e19a74e004d01810e53cdf4fafd9c4c9fe1b623d"
 dependencies = [
  "addr2line",
  "cfg-if",
