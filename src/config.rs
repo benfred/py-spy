@@ -422,7 +422,7 @@ impl Config {
         }
 
         config.subprocesses = matches.occurrences_of("subprocesses") > 0;
-        config.command = subcommand.to_owned();
+        subcommand.clone_into(&mut config.command);
 
         // options that can be shared between subcommands
         config.pid = matches

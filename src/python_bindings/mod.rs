@@ -248,7 +248,7 @@ pub mod pyruntime {
             target_arch = "mips"
         )
     ))]
-    pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
+    pub fn get_tstate_current_offset(_version: &Version) -> Option<usize> {
         None
     }
 
