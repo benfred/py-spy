@@ -160,7 +160,7 @@ impl Config {
             .help("PID of a running python program to spy on")
             .takes_value(true);
 
-        #[cfg(unwind)]
+        #[cfg(feature = "unwind")]
         let native = Arg::new("native")
             .short('n')
             .long("native")
@@ -328,11 +328,11 @@ impl Config {
             );
 
         // add native unwinding if appropriate
-        #[cfg(unwind)]
+        #[cfg(feature = "unwind")]
         let record = record.arg(native.clone());
-        #[cfg(unwind)]
+        #[cfg(feature = "unwind")]
         let top = top.arg(native.clone());
-        #[cfg(unwind)]
+        #[cfg(feature = "unwind")]
         let dump = dump.arg(native.clone());
 
         // Nonblocking isn't an option for freebsd, remove
@@ -429,7 +429,7 @@ impl Config {
             .value_of("pid")
             .map(|p| p.parse().expect("invalid pid"));
         config.full_filenames = matches.occurrences_of("full_filenames") > 0;
-        if cfg!(unwind) {
+        if cfg!(feature = "unwind") {
             config.native = matches.occurrences_of("native") > 0;
         }
 

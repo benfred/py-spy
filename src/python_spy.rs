@@ -1,9 +1,9 @@
 #[cfg(windows)]
 use regex::RegexBuilder;
 use std::collections::HashMap;
-#[cfg(all(target_os = "linux", unwind))]
+#[cfg(all(target_os = "linux", feature = "unwind"))]
 use std::collections::HashSet;
-#[cfg(all(target_os = "linux", unwind))]
+#[cfg(all(target_os = "linux", feature = "unwind"))]
 use std::iter::FromIterator;
 use std::path::Path;
 
@@ -11,7 +11,7 @@ use anyhow::{Context, Error, Result};
 use remoteprocess::{Pid, Process, ProcessMemory, Tid};
 
 use crate::config::{Config, LockingStrategy};
-#[cfg(unwind)]
+#[cfg(feature = "unwind")]
 use crate::native_stack_trace::NativeStack;
 use crate::python_bindings::{
     v2_7_15, v3_10_0, v3_11_0, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0, v3_9_5,
@@ -35,7 +35,7 @@ pub struct PythonSpy {
     pub python_filename: std::path::PathBuf,
     pub version_string: String,
     pub config: Config,
-    #[cfg(unwind)]
+    #[cfg(feature = "unwind")]
     pub native: Option<NativeStack>,
     pub short_filenames: HashMap<String, Option<String>>,
     pub python_thread_ids: HashMap<u64, Tid>,
@@ -70,7 +70,7 @@ impl PythonSpy {
 
         let version_string = format!("python{}.{}", version.major, version.minor);
 
-        #[cfg(unwind)]
+        #[cfg(feature = "unwind")]
         let native = if config.native {
             Some(NativeStack::new(
                 pid,
@@ -89,7 +89,7 @@ impl PythonSpy {
             threadstate_address,
             python_filename: python_info.python_filename,
             version_string,
-            #[cfg(unwind)]
+            #[cfg(feature = "unwind")]
             native,
             #[cfg(target_os = "linux")]
             dockerized: python_info.dockerized,
@@ -291,7 +291,7 @@ impl PythonSpy {
             }
 
             // Merge in the native stack frames if necessary
-            #[cfg(unwind)]
+            #[cfg(feature = "unwind")]
             {
                 if self.config.native {
                     if let Some(native) = self.native.as_mut() {
@@ -389,7 +389,7 @@ impl PythonSpy {
         Ok(None)
     }
 
-    #[cfg(all(target_os = "linux", not(unwind)))]
+    #[cfg(all(target_os = "linux", not(feature = "unwind")))]
     fn _get_os_thread_id<I: InterpreterState>(
         &mut self,
         _python_thread_id: u64,
@@ -398,7 +398,7 @@ impl PythonSpy {
         Ok(None)
     }
 
-    #[cfg(all(target_os = "linux", unwind))]
+    #[cfg(all(target_os = "linux", feature = "unwind"))]
     fn _get_os_thread_id<I: InterpreterState>(
         &mut self,
         python_thread_id: u64,
@@ -483,7 +483,7 @@ impl PythonSpy {
         Ok(None)
     }
 
-    #[cfg(all(target_os = "linux", unwind))]
+    #[cfg(all(target_os = "linux", feature = "unwind"))]
     pub fn _get_pthread_id(
         &self,
         unwinder: &remoteprocess::Unwinder,

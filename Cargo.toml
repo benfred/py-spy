@@ -1,3 +1,6 @@
+[features]
+unwind = []
+
 [package]
 name = "py-spy"
 version = "0.3.14"
