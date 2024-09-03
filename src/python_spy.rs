@@ -32,8 +32,6 @@ pub struct PythonSpy {
     pub version: Version,
     pub interpreter_address: usize,
     pub threadstate_address: usize,
-    pub python_filename: std::path::PathBuf,
-    pub version_string: String,
     pub config: Config,
     #[cfg(feature = "unwind")]
     pub native: Option<NativeStack>,
@@ -68,8 +66,6 @@ impl PythonSpy {
         // lets us figure out which thread has the GIL
         let threadstate_address = get_threadstate_address(&python_info, &version, config)?;
 
-        let version_string = format!("python{}.{}", version.major, version.minor);
-
         #[cfg(feature = "unwind")]
         let native = if config.native {
             Some(NativeStack::new(
@@ -87,8 +83,6 @@ impl PythonSpy {
             version,
             interpreter_address,
             threadstate_address,
-            python_filename: python_info.python_filename,
-            version_string,
             #[cfg(feature = "unwind")]
             native,
             #[cfg(target_os = "linux")]
