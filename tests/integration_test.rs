@@ -62,7 +62,7 @@ fn test_busy_loop() {
     assert!(traces[0].active);
 }
 
-#[cfg(unwind)]
+#[cfg(feature = "unwind")]
 #[test]
 fn test_thread_reuse() {
     // on linux we had an issue with the pthread -> native thread id caching

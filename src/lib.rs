@@ -33,10 +33,10 @@ pub mod binary_parser;
 pub mod config;
 #[cfg(target_os = "linux")]
 pub mod coredump;
-#[cfg(unwind)]
+#[cfg(feature = "unwind")]
 mod cython;
 pub mod dump;
-#[cfg(unwind)]
+#[cfg(feature = "unwind")]
 mod native_stack_trace;
 mod python_bindings;
 mod python_data_access;
