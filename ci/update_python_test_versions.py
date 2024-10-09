@@ -19,8 +19,8 @@ def get_github_python_versions():
             continue
 
         major, minor, patch = parse_version(version_str)
-        if major == 3 and minor < 5:
-            # we don't support python 3.0/3.1/3.2 , and don't bother testing 3.3/3.4
+        if major == 3 and minor < 6:
+            # we don't support python 3.0/3.1/3.2 , and don't bother testing 3.3/3.4/3.5
             continue
 
         elif major == 2 and minor < 7:
