@@ -33,10 +33,11 @@ pub fn copy_string<T: StringObject, P: ProcessMemory>(
             Ok(chars.iter().collect())
         }
         (2, _) => {
-            // UCS2 strings aren't used internally after v3.3: https://www.python.org/dev/peps/pep-0393/
-            // TODO: however with python 2.7 they could be added with --enable-unicode=ucs2 configure flag.
-            //            or with python 3.2 --with-wide-unicode=ucs2
-            Err(format_err!("ucs2 strings aren't supported yet!"))
+            #[allow(clippy::cast_ptr_alignment)]
+            let chars = unsafe {
+                std::slice::from_raw_parts(bytes.as_ptr() as *const u16, bytes.len() / 2)
+            };
+            Ok(String::from_utf16(chars)?)
         }
         (1, true) => Ok(String::from_utf8(bytes)?),
         (1, false) => Ok(bytes.iter().map(|&b| b as char).collect()),
