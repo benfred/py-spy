@@ -1,4 +1,4 @@
-#[cfg(unwind)]
+#[cfg(feature = "unwind")]
 pub fn resolve_filename(filename: &str, modulename: &str) -> Option<String> {
     // check the filename first, if it exists use it
     use std::path::Path;
