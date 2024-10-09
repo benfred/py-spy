@@ -92,8 +92,84 @@ where
         }
     }
 }
+#[repr(C)]
+#[derive(Default)]
+pub struct __IncompleteArrayField<T>(::std::marker::PhantomData<T>, [T; 0]);
+impl<T> __IncompleteArrayField<T> {
+    #[inline]
+    pub fn new() -> Self {
+        __IncompleteArrayField(::std::marker::PhantomData, [])
+    }
+    #[inline]
+    pub unsafe fn as_ptr(&self) -> *const T {
+        ::std::mem::transmute(self)
+    }
+    #[inline]
+    pub unsafe fn as_mut_ptr(&mut self) -> *mut T {
+        ::std::mem::transmute(self)
+    }
+    #[inline]
+    pub unsafe fn as_slice(&self, len: usize) -> &[T] {
+        ::std::slice::from_raw_parts(self.as_ptr(), len)
+    }
+    #[inline]
+    pub unsafe fn as_mut_slice(&mut self, len: usize) -> &mut [T] {
+        ::std::slice::from_raw_parts_mut(self.as_mut_ptr(), len)
+    }
+}
+impl<T> ::std::fmt::Debug for __IncompleteArrayField<T> {
+    fn fmt(&self, fmt: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        fmt.write_str("__IncompleteArrayField")
+    }
+}
+impl<T> ::std::clone::Clone for __IncompleteArrayField<T> {
+    #[inline]
+    fn clone(&self) -> Self {
+        Self::new()
+    }
+}
 pub type wchar_t = ::std::os::raw::c_int;
+pub type __int8_t = ::std::os::raw::c_schar;
+pub type __uint8_t = ::std::os::raw::c_uchar;
+pub type __uint16_t = ::std::os::raw::c_ushort;
+pub type __int32_t = ::std::os::raw::c_int;
+pub type __uint32_t = ::std::os::raw::c_uint;
+pub type __int64_t = ::std::os::raw::c_long;
+pub type __uint64_t = ::std::os::raw::c_ulong;
+pub type __dev_t = ::std::os::raw::c_ulong;
+pub type __uid_t = ::std::os::raw::c_uint;
+pub type __ino64_t = ::std::os::raw::c_ulong;
+pub type __off_t = ::std::os::raw::c_long;
+pub type __off64_t = ::std::os::raw::c_long;
+pub type __pid_t = ::std::os::raw::c_int;
+pub type __clock_t = ::std::os::raw::c_long;
 pub type __ssize_t = ::std::os::raw::c_long;
+pub type __sig_atomic_t = ::std::os::raw::c_int;
+pub type ino_t = __ino64_t;
+pub type dev_t = __dev_t;
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct __sigset_t {
+    pub __val: [::std::os::raw::c_ulong; 16usize],
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union __atomic_wide_counter {
+    pub __value64: ::std::os::raw::c_ulonglong,
+    pub __value32: __atomic_wide_counter__bindgen_ty_1,
+    _bindgen_union_align: u64,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct __atomic_wide_counter__bindgen_ty_1 {
+    pub __low: ::std::os::raw::c_uint,
+    pub __high: ::std::os::raw::c_uint,
+}
+impl Default for __atomic_wide_counter {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct __pthread_internal_list {
@@ -107,16 +183,8 @@ impl Default for __pthread_internal_list {
 }
 pub type __pthread_list_t = __pthread_internal_list;
 #[repr(C)]
-#[derive(Copy, Clone)]
-pub union pthread_mutex_t {
-    pub __data: pthread_mutex_t___pthread_mutex_s,
-    pub __size: [::std::os::raw::c_char; 40usize],
-    pub __align: ::std::os::raw::c_long,
-    _bindgen_union_align: [u64; 5usize],
-}
-#[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct pthread_mutex_t___pthread_mutex_s {
+pub struct __pthread_mutex_s {
     pub __lock: ::std::os::raw::c_int,
     pub __count: ::std::os::raw::c_uint,
     pub __owner: ::std::os::raw::c_int,
@@ -126,10 +194,47 @@ pub struct pthread_mutex_t___pthread_mutex_s {
     pub __elision: ::std::os::raw::c_short,
     pub __list: __pthread_list_t,
 }
-impl Default for pthread_mutex_t___pthread_mutex_s {
+impl Default for __pthread_mutex_s {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct __pthread_cond_s {
+    pub __wseq: __atomic_wide_counter,
+    pub __g1_start: __atomic_wide_counter,
+    pub __g_refs: [::std::os::raw::c_uint; 2usize],
+    pub __g_size: [::std::os::raw::c_uint; 2usize],
+    pub __g1_orig_size: ::std::os::raw::c_uint,
+    pub __wrefs: ::std::os::raw::c_uint,
+    pub __g_signals: [::std::os::raw::c_uint; 2usize],
+}
+impl Default for __pthread_cond_s {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union pthread_condattr_t {
+    pub __size: [::std::os::raw::c_char; 4usize],
+    pub __align: ::std::os::raw::c_int,
+    _bindgen_union_align: u32,
+}
+impl Default for pthread_condattr_t {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+pub type pthread_key_t = ::std::os::raw::c_uint;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union pthread_mutex_t {
+    pub __data: __pthread_mutex_s,
+    pub __size: [::std::os::raw::c_char; 40usize],
+    pub __align: ::std::os::raw::c_long,
+    _bindgen_union_align: [u64; 5usize],
 }
 impl Default for pthread_mutex_t {
     fn default() -> Self {
@@ -139,35 +244,107 @@ impl Default for pthread_mutex_t {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub union pthread_cond_t {
-    pub __data: pthread_cond_t__bindgen_ty_1,
+    pub __data: __pthread_cond_s,
     pub __size: [::std::os::raw::c_char; 48usize],
     pub __align: ::std::os::raw::c_longlong,
     _bindgen_union_align: [u64; 6usize],
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct pthread_cond_t__bindgen_ty_1 {
-    pub __lock: ::std::os::raw::c_int,
-    pub __futex: ::std::os::raw::c_uint,
-    pub __total_seq: ::std::os::raw::c_ulonglong,
-    pub __wakeup_seq: ::std::os::raw::c_ulonglong,
-    pub __woken_seq: ::std::os::raw::c_ulonglong,
-    pub __mutex: *mut ::std::os::raw::c_void,
-    pub __nwaiters: ::std::os::raw::c_uint,
-    pub __broadcast_seq: ::std::os::raw::c_uint,
-}
-impl Default for pthread_cond_t__bindgen_ty_1 {
-    fn default() -> Self {
-        unsafe { ::std::mem::zeroed() }
-    }
 }
 impl Default for pthread_cond_t {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
 }
+pub type FILE = _IO_FILE;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _IO_marker {
+    _unused: [u8; 0],
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _IO_codecvt {
+    _unused: [u8; 0],
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _IO_wide_data {
+    _unused: [u8; 0],
+}
+pub type _IO_lock_t = ::std::os::raw::c_void;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _IO_FILE {
+    pub _flags: ::std::os::raw::c_int,
+    pub _IO_read_ptr: *mut ::std::os::raw::c_char,
+    pub _IO_read_end: *mut ::std::os::raw::c_char,
+    pub _IO_read_base: *mut ::std::os::raw::c_char,
+    pub _IO_write_base: *mut ::std::os::raw::c_char,
+    pub _IO_write_ptr: *mut ::std::os::raw::c_char,
+    pub _IO_write_end: *mut ::std::os::raw::c_char,
+    pub _IO_buf_base: *mut ::std::os::raw::c_char,
+    pub _IO_buf_end: *mut ::std::os::raw::c_char,
+    pub _IO_save_base: *mut ::std::os::raw::c_char,
+    pub _IO_backup_base: *mut ::std::os::raw::c_char,
+    pub _IO_save_end: *mut ::std::os::raw::c_char,
+    pub _markers: *mut _IO_marker,
+    pub _chain: *mut _IO_FILE,
+    pub _fileno: ::std::os::raw::c_int,
+    pub _flags2: ::std::os::raw::c_int,
+    pub _old_offset: __off_t,
+    pub _cur_column: ::std::os::raw::c_ushort,
+    pub _vtable_offset: ::std::os::raw::c_schar,
+    pub _shortbuf: [::std::os::raw::c_char; 1usize],
+    pub _lock: *mut _IO_lock_t,
+    pub _offset: __off64_t,
+    pub _codecvt: *mut _IO_codecvt,
+    pub _wide_data: *mut _IO_wide_data,
+    pub _freeres_list: *mut _IO_FILE,
+    pub _freeres_buf: *mut ::std::os::raw::c_void,
+    pub __pad5: usize,
+    pub _mode: ::std::os::raw::c_int,
+    pub _unused2: [::std::os::raw::c_char; 20usize],
+}
+impl Default for _IO_FILE {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
 pub type Py_ssize_t = isize;
 pub type Py_hash_t = Py_ssize_t;
+pub type Py_uhash_t = usize;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct PyMemAllocatorEx {
+    pub ctx: *mut ::std::os::raw::c_void,
+    pub malloc: ::std::option::Option<
+        unsafe extern "C" fn(
+            ctx: *mut ::std::os::raw::c_void,
+            size: usize,
+        ) -> *mut ::std::os::raw::c_void,
+    >,
+    pub calloc: ::std::option::Option<
+        unsafe extern "C" fn(
+            ctx: *mut ::std::os::raw::c_void,
+            nelem: usize,
+            elsize: usize,
+        ) -> *mut ::std::os::raw::c_void,
+    >,
+    pub realloc: ::std::option::Option<
+        unsafe extern "C" fn(
+            ctx: *mut ::std::os::raw::c_void,
+            ptr: *mut ::std::os::raw::c_void,
+            new_size: usize,
+        ) -> *mut ::std::os::raw::c_void,
+    >,
+    pub free: ::std::option::Option<
+        unsafe extern "C" fn(ctx: *mut ::std::os::raw::c_void, ptr: *mut ::std::os::raw::c_void),
+    >,
+}
+impl Default for PyMemAllocatorEx {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
 pub type PyObject = _object;
 pub type PyLongObject = _longobject;
 pub type PyTypeObject = _typeobject;
@@ -204,9 +381,9 @@ pub type getbufferproc = ::std::option::Option<
 pub type releasebufferproc =
     ::std::option::Option<unsafe extern "C" fn(arg1: *mut PyObject, arg2: *mut Py_buffer)>;
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Copy, Clone)]
 pub struct _object {
-    pub ob_refcnt: Py_ssize_t,
+    pub __bindgen_anon_1: _object__bindgen_ty_1,
     pub ob_type: *mut PyTypeObject,
 }
 #[repr(C)]
@@ -227,7 +404,7 @@ impl Default for _object {
     }
 }
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Copy, Clone)]
 pub struct PyVarObject {
     pub ob_base: PyObject,
     pub ob_size: Py_ssize_t,
@@ -472,7 +649,7 @@ impl Default for PyBufferProcs {
     }
 }
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Copy, Clone)]
 pub struct _typeobject {
     pub ob_base: PyVarObject,
     pub tp_name: *const ::std::os::raw::c_char,
@@ -542,7 +719,7 @@ impl Default for _specialization_cache {
     }
 }
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Copy, Clone)]
 pub struct _heaptypeobject {
     pub ht_type: PyTypeObject,
     pub as_async: PyAsyncMethods,
@@ -566,6 +743,29 @@ impl Default for _heaptypeobject {
 pub type PyHeapTypeObject = _heaptypeobject;
 pub type PyType_WatchCallback =
     ::std::option::Option<unsafe extern "C" fn(arg1: *mut PyTypeObject) -> ::std::os::raw::c_int>;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct PyObjectArenaAllocator {
+    pub ctx: *mut ::std::os::raw::c_void,
+    pub alloc: ::std::option::Option<
+        unsafe extern "C" fn(
+            ctx: *mut ::std::os::raw::c_void,
+            size: usize,
+        ) -> *mut ::std::os::raw::c_void,
+    >,
+    pub free: ::std::option::Option<
+        unsafe extern "C" fn(
+            ctx: *mut ::std::os::raw::c_void,
+            ptr: *mut ::std::os::raw::c_void,
+            size: usize,
+        ),
+    >,
+}
+impl Default for PyObjectArenaAllocator {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct PyBytesObject {
@@ -718,7 +918,7 @@ pub struct _PyLongValue {
     pub ob_digit: [digit; 1usize],
 }
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Copy, Clone)]
 pub struct _longobject {
     pub ob_base: PyObject,
     pub long_value: _PyLongValue,
@@ -763,11 +963,6 @@ impl Default for PyListObject {
     }
 }
 pub type PyDictKeysObject = _dictkeysobject;
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct _dictvalues {
-    _unused: [u8; 0],
-}
 pub type PyDictValues = _dictvalues;
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -852,6 +1047,9 @@ pub type PyFunction_WatchCallback = ::std::option::Option<
         func: *mut PyFunctionObject,
         new_value: *mut PyObject,
     ) -> ::std::os::raw::c_int,
+>;
+pub type Py_OpenCodeHookFunction = ::std::option::Option<
+    unsafe extern "C" fn(arg1: *mut PyObject, arg2: *mut ::std::os::raw::c_void) -> *mut PyObject,
 >;
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
@@ -983,6 +1181,20 @@ impl Default for PyWideStringList {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct PyPreConfig {
+    pub _config_init: ::std::os::raw::c_int,
+    pub parse_argv: ::std::os::raw::c_int,
+    pub isolated: ::std::os::raw::c_int,
+    pub use_environment: ::std::os::raw::c_int,
+    pub configure_locale: ::std::os::raw::c_int,
+    pub coerce_c_locale: ::std::os::raw::c_int,
+    pub coerce_c_locale_warn: ::std::os::raw::c_int,
+    pub utf8_mode: ::std::os::raw::c_int,
+    pub dev_mode: ::std::os::raw::c_int,
+    pub allocator: ::std::os::raw::c_int,
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -1248,8 +1460,6 @@ impl _ts__bindgen_ty_1 {
             self._bitfield_1.set(7usize, 1u8, val as u64)
         }
     }
-
-    #[allow(clippy::too_many_arguments)]
     #[inline]
     pub fn new_bitfield_1(
         initialized: ::std::os::raw::c_uint,
@@ -1309,6 +1519,33 @@ pub type _PyFrameEvalFunction = ::std::option::Option<
         arg1: *mut _PyInterpreterFrame,
         arg2: ::std::os::raw::c_int,
     ) -> *mut PyObject,
+>;
+pub type _PyCrossInterpreterData = _xid;
+pub type xid_newobjectfunc = ::std::option::Option<
+    unsafe extern "C" fn(arg1: *mut _PyCrossInterpreterData) -> *mut PyObject,
+>;
+pub type xid_freefunc =
+    ::std::option::Option<unsafe extern "C" fn(arg1: *mut ::std::os::raw::c_void)>;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _xid {
+    pub data: *mut ::std::os::raw::c_void,
+    pub obj: *mut PyObject,
+    pub interp: i64,
+    pub new_object: xid_newobjectfunc,
+    pub free: xid_freefunc,
+}
+impl Default for _xid {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+pub type crossinterpdatafunc = ::std::option::Option<
+    unsafe extern "C" fn(
+        tstate: *mut PyThreadState,
+        arg1: *mut PyObject,
+        arg2: *mut _PyCrossInterpreterData,
+    ) -> ::std::os::raw::c_int,
 >;
 pub type getter = ::std::option::Option<
     unsafe extern "C" fn(arg1: *mut PyObject, arg2: *mut ::std::os::raw::c_void) -> *mut PyObject,
@@ -1390,9 +1627,53 @@ impl Default for PyBaseExceptionObject {
     }
 }
 pub type PyThread_type_lock = *mut ::std::os::raw::c_void;
+pub type Py_tss_t = _Py_tss_t;
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct _Py_tss_t {
+    pub _is_initialized: ::std::os::raw::c_int,
+    pub _key: pthread_key_t,
+}
 pub type PyContext = _pycontextobject;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _PyArg_Parser {
+    pub initialized: ::std::os::raw::c_int,
+    pub format: *const ::std::os::raw::c_char,
+    pub keywords: *const *const ::std::os::raw::c_char,
+    pub fname: *const ::std::os::raw::c_char,
+    pub custom_msg: *const ::std::os::raw::c_char,
+    pub pos: ::std::os::raw::c_int,
+    pub min: ::std::os::raw::c_int,
+    pub max: ::std::os::raw::c_int,
+    pub kwtuple: *mut PyObject,
+    pub next: *mut _PyArg_Parser,
+}
+impl Default for _PyArg_Parser {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
 pub type atexit_datacallbackfunc =
     ::std::option::Option<unsafe extern "C" fn(arg1: *mut ::std::os::raw::c_void)>;
+pub type Py_AuditHookFunction = ::std::option::Option<
+    unsafe extern "C" fn(
+        arg1: *const ::std::os::raw::c_char,
+        arg2: *mut PyObject,
+        arg3: *mut ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int,
+>;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _inittab {
+    pub name: *const ::std::os::raw::c_char,
+    pub initfunc: ::std::option::Option<unsafe extern "C" fn() -> *mut PyObject>,
+}
+impl Default for _inittab {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct ast_state {
@@ -1647,6 +1928,19 @@ impl Default for ast_state {
         unsafe { ::std::mem::zeroed() }
     }
 }
+pub type atexit_callbackfunc = ::std::option::Option<unsafe extern "C" fn()>;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _atexit_runtime_state {
+    pub mutex: PyThread_type_lock,
+    pub callbacks: [atexit_callbackfunc; 32usize],
+    pub ncallbacks: ::std::os::raw::c_int,
+}
+impl Default for _atexit_runtime_state {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct atexit_callback {
@@ -1741,6 +2035,63 @@ impl Default for _pending_calls {
         unsafe { ::std::mem::zeroed() }
     }
 }
+pub const perf_status_t_PERF_STATUS_FAILED: perf_status_t = -1;
+pub const perf_status_t_PERF_STATUS_NO_INIT: perf_status_t = 0;
+pub const perf_status_t_PERF_STATUS_OK: perf_status_t = 1;
+pub type perf_status_t = i32;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct code_arena_st {
+    _unused: [u8; 0],
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct trampoline_api_st {
+    pub init_state: ::std::option::Option<unsafe extern "C" fn() -> *mut ::std::os::raw::c_void>,
+    pub write_state: ::std::option::Option<
+        unsafe extern "C" fn(
+            state: *mut ::std::os::raw::c_void,
+            code_addr: *const ::std::os::raw::c_void,
+            code_size: ::std::os::raw::c_uint,
+            code: *mut PyCodeObject,
+        ),
+    >,
+    pub free_state: ::std::option::Option<
+        unsafe extern "C" fn(state: *mut ::std::os::raw::c_void) -> ::std::os::raw::c_int,
+    >,
+    pub state: *mut ::std::os::raw::c_void,
+}
+impl Default for trampoline_api_st {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _ceval_runtime_state {
+    pub perf: _ceval_runtime_state__bindgen_ty_1,
+    pub signals_pending: _Py_atomic_int,
+    pub pending_mainthread: _pending_calls,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _ceval_runtime_state__bindgen_ty_1 {
+    pub status: perf_status_t,
+    pub extra_code_index: Py_ssize_t,
+    pub code_arena: *mut code_arena_st,
+    pub trampoline_api: trampoline_api_st,
+    pub map_file: *mut FILE,
+}
+impl Default for _ceval_runtime_state__bindgen_ty_1 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+impl Default for _ceval_runtime_state {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct _ceval_state {
@@ -1789,6 +2140,28 @@ pub struct PyHamtObject {
     pub h_count: Py_ssize_t,
 }
 impl Default for PyHamtObject {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct PyHamtNode_Bitmap {
+    pub ob_base: PyVarObject,
+    pub b_bitmap: u32,
+    pub b_array: [*mut PyObject; 1usize],
+}
+impl Default for PyHamtNode_Bitmap {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _PyContextTokenMissing {
+    pub ob_base: PyObject,
+}
+impl Default for _PyContextTokenMissing {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
@@ -1876,6 +2249,21 @@ impl Default for _Py_exc_state {
         unsafe { ::std::mem::zeroed() }
     }
 }
+pub const _py_float_format_type__py_float_format_unknown: _py_float_format_type = 0;
+pub const _py_float_format_type__py_float_format_ieee_big_endian: _py_float_format_type = 1;
+pub const _py_float_format_type__py_float_format_ieee_little_endian: _py_float_format_type = 2;
+pub type _py_float_format_type = u32;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _Py_float_runtime_state {
+    pub float_format: _py_float_format_type,
+    pub double_format: _py_float_format_type,
+}
+impl Default for _Py_float_runtime_state {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct _Py_float_state {
@@ -1948,6 +2336,8668 @@ impl Default for _gc_runtime_state {
     }
 }
 #[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings {
+    pub literals: _Py_global_strings__bindgen_ty_1,
+    pub identifiers: _Py_global_strings__bindgen_ty_2,
+    pub ascii: [_Py_global_strings__bindgen_ty_3; 128usize],
+    pub latin1: [_Py_global_strings__bindgen_ty_4; 128usize],
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_1 {
+    pub _py_anon_dictcomp: _Py_global_strings__bindgen_ty_1__bindgen_ty_1,
+    pub _py_anon_genexpr: _Py_global_strings__bindgen_ty_1__bindgen_ty_2,
+    pub _py_anon_lambda: _Py_global_strings__bindgen_ty_1__bindgen_ty_3,
+    pub _py_anon_listcomp: _Py_global_strings__bindgen_ty_1__bindgen_ty_4,
+    pub _py_anon_module: _Py_global_strings__bindgen_ty_1__bindgen_ty_5,
+    pub _py_anon_setcomp: _Py_global_strings__bindgen_ty_1__bindgen_ty_6,
+    pub _py_anon_string: _Py_global_strings__bindgen_ty_1__bindgen_ty_7,
+    pub _py_anon_unknown: _Py_global_strings__bindgen_ty_1__bindgen_ty_8,
+    pub _py_close_br: _Py_global_strings__bindgen_ty_1__bindgen_ty_9,
+    pub _py_dbl_close_br: _Py_global_strings__bindgen_ty_1__bindgen_ty_10,
+    pub _py_dbl_open_br: _Py_global_strings__bindgen_ty_1__bindgen_ty_11,
+    pub _py_dbl_percent: _Py_global_strings__bindgen_ty_1__bindgen_ty_12,
+    pub _py_defaults: _Py_global_strings__bindgen_ty_1__bindgen_ty_13,
+    pub _py_dot: _Py_global_strings__bindgen_ty_1__bindgen_ty_14,
+    pub _py_dot_locals: _Py_global_strings__bindgen_ty_1__bindgen_ty_15,
+    pub _py_empty: _Py_global_strings__bindgen_ty_1__bindgen_ty_16,
+    pub _py_generic_base: _Py_global_strings__bindgen_ty_1__bindgen_ty_17,
+    pub _py_json_decoder: _Py_global_strings__bindgen_ty_1__bindgen_ty_18,
+    pub _py_kwdefaults: _Py_global_strings__bindgen_ty_1__bindgen_ty_19,
+    pub _py_list_err: _Py_global_strings__bindgen_ty_1__bindgen_ty_20,
+    pub _py_newline: _Py_global_strings__bindgen_ty_1__bindgen_ty_21,
+    pub _py_open_br: _Py_global_strings__bindgen_ty_1__bindgen_ty_22,
+    pub _py_percent: _Py_global_strings__bindgen_ty_1__bindgen_ty_23,
+    pub _py_shim_name: _Py_global_strings__bindgen_ty_1__bindgen_ty_24,
+    pub _py_type_params: _Py_global_strings__bindgen_ty_1__bindgen_ty_25,
+    pub _py_utf_8: _Py_global_strings__bindgen_ty_1__bindgen_ty_26,
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_1__bindgen_ty_1 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_1__bindgen_ty_1 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_1__bindgen_ty_2 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_1__bindgen_ty_2 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_1__bindgen_ty_3 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_1__bindgen_ty_3 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_1__bindgen_ty_4 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_1__bindgen_ty_4 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_1__bindgen_ty_5 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_1__bindgen_ty_5 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_1__bindgen_ty_6 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_1__bindgen_ty_6 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_1__bindgen_ty_7 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_1__bindgen_ty_7 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_1__bindgen_ty_8 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_1__bindgen_ty_8 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_1__bindgen_ty_9 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 2usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_1__bindgen_ty_9 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_1__bindgen_ty_10 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 3usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_1__bindgen_ty_10 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_1__bindgen_ty_11 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 3usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_1__bindgen_ty_11 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_1__bindgen_ty_12 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 3usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_1__bindgen_ty_12 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_1__bindgen_ty_13 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_1__bindgen_ty_13 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_1__bindgen_ty_14 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 2usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_1__bindgen_ty_14 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_1__bindgen_ty_15 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_1__bindgen_ty_15 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_1__bindgen_ty_16 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 1usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_1__bindgen_ty_16 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_1__bindgen_ty_17 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 14usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_1__bindgen_ty_17 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_1__bindgen_ty_18 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 13usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_1__bindgen_ty_18 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_1__bindgen_ty_19 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_1__bindgen_ty_19 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_1__bindgen_ty_20 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 24usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_1__bindgen_ty_20 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_1__bindgen_ty_21 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 2usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_1__bindgen_ty_21 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_1__bindgen_ty_22 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 2usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_1__bindgen_ty_22 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_1__bindgen_ty_23 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 2usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_1__bindgen_ty_23 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_1__bindgen_ty_24 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_1__bindgen_ty_24 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_1__bindgen_ty_25 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 13usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_1__bindgen_ty_25 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_1__bindgen_ty_26 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_1__bindgen_ty_26 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+impl Default for _Py_global_strings__bindgen_ty_1 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2 {
+    pub _py_CANCELLED: _Py_global_strings__bindgen_ty_2__bindgen_ty_1,
+    pub _py_FINISHED: _Py_global_strings__bindgen_ty_2__bindgen_ty_2,
+    pub _py_False: _Py_global_strings__bindgen_ty_2__bindgen_ty_3,
+    pub _py_JSONDecodeError: _Py_global_strings__bindgen_ty_2__bindgen_ty_4,
+    pub _py_PENDING: _Py_global_strings__bindgen_ty_2__bindgen_ty_5,
+    pub _py_Py_Repr: _Py_global_strings__bindgen_ty_2__bindgen_ty_6,
+    pub _py_TextIOWrapper: _Py_global_strings__bindgen_ty_2__bindgen_ty_7,
+    pub _py_True: _Py_global_strings__bindgen_ty_2__bindgen_ty_8,
+    pub _py_WarningMessage: _Py_global_strings__bindgen_ty_2__bindgen_ty_9,
+    pub _py__: _Py_global_strings__bindgen_ty_2__bindgen_ty_10,
+    pub _py__WindowsConsoleIO: _Py_global_strings__bindgen_ty_2__bindgen_ty_11,
+    pub _py___IOBase_closed: _Py_global_strings__bindgen_ty_2__bindgen_ty_12,
+    pub _py___abc_tpflags__: _Py_global_strings__bindgen_ty_2__bindgen_ty_13,
+    pub _py___abs__: _Py_global_strings__bindgen_ty_2__bindgen_ty_14,
+    pub _py___abstractmethods__: _Py_global_strings__bindgen_ty_2__bindgen_ty_15,
+    pub _py___add__: _Py_global_strings__bindgen_ty_2__bindgen_ty_16,
+    pub _py___aenter__: _Py_global_strings__bindgen_ty_2__bindgen_ty_17,
+    pub _py___aexit__: _Py_global_strings__bindgen_ty_2__bindgen_ty_18,
+    pub _py___aiter__: _Py_global_strings__bindgen_ty_2__bindgen_ty_19,
+    pub _py___all__: _Py_global_strings__bindgen_ty_2__bindgen_ty_20,
+    pub _py___and__: _Py_global_strings__bindgen_ty_2__bindgen_ty_21,
+    pub _py___anext__: _Py_global_strings__bindgen_ty_2__bindgen_ty_22,
+    pub _py___annotations__: _Py_global_strings__bindgen_ty_2__bindgen_ty_23,
+    pub _py___args__: _Py_global_strings__bindgen_ty_2__bindgen_ty_24,
+    pub _py___asyncio_running_event_loop__: _Py_global_strings__bindgen_ty_2__bindgen_ty_25,
+    pub _py___await__: _Py_global_strings__bindgen_ty_2__bindgen_ty_26,
+    pub _py___bases__: _Py_global_strings__bindgen_ty_2__bindgen_ty_27,
+    pub _py___bool__: _Py_global_strings__bindgen_ty_2__bindgen_ty_28,
+    pub _py___buffer__: _Py_global_strings__bindgen_ty_2__bindgen_ty_29,
+    pub _py___build_class__: _Py_global_strings__bindgen_ty_2__bindgen_ty_30,
+    pub _py___builtins__: _Py_global_strings__bindgen_ty_2__bindgen_ty_31,
+    pub _py___bytes__: _Py_global_strings__bindgen_ty_2__bindgen_ty_32,
+    pub _py___call__: _Py_global_strings__bindgen_ty_2__bindgen_ty_33,
+    pub _py___cantrace__: _Py_global_strings__bindgen_ty_2__bindgen_ty_34,
+    pub _py___class__: _Py_global_strings__bindgen_ty_2__bindgen_ty_35,
+    pub _py___class_getitem__: _Py_global_strings__bindgen_ty_2__bindgen_ty_36,
+    pub _py___classcell__: _Py_global_strings__bindgen_ty_2__bindgen_ty_37,
+    pub _py___classdict__: _Py_global_strings__bindgen_ty_2__bindgen_ty_38,
+    pub _py___classdictcell__: _Py_global_strings__bindgen_ty_2__bindgen_ty_39,
+    pub _py___complex__: _Py_global_strings__bindgen_ty_2__bindgen_ty_40,
+    pub _py___contains__: _Py_global_strings__bindgen_ty_2__bindgen_ty_41,
+    pub _py___copy__: _Py_global_strings__bindgen_ty_2__bindgen_ty_42,
+    pub _py___ctypes_from_outparam__: _Py_global_strings__bindgen_ty_2__bindgen_ty_43,
+    pub _py___del__: _Py_global_strings__bindgen_ty_2__bindgen_ty_44,
+    pub _py___delattr__: _Py_global_strings__bindgen_ty_2__bindgen_ty_45,
+    pub _py___delete__: _Py_global_strings__bindgen_ty_2__bindgen_ty_46,
+    pub _py___delitem__: _Py_global_strings__bindgen_ty_2__bindgen_ty_47,
+    pub _py___dict__: _Py_global_strings__bindgen_ty_2__bindgen_ty_48,
+    pub _py___dictoffset__: _Py_global_strings__bindgen_ty_2__bindgen_ty_49,
+    pub _py___dir__: _Py_global_strings__bindgen_ty_2__bindgen_ty_50,
+    pub _py___divmod__: _Py_global_strings__bindgen_ty_2__bindgen_ty_51,
+    pub _py___doc__: _Py_global_strings__bindgen_ty_2__bindgen_ty_52,
+    pub _py___enter__: _Py_global_strings__bindgen_ty_2__bindgen_ty_53,
+    pub _py___eq__: _Py_global_strings__bindgen_ty_2__bindgen_ty_54,
+    pub _py___exit__: _Py_global_strings__bindgen_ty_2__bindgen_ty_55,
+    pub _py___file__: _Py_global_strings__bindgen_ty_2__bindgen_ty_56,
+    pub _py___float__: _Py_global_strings__bindgen_ty_2__bindgen_ty_57,
+    pub _py___floordiv__: _Py_global_strings__bindgen_ty_2__bindgen_ty_58,
+    pub _py___format__: _Py_global_strings__bindgen_ty_2__bindgen_ty_59,
+    pub _py___fspath__: _Py_global_strings__bindgen_ty_2__bindgen_ty_60,
+    pub _py___ge__: _Py_global_strings__bindgen_ty_2__bindgen_ty_61,
+    pub _py___get__: _Py_global_strings__bindgen_ty_2__bindgen_ty_62,
+    pub _py___getattr__: _Py_global_strings__bindgen_ty_2__bindgen_ty_63,
+    pub _py___getattribute__: _Py_global_strings__bindgen_ty_2__bindgen_ty_64,
+    pub _py___getinitargs__: _Py_global_strings__bindgen_ty_2__bindgen_ty_65,
+    pub _py___getitem__: _Py_global_strings__bindgen_ty_2__bindgen_ty_66,
+    pub _py___getnewargs__: _Py_global_strings__bindgen_ty_2__bindgen_ty_67,
+    pub _py___getnewargs_ex__: _Py_global_strings__bindgen_ty_2__bindgen_ty_68,
+    pub _py___getstate__: _Py_global_strings__bindgen_ty_2__bindgen_ty_69,
+    pub _py___gt__: _Py_global_strings__bindgen_ty_2__bindgen_ty_70,
+    pub _py___hash__: _Py_global_strings__bindgen_ty_2__bindgen_ty_71,
+    pub _py___iadd__: _Py_global_strings__bindgen_ty_2__bindgen_ty_72,
+    pub _py___iand__: _Py_global_strings__bindgen_ty_2__bindgen_ty_73,
+    pub _py___ifloordiv__: _Py_global_strings__bindgen_ty_2__bindgen_ty_74,
+    pub _py___ilshift__: _Py_global_strings__bindgen_ty_2__bindgen_ty_75,
+    pub _py___imatmul__: _Py_global_strings__bindgen_ty_2__bindgen_ty_76,
+    pub _py___imod__: _Py_global_strings__bindgen_ty_2__bindgen_ty_77,
+    pub _py___import__: _Py_global_strings__bindgen_ty_2__bindgen_ty_78,
+    pub _py___imul__: _Py_global_strings__bindgen_ty_2__bindgen_ty_79,
+    pub _py___index__: _Py_global_strings__bindgen_ty_2__bindgen_ty_80,
+    pub _py___init__: _Py_global_strings__bindgen_ty_2__bindgen_ty_81,
+    pub _py___init_subclass__: _Py_global_strings__bindgen_ty_2__bindgen_ty_82,
+    pub _py___instancecheck__: _Py_global_strings__bindgen_ty_2__bindgen_ty_83,
+    pub _py___int__: _Py_global_strings__bindgen_ty_2__bindgen_ty_84,
+    pub _py___invert__: _Py_global_strings__bindgen_ty_2__bindgen_ty_85,
+    pub _py___ior__: _Py_global_strings__bindgen_ty_2__bindgen_ty_86,
+    pub _py___ipow__: _Py_global_strings__bindgen_ty_2__bindgen_ty_87,
+    pub _py___irshift__: _Py_global_strings__bindgen_ty_2__bindgen_ty_88,
+    pub _py___isabstractmethod__: _Py_global_strings__bindgen_ty_2__bindgen_ty_89,
+    pub _py___isub__: _Py_global_strings__bindgen_ty_2__bindgen_ty_90,
+    pub _py___iter__: _Py_global_strings__bindgen_ty_2__bindgen_ty_91,
+    pub _py___itruediv__: _Py_global_strings__bindgen_ty_2__bindgen_ty_92,
+    pub _py___ixor__: _Py_global_strings__bindgen_ty_2__bindgen_ty_93,
+    pub _py___le__: _Py_global_strings__bindgen_ty_2__bindgen_ty_94,
+    pub _py___len__: _Py_global_strings__bindgen_ty_2__bindgen_ty_95,
+    pub _py___length_hint__: _Py_global_strings__bindgen_ty_2__bindgen_ty_96,
+    pub _py___lltrace__: _Py_global_strings__bindgen_ty_2__bindgen_ty_97,
+    pub _py___loader__: _Py_global_strings__bindgen_ty_2__bindgen_ty_98,
+    pub _py___lshift__: _Py_global_strings__bindgen_ty_2__bindgen_ty_99,
+    pub _py___lt__: _Py_global_strings__bindgen_ty_2__bindgen_ty_100,
+    pub _py___main__: _Py_global_strings__bindgen_ty_2__bindgen_ty_101,
+    pub _py___matmul__: _Py_global_strings__bindgen_ty_2__bindgen_ty_102,
+    pub _py___missing__: _Py_global_strings__bindgen_ty_2__bindgen_ty_103,
+    pub _py___mod__: _Py_global_strings__bindgen_ty_2__bindgen_ty_104,
+    pub _py___module__: _Py_global_strings__bindgen_ty_2__bindgen_ty_105,
+    pub _py___mro_entries__: _Py_global_strings__bindgen_ty_2__bindgen_ty_106,
+    pub _py___mul__: _Py_global_strings__bindgen_ty_2__bindgen_ty_107,
+    pub _py___name__: _Py_global_strings__bindgen_ty_2__bindgen_ty_108,
+    pub _py___ne__: _Py_global_strings__bindgen_ty_2__bindgen_ty_109,
+    pub _py___neg__: _Py_global_strings__bindgen_ty_2__bindgen_ty_110,
+    pub _py___new__: _Py_global_strings__bindgen_ty_2__bindgen_ty_111,
+    pub _py___newobj__: _Py_global_strings__bindgen_ty_2__bindgen_ty_112,
+    pub _py___newobj_ex__: _Py_global_strings__bindgen_ty_2__bindgen_ty_113,
+    pub _py___next__: _Py_global_strings__bindgen_ty_2__bindgen_ty_114,
+    pub _py___notes__: _Py_global_strings__bindgen_ty_2__bindgen_ty_115,
+    pub _py___or__: _Py_global_strings__bindgen_ty_2__bindgen_ty_116,
+    pub _py___orig_class__: _Py_global_strings__bindgen_ty_2__bindgen_ty_117,
+    pub _py___origin__: _Py_global_strings__bindgen_ty_2__bindgen_ty_118,
+    pub _py___package__: _Py_global_strings__bindgen_ty_2__bindgen_ty_119,
+    pub _py___parameters__: _Py_global_strings__bindgen_ty_2__bindgen_ty_120,
+    pub _py___path__: _Py_global_strings__bindgen_ty_2__bindgen_ty_121,
+    pub _py___pos__: _Py_global_strings__bindgen_ty_2__bindgen_ty_122,
+    pub _py___pow__: _Py_global_strings__bindgen_ty_2__bindgen_ty_123,
+    pub _py___prepare__: _Py_global_strings__bindgen_ty_2__bindgen_ty_124,
+    pub _py___qualname__: _Py_global_strings__bindgen_ty_2__bindgen_ty_125,
+    pub _py___radd__: _Py_global_strings__bindgen_ty_2__bindgen_ty_126,
+    pub _py___rand__: _Py_global_strings__bindgen_ty_2__bindgen_ty_127,
+    pub _py___rdivmod__: _Py_global_strings__bindgen_ty_2__bindgen_ty_128,
+    pub _py___reduce__: _Py_global_strings__bindgen_ty_2__bindgen_ty_129,
+    pub _py___reduce_ex__: _Py_global_strings__bindgen_ty_2__bindgen_ty_130,
+    pub _py___release_buffer__: _Py_global_strings__bindgen_ty_2__bindgen_ty_131,
+    pub _py___repr__: _Py_global_strings__bindgen_ty_2__bindgen_ty_132,
+    pub _py___reversed__: _Py_global_strings__bindgen_ty_2__bindgen_ty_133,
+    pub _py___rfloordiv__: _Py_global_strings__bindgen_ty_2__bindgen_ty_134,
+    pub _py___rlshift__: _Py_global_strings__bindgen_ty_2__bindgen_ty_135,
+    pub _py___rmatmul__: _Py_global_strings__bindgen_ty_2__bindgen_ty_136,
+    pub _py___rmod__: _Py_global_strings__bindgen_ty_2__bindgen_ty_137,
+    pub _py___rmul__: _Py_global_strings__bindgen_ty_2__bindgen_ty_138,
+    pub _py___ror__: _Py_global_strings__bindgen_ty_2__bindgen_ty_139,
+    pub _py___round__: _Py_global_strings__bindgen_ty_2__bindgen_ty_140,
+    pub _py___rpow__: _Py_global_strings__bindgen_ty_2__bindgen_ty_141,
+    pub _py___rrshift__: _Py_global_strings__bindgen_ty_2__bindgen_ty_142,
+    pub _py___rshift__: _Py_global_strings__bindgen_ty_2__bindgen_ty_143,
+    pub _py___rsub__: _Py_global_strings__bindgen_ty_2__bindgen_ty_144,
+    pub _py___rtruediv__: _Py_global_strings__bindgen_ty_2__bindgen_ty_145,
+    pub _py___rxor__: _Py_global_strings__bindgen_ty_2__bindgen_ty_146,
+    pub _py___set__: _Py_global_strings__bindgen_ty_2__bindgen_ty_147,
+    pub _py___set_name__: _Py_global_strings__bindgen_ty_2__bindgen_ty_148,
+    pub _py___setattr__: _Py_global_strings__bindgen_ty_2__bindgen_ty_149,
+    pub _py___setitem__: _Py_global_strings__bindgen_ty_2__bindgen_ty_150,
+    pub _py___setstate__: _Py_global_strings__bindgen_ty_2__bindgen_ty_151,
+    pub _py___sizeof__: _Py_global_strings__bindgen_ty_2__bindgen_ty_152,
+    pub _py___slotnames__: _Py_global_strings__bindgen_ty_2__bindgen_ty_153,
+    pub _py___slots__: _Py_global_strings__bindgen_ty_2__bindgen_ty_154,
+    pub _py___spec__: _Py_global_strings__bindgen_ty_2__bindgen_ty_155,
+    pub _py___str__: _Py_global_strings__bindgen_ty_2__bindgen_ty_156,
+    pub _py___sub__: _Py_global_strings__bindgen_ty_2__bindgen_ty_157,
+    pub _py___subclasscheck__: _Py_global_strings__bindgen_ty_2__bindgen_ty_158,
+    pub _py___subclasshook__: _Py_global_strings__bindgen_ty_2__bindgen_ty_159,
+    pub _py___truediv__: _Py_global_strings__bindgen_ty_2__bindgen_ty_160,
+    pub _py___trunc__: _Py_global_strings__bindgen_ty_2__bindgen_ty_161,
+    pub _py___type_params__: _Py_global_strings__bindgen_ty_2__bindgen_ty_162,
+    pub _py___typing_is_unpacked_typevartuple__: _Py_global_strings__bindgen_ty_2__bindgen_ty_163,
+    pub _py___typing_prepare_subst__: _Py_global_strings__bindgen_ty_2__bindgen_ty_164,
+    pub _py___typing_subst__: _Py_global_strings__bindgen_ty_2__bindgen_ty_165,
+    pub _py___typing_unpacked_tuple_args__: _Py_global_strings__bindgen_ty_2__bindgen_ty_166,
+    pub _py___warningregistry__: _Py_global_strings__bindgen_ty_2__bindgen_ty_167,
+    pub _py___weaklistoffset__: _Py_global_strings__bindgen_ty_2__bindgen_ty_168,
+    pub _py___weakref__: _Py_global_strings__bindgen_ty_2__bindgen_ty_169,
+    pub _py___xor__: _Py_global_strings__bindgen_ty_2__bindgen_ty_170,
+    pub _py__abc_impl: _Py_global_strings__bindgen_ty_2__bindgen_ty_171,
+    pub _py__abstract_: _Py_global_strings__bindgen_ty_2__bindgen_ty_172,
+    pub _py__active: _Py_global_strings__bindgen_ty_2__bindgen_ty_173,
+    pub _py__annotation: _Py_global_strings__bindgen_ty_2__bindgen_ty_174,
+    pub _py__anonymous_: _Py_global_strings__bindgen_ty_2__bindgen_ty_175,
+    pub _py__argtypes_: _Py_global_strings__bindgen_ty_2__bindgen_ty_176,
+    pub _py__as_parameter_: _Py_global_strings__bindgen_ty_2__bindgen_ty_177,
+    pub _py__asyncio_future_blocking: _Py_global_strings__bindgen_ty_2__bindgen_ty_178,
+    pub _py__blksize: _Py_global_strings__bindgen_ty_2__bindgen_ty_179,
+    pub _py__bootstrap: _Py_global_strings__bindgen_ty_2__bindgen_ty_180,
+    pub _py__check_retval_: _Py_global_strings__bindgen_ty_2__bindgen_ty_181,
+    pub _py__dealloc_warn: _Py_global_strings__bindgen_ty_2__bindgen_ty_182,
+    pub _py__feature_version: _Py_global_strings__bindgen_ty_2__bindgen_ty_183,
+    pub _py__fields_: _Py_global_strings__bindgen_ty_2__bindgen_ty_184,
+    pub _py__finalizing: _Py_global_strings__bindgen_ty_2__bindgen_ty_185,
+    pub _py__find_and_load: _Py_global_strings__bindgen_ty_2__bindgen_ty_186,
+    pub _py__fix_up_module: _Py_global_strings__bindgen_ty_2__bindgen_ty_187,
+    pub _py__flags_: _Py_global_strings__bindgen_ty_2__bindgen_ty_188,
+    pub _py__get_sourcefile: _Py_global_strings__bindgen_ty_2__bindgen_ty_189,
+    pub _py__handle_fromlist: _Py_global_strings__bindgen_ty_2__bindgen_ty_190,
+    pub _py__initializing: _Py_global_strings__bindgen_ty_2__bindgen_ty_191,
+    pub _py__io: _Py_global_strings__bindgen_ty_2__bindgen_ty_192,
+    pub _py__is_text_encoding: _Py_global_strings__bindgen_ty_2__bindgen_ty_193,
+    pub _py__length_: _Py_global_strings__bindgen_ty_2__bindgen_ty_194,
+    pub _py__limbo: _Py_global_strings__bindgen_ty_2__bindgen_ty_195,
+    pub _py__lock_unlock_module: _Py_global_strings__bindgen_ty_2__bindgen_ty_196,
+    pub _py__loop: _Py_global_strings__bindgen_ty_2__bindgen_ty_197,
+    pub _py__needs_com_addref_: _Py_global_strings__bindgen_ty_2__bindgen_ty_198,
+    pub _py__pack_: _Py_global_strings__bindgen_ty_2__bindgen_ty_199,
+    pub _py__restype_: _Py_global_strings__bindgen_ty_2__bindgen_ty_200,
+    pub _py__showwarnmsg: _Py_global_strings__bindgen_ty_2__bindgen_ty_201,
+    pub _py__shutdown: _Py_global_strings__bindgen_ty_2__bindgen_ty_202,
+    pub _py__slotnames: _Py_global_strings__bindgen_ty_2__bindgen_ty_203,
+    pub _py__strptime_datetime: _Py_global_strings__bindgen_ty_2__bindgen_ty_204,
+    pub _py__swappedbytes_: _Py_global_strings__bindgen_ty_2__bindgen_ty_205,
+    pub _py__type_: _Py_global_strings__bindgen_ty_2__bindgen_ty_206,
+    pub _py__uninitialized_submodules: _Py_global_strings__bindgen_ty_2__bindgen_ty_207,
+    pub _py__warn_unawaited_coroutine: _Py_global_strings__bindgen_ty_2__bindgen_ty_208,
+    pub _py__xoptions: _Py_global_strings__bindgen_ty_2__bindgen_ty_209,
+    pub _py_a: _Py_global_strings__bindgen_ty_2__bindgen_ty_210,
+    pub _py_abs_tol: _Py_global_strings__bindgen_ty_2__bindgen_ty_211,
+    pub _py_access: _Py_global_strings__bindgen_ty_2__bindgen_ty_212,
+    pub _py_add: _Py_global_strings__bindgen_ty_2__bindgen_ty_213,
+    pub _py_add_done_callback: _Py_global_strings__bindgen_ty_2__bindgen_ty_214,
+    pub _py_after_in_child: _Py_global_strings__bindgen_ty_2__bindgen_ty_215,
+    pub _py_after_in_parent: _Py_global_strings__bindgen_ty_2__bindgen_ty_216,
+    pub _py_aggregate_class: _Py_global_strings__bindgen_ty_2__bindgen_ty_217,
+    pub _py_alias: _Py_global_strings__bindgen_ty_2__bindgen_ty_218,
+    pub _py_append: _Py_global_strings__bindgen_ty_2__bindgen_ty_219,
+    pub _py_arg: _Py_global_strings__bindgen_ty_2__bindgen_ty_220,
+    pub _py_argdefs: _Py_global_strings__bindgen_ty_2__bindgen_ty_221,
+    pub _py_args: _Py_global_strings__bindgen_ty_2__bindgen_ty_222,
+    pub _py_arguments: _Py_global_strings__bindgen_ty_2__bindgen_ty_223,
+    pub _py_argv: _Py_global_strings__bindgen_ty_2__bindgen_ty_224,
+    pub _py_as_integer_ratio: _Py_global_strings__bindgen_ty_2__bindgen_ty_225,
+    pub _py_ast: _Py_global_strings__bindgen_ty_2__bindgen_ty_226,
+    pub _py_attribute: _Py_global_strings__bindgen_ty_2__bindgen_ty_227,
+    pub _py_authorizer_callback: _Py_global_strings__bindgen_ty_2__bindgen_ty_228,
+    pub _py_autocommit: _Py_global_strings__bindgen_ty_2__bindgen_ty_229,
+    pub _py_b: _Py_global_strings__bindgen_ty_2__bindgen_ty_230,
+    pub _py_backtick: _Py_global_strings__bindgen_ty_2__bindgen_ty_231,
+    pub _py_base: _Py_global_strings__bindgen_ty_2__bindgen_ty_232,
+    pub _py_before: _Py_global_strings__bindgen_ty_2__bindgen_ty_233,
+    pub _py_big: _Py_global_strings__bindgen_ty_2__bindgen_ty_234,
+    pub _py_binary_form: _Py_global_strings__bindgen_ty_2__bindgen_ty_235,
+    pub _py_block: _Py_global_strings__bindgen_ty_2__bindgen_ty_236,
+    pub _py_bound: _Py_global_strings__bindgen_ty_2__bindgen_ty_237,
+    pub _py_buffer: _Py_global_strings__bindgen_ty_2__bindgen_ty_238,
+    pub _py_buffer_callback: _Py_global_strings__bindgen_ty_2__bindgen_ty_239,
+    pub _py_buffer_size: _Py_global_strings__bindgen_ty_2__bindgen_ty_240,
+    pub _py_buffering: _Py_global_strings__bindgen_ty_2__bindgen_ty_241,
+    pub _py_buffers: _Py_global_strings__bindgen_ty_2__bindgen_ty_242,
+    pub _py_bufsize: _Py_global_strings__bindgen_ty_2__bindgen_ty_243,
+    pub _py_builtins: _Py_global_strings__bindgen_ty_2__bindgen_ty_244,
+    pub _py_byteorder: _Py_global_strings__bindgen_ty_2__bindgen_ty_245,
+    pub _py_bytes: _Py_global_strings__bindgen_ty_2__bindgen_ty_246,
+    pub _py_bytes_per_sep: _Py_global_strings__bindgen_ty_2__bindgen_ty_247,
+    pub _py_c: _Py_global_strings__bindgen_ty_2__bindgen_ty_248,
+    pub _py_c_call: _Py_global_strings__bindgen_ty_2__bindgen_ty_249,
+    pub _py_c_exception: _Py_global_strings__bindgen_ty_2__bindgen_ty_250,
+    pub _py_c_return: _Py_global_strings__bindgen_ty_2__bindgen_ty_251,
+    pub _py_cached_statements: _Py_global_strings__bindgen_ty_2__bindgen_ty_252,
+    pub _py_cadata: _Py_global_strings__bindgen_ty_2__bindgen_ty_253,
+    pub _py_cafile: _Py_global_strings__bindgen_ty_2__bindgen_ty_254,
+    pub _py_call: _Py_global_strings__bindgen_ty_2__bindgen_ty_255,
+    pub _py_call_exception_handler: _Py_global_strings__bindgen_ty_2__bindgen_ty_256,
+    pub _py_call_soon: _Py_global_strings__bindgen_ty_2__bindgen_ty_257,
+    pub _py_cancel: _Py_global_strings__bindgen_ty_2__bindgen_ty_258,
+    pub _py_capath: _Py_global_strings__bindgen_ty_2__bindgen_ty_259,
+    pub _py_category: _Py_global_strings__bindgen_ty_2__bindgen_ty_260,
+    pub _py_cb_type: _Py_global_strings__bindgen_ty_2__bindgen_ty_261,
+    pub _py_certfile: _Py_global_strings__bindgen_ty_2__bindgen_ty_262,
+    pub _py_check_same_thread: _Py_global_strings__bindgen_ty_2__bindgen_ty_263,
+    pub _py_clear: _Py_global_strings__bindgen_ty_2__bindgen_ty_264,
+    pub _py_close: _Py_global_strings__bindgen_ty_2__bindgen_ty_265,
+    pub _py_closed: _Py_global_strings__bindgen_ty_2__bindgen_ty_266,
+    pub _py_closefd: _Py_global_strings__bindgen_ty_2__bindgen_ty_267,
+    pub _py_closure: _Py_global_strings__bindgen_ty_2__bindgen_ty_268,
+    pub _py_co_argcount: _Py_global_strings__bindgen_ty_2__bindgen_ty_269,
+    pub _py_co_cellvars: _Py_global_strings__bindgen_ty_2__bindgen_ty_270,
+    pub _py_co_code: _Py_global_strings__bindgen_ty_2__bindgen_ty_271,
+    pub _py_co_consts: _Py_global_strings__bindgen_ty_2__bindgen_ty_272,
+    pub _py_co_exceptiontable: _Py_global_strings__bindgen_ty_2__bindgen_ty_273,
+    pub _py_co_filename: _Py_global_strings__bindgen_ty_2__bindgen_ty_274,
+    pub _py_co_firstlineno: _Py_global_strings__bindgen_ty_2__bindgen_ty_275,
+    pub _py_co_flags: _Py_global_strings__bindgen_ty_2__bindgen_ty_276,
+    pub _py_co_freevars: _Py_global_strings__bindgen_ty_2__bindgen_ty_277,
+    pub _py_co_kwonlyargcount: _Py_global_strings__bindgen_ty_2__bindgen_ty_278,
+    pub _py_co_linetable: _Py_global_strings__bindgen_ty_2__bindgen_ty_279,
+    pub _py_co_name: _Py_global_strings__bindgen_ty_2__bindgen_ty_280,
+    pub _py_co_names: _Py_global_strings__bindgen_ty_2__bindgen_ty_281,
+    pub _py_co_nlocals: _Py_global_strings__bindgen_ty_2__bindgen_ty_282,
+    pub _py_co_posonlyargcount: _Py_global_strings__bindgen_ty_2__bindgen_ty_283,
+    pub _py_co_qualname: _Py_global_strings__bindgen_ty_2__bindgen_ty_284,
+    pub _py_co_stacksize: _Py_global_strings__bindgen_ty_2__bindgen_ty_285,
+    pub _py_co_varnames: _Py_global_strings__bindgen_ty_2__bindgen_ty_286,
+    pub _py_code: _Py_global_strings__bindgen_ty_2__bindgen_ty_287,
+    pub _py_command: _Py_global_strings__bindgen_ty_2__bindgen_ty_288,
+    pub _py_comment_factory: _Py_global_strings__bindgen_ty_2__bindgen_ty_289,
+    pub _py_compile_mode: _Py_global_strings__bindgen_ty_2__bindgen_ty_290,
+    pub _py_consts: _Py_global_strings__bindgen_ty_2__bindgen_ty_291,
+    pub _py_context: _Py_global_strings__bindgen_ty_2__bindgen_ty_292,
+    pub _py_contravariant: _Py_global_strings__bindgen_ty_2__bindgen_ty_293,
+    pub _py_cookie: _Py_global_strings__bindgen_ty_2__bindgen_ty_294,
+    pub _py_copy: _Py_global_strings__bindgen_ty_2__bindgen_ty_295,
+    pub _py_copyreg: _Py_global_strings__bindgen_ty_2__bindgen_ty_296,
+    pub _py_coro: _Py_global_strings__bindgen_ty_2__bindgen_ty_297,
+    pub _py_count: _Py_global_strings__bindgen_ty_2__bindgen_ty_298,
+    pub _py_covariant: _Py_global_strings__bindgen_ty_2__bindgen_ty_299,
+    pub _py_cwd: _Py_global_strings__bindgen_ty_2__bindgen_ty_300,
+    pub _py_d: _Py_global_strings__bindgen_ty_2__bindgen_ty_301,
+    pub _py_data: _Py_global_strings__bindgen_ty_2__bindgen_ty_302,
+    pub _py_database: _Py_global_strings__bindgen_ty_2__bindgen_ty_303,
+    pub _py_decode: _Py_global_strings__bindgen_ty_2__bindgen_ty_304,
+    pub _py_decoder: _Py_global_strings__bindgen_ty_2__bindgen_ty_305,
+    pub _py_default: _Py_global_strings__bindgen_ty_2__bindgen_ty_306,
+    pub _py_defaultaction: _Py_global_strings__bindgen_ty_2__bindgen_ty_307,
+    pub _py_delete: _Py_global_strings__bindgen_ty_2__bindgen_ty_308,
+    pub _py_depth: _Py_global_strings__bindgen_ty_2__bindgen_ty_309,
+    pub _py_detect_types: _Py_global_strings__bindgen_ty_2__bindgen_ty_310,
+    pub _py_deterministic: _Py_global_strings__bindgen_ty_2__bindgen_ty_311,
+    pub _py_device: _Py_global_strings__bindgen_ty_2__bindgen_ty_312,
+    pub _py_dict: _Py_global_strings__bindgen_ty_2__bindgen_ty_313,
+    pub _py_dictcomp: _Py_global_strings__bindgen_ty_2__bindgen_ty_314,
+    pub _py_difference_update: _Py_global_strings__bindgen_ty_2__bindgen_ty_315,
+    pub _py_digest: _Py_global_strings__bindgen_ty_2__bindgen_ty_316,
+    pub _py_digest_size: _Py_global_strings__bindgen_ty_2__bindgen_ty_317,
+    pub _py_digestmod: _Py_global_strings__bindgen_ty_2__bindgen_ty_318,
+    pub _py_dir_fd: _Py_global_strings__bindgen_ty_2__bindgen_ty_319,
+    pub _py_discard: _Py_global_strings__bindgen_ty_2__bindgen_ty_320,
+    pub _py_dispatch_table: _Py_global_strings__bindgen_ty_2__bindgen_ty_321,
+    pub _py_displayhook: _Py_global_strings__bindgen_ty_2__bindgen_ty_322,
+    pub _py_dklen: _Py_global_strings__bindgen_ty_2__bindgen_ty_323,
+    pub _py_doc: _Py_global_strings__bindgen_ty_2__bindgen_ty_324,
+    pub _py_dont_inherit: _Py_global_strings__bindgen_ty_2__bindgen_ty_325,
+    pub _py_dst: _Py_global_strings__bindgen_ty_2__bindgen_ty_326,
+    pub _py_dst_dir_fd: _Py_global_strings__bindgen_ty_2__bindgen_ty_327,
+    pub _py_duration: _Py_global_strings__bindgen_ty_2__bindgen_ty_328,
+    pub _py_e: _Py_global_strings__bindgen_ty_2__bindgen_ty_329,
+    pub _py_eager_start: _Py_global_strings__bindgen_ty_2__bindgen_ty_330,
+    pub _py_effective_ids: _Py_global_strings__bindgen_ty_2__bindgen_ty_331,
+    pub _py_element_factory: _Py_global_strings__bindgen_ty_2__bindgen_ty_332,
+    pub _py_encode: _Py_global_strings__bindgen_ty_2__bindgen_ty_333,
+    pub _py_encoding: _Py_global_strings__bindgen_ty_2__bindgen_ty_334,
+    pub _py_end: _Py_global_strings__bindgen_ty_2__bindgen_ty_335,
+    pub _py_end_lineno: _Py_global_strings__bindgen_ty_2__bindgen_ty_336,
+    pub _py_end_offset: _Py_global_strings__bindgen_ty_2__bindgen_ty_337,
+    pub _py_endpos: _Py_global_strings__bindgen_ty_2__bindgen_ty_338,
+    pub _py_entrypoint: _Py_global_strings__bindgen_ty_2__bindgen_ty_339,
+    pub _py_env: _Py_global_strings__bindgen_ty_2__bindgen_ty_340,
+    pub _py_errors: _Py_global_strings__bindgen_ty_2__bindgen_ty_341,
+    pub _py_event: _Py_global_strings__bindgen_ty_2__bindgen_ty_342,
+    pub _py_eventmask: _Py_global_strings__bindgen_ty_2__bindgen_ty_343,
+    pub _py_exc_type: _Py_global_strings__bindgen_ty_2__bindgen_ty_344,
+    pub _py_exc_value: _Py_global_strings__bindgen_ty_2__bindgen_ty_345,
+    pub _py_excepthook: _Py_global_strings__bindgen_ty_2__bindgen_ty_346,
+    pub _py_exception: _Py_global_strings__bindgen_ty_2__bindgen_ty_347,
+    pub _py_existing_file_name: _Py_global_strings__bindgen_ty_2__bindgen_ty_348,
+    pub _py_exp: _Py_global_strings__bindgen_ty_2__bindgen_ty_349,
+    pub _py_extend: _Py_global_strings__bindgen_ty_2__bindgen_ty_350,
+    pub _py_extra_tokens: _Py_global_strings__bindgen_ty_2__bindgen_ty_351,
+    pub _py_facility: _Py_global_strings__bindgen_ty_2__bindgen_ty_352,
+    pub _py_factory: _Py_global_strings__bindgen_ty_2__bindgen_ty_353,
+    pub _py_false: _Py_global_strings__bindgen_ty_2__bindgen_ty_354,
+    pub _py_family: _Py_global_strings__bindgen_ty_2__bindgen_ty_355,
+    pub _py_fanout: _Py_global_strings__bindgen_ty_2__bindgen_ty_356,
+    pub _py_fd: _Py_global_strings__bindgen_ty_2__bindgen_ty_357,
+    pub _py_fd2: _Py_global_strings__bindgen_ty_2__bindgen_ty_358,
+    pub _py_fdel: _Py_global_strings__bindgen_ty_2__bindgen_ty_359,
+    pub _py_fget: _Py_global_strings__bindgen_ty_2__bindgen_ty_360,
+    pub _py_file: _Py_global_strings__bindgen_ty_2__bindgen_ty_361,
+    pub _py_file_actions: _Py_global_strings__bindgen_ty_2__bindgen_ty_362,
+    pub _py_filename: _Py_global_strings__bindgen_ty_2__bindgen_ty_363,
+    pub _py_fileno: _Py_global_strings__bindgen_ty_2__bindgen_ty_364,
+    pub _py_filepath: _Py_global_strings__bindgen_ty_2__bindgen_ty_365,
+    pub _py_fillvalue: _Py_global_strings__bindgen_ty_2__bindgen_ty_366,
+    pub _py_filters: _Py_global_strings__bindgen_ty_2__bindgen_ty_367,
+    pub _py_final: _Py_global_strings__bindgen_ty_2__bindgen_ty_368,
+    pub _py_find_class: _Py_global_strings__bindgen_ty_2__bindgen_ty_369,
+    pub _py_fix_imports: _Py_global_strings__bindgen_ty_2__bindgen_ty_370,
+    pub _py_flags: _Py_global_strings__bindgen_ty_2__bindgen_ty_371,
+    pub _py_flush: _Py_global_strings__bindgen_ty_2__bindgen_ty_372,
+    pub _py_follow_symlinks: _Py_global_strings__bindgen_ty_2__bindgen_ty_373,
+    pub _py_format: _Py_global_strings__bindgen_ty_2__bindgen_ty_374,
+    pub _py_frequency: _Py_global_strings__bindgen_ty_2__bindgen_ty_375,
+    pub _py_from_param: _Py_global_strings__bindgen_ty_2__bindgen_ty_376,
+    pub _py_fromlist: _Py_global_strings__bindgen_ty_2__bindgen_ty_377,
+    pub _py_fromtimestamp: _Py_global_strings__bindgen_ty_2__bindgen_ty_378,
+    pub _py_fromutc: _Py_global_strings__bindgen_ty_2__bindgen_ty_379,
+    pub _py_fset: _Py_global_strings__bindgen_ty_2__bindgen_ty_380,
+    pub _py_func: _Py_global_strings__bindgen_ty_2__bindgen_ty_381,
+    pub _py_future: _Py_global_strings__bindgen_ty_2__bindgen_ty_382,
+    pub _py_generation: _Py_global_strings__bindgen_ty_2__bindgen_ty_383,
+    pub _py_genexpr: _Py_global_strings__bindgen_ty_2__bindgen_ty_384,
+    pub _py_get: _Py_global_strings__bindgen_ty_2__bindgen_ty_385,
+    pub _py_get_debug: _Py_global_strings__bindgen_ty_2__bindgen_ty_386,
+    pub _py_get_event_loop: _Py_global_strings__bindgen_ty_2__bindgen_ty_387,
+    pub _py_get_loop: _Py_global_strings__bindgen_ty_2__bindgen_ty_388,
+    pub _py_get_source: _Py_global_strings__bindgen_ty_2__bindgen_ty_389,
+    pub _py_getattr: _Py_global_strings__bindgen_ty_2__bindgen_ty_390,
+    pub _py_getstate: _Py_global_strings__bindgen_ty_2__bindgen_ty_391,
+    pub _py_gid: _Py_global_strings__bindgen_ty_2__bindgen_ty_392,
+    pub _py_globals: _Py_global_strings__bindgen_ty_2__bindgen_ty_393,
+    pub _py_groupindex: _Py_global_strings__bindgen_ty_2__bindgen_ty_394,
+    pub _py_groups: _Py_global_strings__bindgen_ty_2__bindgen_ty_395,
+    pub _py_handle: _Py_global_strings__bindgen_ty_2__bindgen_ty_396,
+    pub _py_hash_name: _Py_global_strings__bindgen_ty_2__bindgen_ty_397,
+    pub _py_header: _Py_global_strings__bindgen_ty_2__bindgen_ty_398,
+    pub _py_headers: _Py_global_strings__bindgen_ty_2__bindgen_ty_399,
+    pub _py_hi: _Py_global_strings__bindgen_ty_2__bindgen_ty_400,
+    pub _py_hook: _Py_global_strings__bindgen_ty_2__bindgen_ty_401,
+    pub _py_id: _Py_global_strings__bindgen_ty_2__bindgen_ty_402,
+    pub _py_ident: _Py_global_strings__bindgen_ty_2__bindgen_ty_403,
+    pub _py_ignore: _Py_global_strings__bindgen_ty_2__bindgen_ty_404,
+    pub _py_imag: _Py_global_strings__bindgen_ty_2__bindgen_ty_405,
+    pub _py_importlib: _Py_global_strings__bindgen_ty_2__bindgen_ty_406,
+    pub _py_in_fd: _Py_global_strings__bindgen_ty_2__bindgen_ty_407,
+    pub _py_incoming: _Py_global_strings__bindgen_ty_2__bindgen_ty_408,
+    pub _py_indexgroup: _Py_global_strings__bindgen_ty_2__bindgen_ty_409,
+    pub _py_inf: _Py_global_strings__bindgen_ty_2__bindgen_ty_410,
+    pub _py_infer_variance: _Py_global_strings__bindgen_ty_2__bindgen_ty_411,
+    pub _py_inheritable: _Py_global_strings__bindgen_ty_2__bindgen_ty_412,
+    pub _py_initial: _Py_global_strings__bindgen_ty_2__bindgen_ty_413,
+    pub _py_initial_bytes: _Py_global_strings__bindgen_ty_2__bindgen_ty_414,
+    pub _py_initial_value: _Py_global_strings__bindgen_ty_2__bindgen_ty_415,
+    pub _py_initval: _Py_global_strings__bindgen_ty_2__bindgen_ty_416,
+    pub _py_inner_size: _Py_global_strings__bindgen_ty_2__bindgen_ty_417,
+    pub _py_input: _Py_global_strings__bindgen_ty_2__bindgen_ty_418,
+    pub _py_insert_comments: _Py_global_strings__bindgen_ty_2__bindgen_ty_419,
+    pub _py_insert_pis: _Py_global_strings__bindgen_ty_2__bindgen_ty_420,
+    pub _py_instructions: _Py_global_strings__bindgen_ty_2__bindgen_ty_421,
+    pub _py_intern: _Py_global_strings__bindgen_ty_2__bindgen_ty_422,
+    pub _py_intersection: _Py_global_strings__bindgen_ty_2__bindgen_ty_423,
+    pub _py_is_running: _Py_global_strings__bindgen_ty_2__bindgen_ty_424,
+    pub _py_isatty: _Py_global_strings__bindgen_ty_2__bindgen_ty_425,
+    pub _py_isinstance: _Py_global_strings__bindgen_ty_2__bindgen_ty_426,
+    pub _py_isoformat: _Py_global_strings__bindgen_ty_2__bindgen_ty_427,
+    pub _py_isolation_level: _Py_global_strings__bindgen_ty_2__bindgen_ty_428,
+    pub _py_istext: _Py_global_strings__bindgen_ty_2__bindgen_ty_429,
+    pub _py_item: _Py_global_strings__bindgen_ty_2__bindgen_ty_430,
+    pub _py_items: _Py_global_strings__bindgen_ty_2__bindgen_ty_431,
+    pub _py_iter: _Py_global_strings__bindgen_ty_2__bindgen_ty_432,
+    pub _py_iterable: _Py_global_strings__bindgen_ty_2__bindgen_ty_433,
+    pub _py_iterations: _Py_global_strings__bindgen_ty_2__bindgen_ty_434,
+    pub _py_join: _Py_global_strings__bindgen_ty_2__bindgen_ty_435,
+    pub _py_jump: _Py_global_strings__bindgen_ty_2__bindgen_ty_436,
+    pub _py_keepends: _Py_global_strings__bindgen_ty_2__bindgen_ty_437,
+    pub _py_key: _Py_global_strings__bindgen_ty_2__bindgen_ty_438,
+    pub _py_keyfile: _Py_global_strings__bindgen_ty_2__bindgen_ty_439,
+    pub _py_keys: _Py_global_strings__bindgen_ty_2__bindgen_ty_440,
+    pub _py_kind: _Py_global_strings__bindgen_ty_2__bindgen_ty_441,
+    pub _py_kw: _Py_global_strings__bindgen_ty_2__bindgen_ty_442,
+    pub _py_kw1: _Py_global_strings__bindgen_ty_2__bindgen_ty_443,
+    pub _py_kw2: _Py_global_strings__bindgen_ty_2__bindgen_ty_444,
+    pub _py_lambda: _Py_global_strings__bindgen_ty_2__bindgen_ty_445,
+    pub _py_last: _Py_global_strings__bindgen_ty_2__bindgen_ty_446,
+    pub _py_last_exc: _Py_global_strings__bindgen_ty_2__bindgen_ty_447,
+    pub _py_last_node: _Py_global_strings__bindgen_ty_2__bindgen_ty_448,
+    pub _py_last_traceback: _Py_global_strings__bindgen_ty_2__bindgen_ty_449,
+    pub _py_last_type: _Py_global_strings__bindgen_ty_2__bindgen_ty_450,
+    pub _py_last_value: _Py_global_strings__bindgen_ty_2__bindgen_ty_451,
+    pub _py_latin1: _Py_global_strings__bindgen_ty_2__bindgen_ty_452,
+    pub _py_leaf_size: _Py_global_strings__bindgen_ty_2__bindgen_ty_453,
+    pub _py_len: _Py_global_strings__bindgen_ty_2__bindgen_ty_454,
+    pub _py_length: _Py_global_strings__bindgen_ty_2__bindgen_ty_455,
+    pub _py_level: _Py_global_strings__bindgen_ty_2__bindgen_ty_456,
+    pub _py_limit: _Py_global_strings__bindgen_ty_2__bindgen_ty_457,
+    pub _py_line: _Py_global_strings__bindgen_ty_2__bindgen_ty_458,
+    pub _py_line_buffering: _Py_global_strings__bindgen_ty_2__bindgen_ty_459,
+    pub _py_lineno: _Py_global_strings__bindgen_ty_2__bindgen_ty_460,
+    pub _py_listcomp: _Py_global_strings__bindgen_ty_2__bindgen_ty_461,
+    pub _py_little: _Py_global_strings__bindgen_ty_2__bindgen_ty_462,
+    pub _py_lo: _Py_global_strings__bindgen_ty_2__bindgen_ty_463,
+    pub _py_locale: _Py_global_strings__bindgen_ty_2__bindgen_ty_464,
+    pub _py_locals: _Py_global_strings__bindgen_ty_2__bindgen_ty_465,
+    pub _py_logoption: _Py_global_strings__bindgen_ty_2__bindgen_ty_466,
+    pub _py_loop: _Py_global_strings__bindgen_ty_2__bindgen_ty_467,
+    pub _py_mapping: _Py_global_strings__bindgen_ty_2__bindgen_ty_468,
+    pub _py_match: _Py_global_strings__bindgen_ty_2__bindgen_ty_469,
+    pub _py_max_length: _Py_global_strings__bindgen_ty_2__bindgen_ty_470,
+    pub _py_maxdigits: _Py_global_strings__bindgen_ty_2__bindgen_ty_471,
+    pub _py_maxevents: _Py_global_strings__bindgen_ty_2__bindgen_ty_472,
+    pub _py_maxmem: _Py_global_strings__bindgen_ty_2__bindgen_ty_473,
+    pub _py_maxsplit: _Py_global_strings__bindgen_ty_2__bindgen_ty_474,
+    pub _py_maxvalue: _Py_global_strings__bindgen_ty_2__bindgen_ty_475,
+    pub _py_memLevel: _Py_global_strings__bindgen_ty_2__bindgen_ty_476,
+    pub _py_memlimit: _Py_global_strings__bindgen_ty_2__bindgen_ty_477,
+    pub _py_message: _Py_global_strings__bindgen_ty_2__bindgen_ty_478,
+    pub _py_metaclass: _Py_global_strings__bindgen_ty_2__bindgen_ty_479,
+    pub _py_metadata: _Py_global_strings__bindgen_ty_2__bindgen_ty_480,
+    pub _py_method: _Py_global_strings__bindgen_ty_2__bindgen_ty_481,
+    pub _py_mod: _Py_global_strings__bindgen_ty_2__bindgen_ty_482,
+    pub _py_mode: _Py_global_strings__bindgen_ty_2__bindgen_ty_483,
+    pub _py_module: _Py_global_strings__bindgen_ty_2__bindgen_ty_484,
+    pub _py_module_globals: _Py_global_strings__bindgen_ty_2__bindgen_ty_485,
+    pub _py_modules: _Py_global_strings__bindgen_ty_2__bindgen_ty_486,
+    pub _py_mro: _Py_global_strings__bindgen_ty_2__bindgen_ty_487,
+    pub _py_msg: _Py_global_strings__bindgen_ty_2__bindgen_ty_488,
+    pub _py_mycmp: _Py_global_strings__bindgen_ty_2__bindgen_ty_489,
+    pub _py_n: _Py_global_strings__bindgen_ty_2__bindgen_ty_490,
+    pub _py_n_arg: _Py_global_strings__bindgen_ty_2__bindgen_ty_491,
+    pub _py_n_fields: _Py_global_strings__bindgen_ty_2__bindgen_ty_492,
+    pub _py_n_sequence_fields: _Py_global_strings__bindgen_ty_2__bindgen_ty_493,
+    pub _py_n_unnamed_fields: _Py_global_strings__bindgen_ty_2__bindgen_ty_494,
+    pub _py_name: _Py_global_strings__bindgen_ty_2__bindgen_ty_495,
+    pub _py_name_from: _Py_global_strings__bindgen_ty_2__bindgen_ty_496,
+    pub _py_namespace_separator: _Py_global_strings__bindgen_ty_2__bindgen_ty_497,
+    pub _py_namespaces: _Py_global_strings__bindgen_ty_2__bindgen_ty_498,
+    pub _py_narg: _Py_global_strings__bindgen_ty_2__bindgen_ty_499,
+    pub _py_ndigits: _Py_global_strings__bindgen_ty_2__bindgen_ty_500,
+    pub _py_new_file_name: _Py_global_strings__bindgen_ty_2__bindgen_ty_501,
+    pub _py_new_limit: _Py_global_strings__bindgen_ty_2__bindgen_ty_502,
+    pub _py_newline: _Py_global_strings__bindgen_ty_2__bindgen_ty_503,
+    pub _py_newlines: _Py_global_strings__bindgen_ty_2__bindgen_ty_504,
+    pub _py_next: _Py_global_strings__bindgen_ty_2__bindgen_ty_505,
+    pub _py_nlocals: _Py_global_strings__bindgen_ty_2__bindgen_ty_506,
+    pub _py_node_depth: _Py_global_strings__bindgen_ty_2__bindgen_ty_507,
+    pub _py_node_offset: _Py_global_strings__bindgen_ty_2__bindgen_ty_508,
+    pub _py_ns: _Py_global_strings__bindgen_ty_2__bindgen_ty_509,
+    pub _py_nstype: _Py_global_strings__bindgen_ty_2__bindgen_ty_510,
+    pub _py_nt: _Py_global_strings__bindgen_ty_2__bindgen_ty_511,
+    pub _py_null: _Py_global_strings__bindgen_ty_2__bindgen_ty_512,
+    pub _py_number: _Py_global_strings__bindgen_ty_2__bindgen_ty_513,
+    pub _py_obj: _Py_global_strings__bindgen_ty_2__bindgen_ty_514,
+    pub _py_object: _Py_global_strings__bindgen_ty_2__bindgen_ty_515,
+    pub _py_offset: _Py_global_strings__bindgen_ty_2__bindgen_ty_516,
+    pub _py_offset_dst: _Py_global_strings__bindgen_ty_2__bindgen_ty_517,
+    pub _py_offset_src: _Py_global_strings__bindgen_ty_2__bindgen_ty_518,
+    pub _py_on_type_read: _Py_global_strings__bindgen_ty_2__bindgen_ty_519,
+    pub _py_onceregistry: _Py_global_strings__bindgen_ty_2__bindgen_ty_520,
+    pub _py_only_keys: _Py_global_strings__bindgen_ty_2__bindgen_ty_521,
+    pub _py_oparg: _Py_global_strings__bindgen_ty_2__bindgen_ty_522,
+    pub _py_opcode: _Py_global_strings__bindgen_ty_2__bindgen_ty_523,
+    pub _py_open: _Py_global_strings__bindgen_ty_2__bindgen_ty_524,
+    pub _py_opener: _Py_global_strings__bindgen_ty_2__bindgen_ty_525,
+    pub _py_operation: _Py_global_strings__bindgen_ty_2__bindgen_ty_526,
+    pub _py_optimize: _Py_global_strings__bindgen_ty_2__bindgen_ty_527,
+    pub _py_options: _Py_global_strings__bindgen_ty_2__bindgen_ty_528,
+    pub _py_order: _Py_global_strings__bindgen_ty_2__bindgen_ty_529,
+    pub _py_origin: _Py_global_strings__bindgen_ty_2__bindgen_ty_530,
+    pub _py_out_fd: _Py_global_strings__bindgen_ty_2__bindgen_ty_531,
+    pub _py_outgoing: _Py_global_strings__bindgen_ty_2__bindgen_ty_532,
+    pub _py_overlapped: _Py_global_strings__bindgen_ty_2__bindgen_ty_533,
+    pub _py_owner: _Py_global_strings__bindgen_ty_2__bindgen_ty_534,
+    pub _py_p: _Py_global_strings__bindgen_ty_2__bindgen_ty_535,
+    pub _py_pages: _Py_global_strings__bindgen_ty_2__bindgen_ty_536,
+    pub _py_parent: _Py_global_strings__bindgen_ty_2__bindgen_ty_537,
+    pub _py_password: _Py_global_strings__bindgen_ty_2__bindgen_ty_538,
+    pub _py_path: _Py_global_strings__bindgen_ty_2__bindgen_ty_539,
+    pub _py_pattern: _Py_global_strings__bindgen_ty_2__bindgen_ty_540,
+    pub _py_peek: _Py_global_strings__bindgen_ty_2__bindgen_ty_541,
+    pub _py_persistent_id: _Py_global_strings__bindgen_ty_2__bindgen_ty_542,
+    pub _py_persistent_load: _Py_global_strings__bindgen_ty_2__bindgen_ty_543,
+    pub _py_person: _Py_global_strings__bindgen_ty_2__bindgen_ty_544,
+    pub _py_pi_factory: _Py_global_strings__bindgen_ty_2__bindgen_ty_545,
+    pub _py_pid: _Py_global_strings__bindgen_ty_2__bindgen_ty_546,
+    pub _py_policy: _Py_global_strings__bindgen_ty_2__bindgen_ty_547,
+    pub _py_pos: _Py_global_strings__bindgen_ty_2__bindgen_ty_548,
+    pub _py_pos1: _Py_global_strings__bindgen_ty_2__bindgen_ty_549,
+    pub _py_pos2: _Py_global_strings__bindgen_ty_2__bindgen_ty_550,
+    pub _py_posix: _Py_global_strings__bindgen_ty_2__bindgen_ty_551,
+    pub _py_print_file_and_line: _Py_global_strings__bindgen_ty_2__bindgen_ty_552,
+    pub _py_priority: _Py_global_strings__bindgen_ty_2__bindgen_ty_553,
+    pub _py_progress: _Py_global_strings__bindgen_ty_2__bindgen_ty_554,
+    pub _py_progress_handler: _Py_global_strings__bindgen_ty_2__bindgen_ty_555,
+    pub _py_progress_routine: _Py_global_strings__bindgen_ty_2__bindgen_ty_556,
+    pub _py_proto: _Py_global_strings__bindgen_ty_2__bindgen_ty_557,
+    pub _py_protocol: _Py_global_strings__bindgen_ty_2__bindgen_ty_558,
+    pub _py_ps1: _Py_global_strings__bindgen_ty_2__bindgen_ty_559,
+    pub _py_ps2: _Py_global_strings__bindgen_ty_2__bindgen_ty_560,
+    pub _py_query: _Py_global_strings__bindgen_ty_2__bindgen_ty_561,
+    pub _py_quotetabs: _Py_global_strings__bindgen_ty_2__bindgen_ty_562,
+    pub _py_r: _Py_global_strings__bindgen_ty_2__bindgen_ty_563,
+    pub _py_raw: _Py_global_strings__bindgen_ty_2__bindgen_ty_564,
+    pub _py_read: _Py_global_strings__bindgen_ty_2__bindgen_ty_565,
+    pub _py_read1: _Py_global_strings__bindgen_ty_2__bindgen_ty_566,
+    pub _py_readable: _Py_global_strings__bindgen_ty_2__bindgen_ty_567,
+    pub _py_readall: _Py_global_strings__bindgen_ty_2__bindgen_ty_568,
+    pub _py_readinto: _Py_global_strings__bindgen_ty_2__bindgen_ty_569,
+    pub _py_readinto1: _Py_global_strings__bindgen_ty_2__bindgen_ty_570,
+    pub _py_readline: _Py_global_strings__bindgen_ty_2__bindgen_ty_571,
+    pub _py_readonly: _Py_global_strings__bindgen_ty_2__bindgen_ty_572,
+    pub _py_real: _Py_global_strings__bindgen_ty_2__bindgen_ty_573,
+    pub _py_reducer_override: _Py_global_strings__bindgen_ty_2__bindgen_ty_574,
+    pub _py_registry: _Py_global_strings__bindgen_ty_2__bindgen_ty_575,
+    pub _py_rel_tol: _Py_global_strings__bindgen_ty_2__bindgen_ty_576,
+    pub _py_release: _Py_global_strings__bindgen_ty_2__bindgen_ty_577,
+    pub _py_reload: _Py_global_strings__bindgen_ty_2__bindgen_ty_578,
+    pub _py_repl: _Py_global_strings__bindgen_ty_2__bindgen_ty_579,
+    pub _py_replace: _Py_global_strings__bindgen_ty_2__bindgen_ty_580,
+    pub _py_reserved: _Py_global_strings__bindgen_ty_2__bindgen_ty_581,
+    pub _py_reset: _Py_global_strings__bindgen_ty_2__bindgen_ty_582,
+    pub _py_resetids: _Py_global_strings__bindgen_ty_2__bindgen_ty_583,
+    pub _py_return: _Py_global_strings__bindgen_ty_2__bindgen_ty_584,
+    pub _py_reverse: _Py_global_strings__bindgen_ty_2__bindgen_ty_585,
+    pub _py_reversed: _Py_global_strings__bindgen_ty_2__bindgen_ty_586,
+    pub _py_s: _Py_global_strings__bindgen_ty_2__bindgen_ty_587,
+    pub _py_salt: _Py_global_strings__bindgen_ty_2__bindgen_ty_588,
+    pub _py_sched_priority: _Py_global_strings__bindgen_ty_2__bindgen_ty_589,
+    pub _py_scheduler: _Py_global_strings__bindgen_ty_2__bindgen_ty_590,
+    pub _py_seek: _Py_global_strings__bindgen_ty_2__bindgen_ty_591,
+    pub _py_seekable: _Py_global_strings__bindgen_ty_2__bindgen_ty_592,
+    pub _py_selectors: _Py_global_strings__bindgen_ty_2__bindgen_ty_593,
+    pub _py_self: _Py_global_strings__bindgen_ty_2__bindgen_ty_594,
+    pub _py_send: _Py_global_strings__bindgen_ty_2__bindgen_ty_595,
+    pub _py_sep: _Py_global_strings__bindgen_ty_2__bindgen_ty_596,
+    pub _py_sequence: _Py_global_strings__bindgen_ty_2__bindgen_ty_597,
+    pub _py_server_hostname: _Py_global_strings__bindgen_ty_2__bindgen_ty_598,
+    pub _py_server_side: _Py_global_strings__bindgen_ty_2__bindgen_ty_599,
+    pub _py_session: _Py_global_strings__bindgen_ty_2__bindgen_ty_600,
+    pub _py_setcomp: _Py_global_strings__bindgen_ty_2__bindgen_ty_601,
+    pub _py_setpgroup: _Py_global_strings__bindgen_ty_2__bindgen_ty_602,
+    pub _py_setsid: _Py_global_strings__bindgen_ty_2__bindgen_ty_603,
+    pub _py_setsigdef: _Py_global_strings__bindgen_ty_2__bindgen_ty_604,
+    pub _py_setsigmask: _Py_global_strings__bindgen_ty_2__bindgen_ty_605,
+    pub _py_setstate: _Py_global_strings__bindgen_ty_2__bindgen_ty_606,
+    pub _py_shape: _Py_global_strings__bindgen_ty_2__bindgen_ty_607,
+    pub _py_show_cmd: _Py_global_strings__bindgen_ty_2__bindgen_ty_608,
+    pub _py_signed: _Py_global_strings__bindgen_ty_2__bindgen_ty_609,
+    pub _py_size: _Py_global_strings__bindgen_ty_2__bindgen_ty_610,
+    pub _py_sizehint: _Py_global_strings__bindgen_ty_2__bindgen_ty_611,
+    pub _py_skip_file_prefixes: _Py_global_strings__bindgen_ty_2__bindgen_ty_612,
+    pub _py_sleep: _Py_global_strings__bindgen_ty_2__bindgen_ty_613,
+    pub _py_sock: _Py_global_strings__bindgen_ty_2__bindgen_ty_614,
+    pub _py_sort: _Py_global_strings__bindgen_ty_2__bindgen_ty_615,
+    pub _py_sound: _Py_global_strings__bindgen_ty_2__bindgen_ty_616,
+    pub _py_source: _Py_global_strings__bindgen_ty_2__bindgen_ty_617,
+    pub _py_source_traceback: _Py_global_strings__bindgen_ty_2__bindgen_ty_618,
+    pub _py_src: _Py_global_strings__bindgen_ty_2__bindgen_ty_619,
+    pub _py_src_dir_fd: _Py_global_strings__bindgen_ty_2__bindgen_ty_620,
+    pub _py_stacklevel: _Py_global_strings__bindgen_ty_2__bindgen_ty_621,
+    pub _py_start: _Py_global_strings__bindgen_ty_2__bindgen_ty_622,
+    pub _py_statement: _Py_global_strings__bindgen_ty_2__bindgen_ty_623,
+    pub _py_status: _Py_global_strings__bindgen_ty_2__bindgen_ty_624,
+    pub _py_stderr: _Py_global_strings__bindgen_ty_2__bindgen_ty_625,
+    pub _py_stdin: _Py_global_strings__bindgen_ty_2__bindgen_ty_626,
+    pub _py_stdout: _Py_global_strings__bindgen_ty_2__bindgen_ty_627,
+    pub _py_step: _Py_global_strings__bindgen_ty_2__bindgen_ty_628,
+    pub _py_steps: _Py_global_strings__bindgen_ty_2__bindgen_ty_629,
+    pub _py_store_name: _Py_global_strings__bindgen_ty_2__bindgen_ty_630,
+    pub _py_strategy: _Py_global_strings__bindgen_ty_2__bindgen_ty_631,
+    pub _py_strftime: _Py_global_strings__bindgen_ty_2__bindgen_ty_632,
+    pub _py_strict: _Py_global_strings__bindgen_ty_2__bindgen_ty_633,
+    pub _py_strict_mode: _Py_global_strings__bindgen_ty_2__bindgen_ty_634,
+    pub _py_string: _Py_global_strings__bindgen_ty_2__bindgen_ty_635,
+    pub _py_sub_key: _Py_global_strings__bindgen_ty_2__bindgen_ty_636,
+    pub _py_symmetric_difference_update: _Py_global_strings__bindgen_ty_2__bindgen_ty_637,
+    pub _py_tabsize: _Py_global_strings__bindgen_ty_2__bindgen_ty_638,
+    pub _py_tag: _Py_global_strings__bindgen_ty_2__bindgen_ty_639,
+    pub _py_target: _Py_global_strings__bindgen_ty_2__bindgen_ty_640,
+    pub _py_target_is_directory: _Py_global_strings__bindgen_ty_2__bindgen_ty_641,
+    pub _py_task: _Py_global_strings__bindgen_ty_2__bindgen_ty_642,
+    pub _py_tb_frame: _Py_global_strings__bindgen_ty_2__bindgen_ty_643,
+    pub _py_tb_lasti: _Py_global_strings__bindgen_ty_2__bindgen_ty_644,
+    pub _py_tb_lineno: _Py_global_strings__bindgen_ty_2__bindgen_ty_645,
+    pub _py_tb_next: _Py_global_strings__bindgen_ty_2__bindgen_ty_646,
+    pub _py_tell: _Py_global_strings__bindgen_ty_2__bindgen_ty_647,
+    pub _py_template: _Py_global_strings__bindgen_ty_2__bindgen_ty_648,
+    pub _py_term: _Py_global_strings__bindgen_ty_2__bindgen_ty_649,
+    pub _py_text: _Py_global_strings__bindgen_ty_2__bindgen_ty_650,
+    pub _py_threading: _Py_global_strings__bindgen_ty_2__bindgen_ty_651,
+    pub _py_throw: _Py_global_strings__bindgen_ty_2__bindgen_ty_652,
+    pub _py_timeout: _Py_global_strings__bindgen_ty_2__bindgen_ty_653,
+    pub _py_times: _Py_global_strings__bindgen_ty_2__bindgen_ty_654,
+    pub _py_timetuple: _Py_global_strings__bindgen_ty_2__bindgen_ty_655,
+    pub _py_top: _Py_global_strings__bindgen_ty_2__bindgen_ty_656,
+    pub _py_trace_callback: _Py_global_strings__bindgen_ty_2__bindgen_ty_657,
+    pub _py_traceback: _Py_global_strings__bindgen_ty_2__bindgen_ty_658,
+    pub _py_trailers: _Py_global_strings__bindgen_ty_2__bindgen_ty_659,
+    pub _py_translate: _Py_global_strings__bindgen_ty_2__bindgen_ty_660,
+    pub _py_true: _Py_global_strings__bindgen_ty_2__bindgen_ty_661,
+    pub _py_truncate: _Py_global_strings__bindgen_ty_2__bindgen_ty_662,
+    pub _py_twice: _Py_global_strings__bindgen_ty_2__bindgen_ty_663,
+    pub _py_txt: _Py_global_strings__bindgen_ty_2__bindgen_ty_664,
+    pub _py_type: _Py_global_strings__bindgen_ty_2__bindgen_ty_665,
+    pub _py_type_params: _Py_global_strings__bindgen_ty_2__bindgen_ty_666,
+    pub _py_tz: _Py_global_strings__bindgen_ty_2__bindgen_ty_667,
+    pub _py_tzname: _Py_global_strings__bindgen_ty_2__bindgen_ty_668,
+    pub _py_uid: _Py_global_strings__bindgen_ty_2__bindgen_ty_669,
+    pub _py_unlink: _Py_global_strings__bindgen_ty_2__bindgen_ty_670,
+    pub _py_unraisablehook: _Py_global_strings__bindgen_ty_2__bindgen_ty_671,
+    pub _py_uri: _Py_global_strings__bindgen_ty_2__bindgen_ty_672,
+    pub _py_usedforsecurity: _Py_global_strings__bindgen_ty_2__bindgen_ty_673,
+    pub _py_value: _Py_global_strings__bindgen_ty_2__bindgen_ty_674,
+    pub _py_values: _Py_global_strings__bindgen_ty_2__bindgen_ty_675,
+    pub _py_version: _Py_global_strings__bindgen_ty_2__bindgen_ty_676,
+    pub _py_volume: _Py_global_strings__bindgen_ty_2__bindgen_ty_677,
+    pub _py_warnings: _Py_global_strings__bindgen_ty_2__bindgen_ty_678,
+    pub _py_warnoptions: _Py_global_strings__bindgen_ty_2__bindgen_ty_679,
+    pub _py_wbits: _Py_global_strings__bindgen_ty_2__bindgen_ty_680,
+    pub _py_week: _Py_global_strings__bindgen_ty_2__bindgen_ty_681,
+    pub _py_weekday: _Py_global_strings__bindgen_ty_2__bindgen_ty_682,
+    pub _py_which: _Py_global_strings__bindgen_ty_2__bindgen_ty_683,
+    pub _py_who: _Py_global_strings__bindgen_ty_2__bindgen_ty_684,
+    pub _py_withdata: _Py_global_strings__bindgen_ty_2__bindgen_ty_685,
+    pub _py_writable: _Py_global_strings__bindgen_ty_2__bindgen_ty_686,
+    pub _py_write: _Py_global_strings__bindgen_ty_2__bindgen_ty_687,
+    pub _py_write_through: _Py_global_strings__bindgen_ty_2__bindgen_ty_688,
+    pub _py_x: _Py_global_strings__bindgen_ty_2__bindgen_ty_689,
+    pub _py_year: _Py_global_strings__bindgen_ty_2__bindgen_ty_690,
+    pub _py_zdict: _Py_global_strings__bindgen_ty_2__bindgen_ty_691,
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_1 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_1 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_2 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_2 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_3 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_3 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_4 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 16usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_4 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_5 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_5 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_6 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_6 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_7 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 14usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_7 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_8 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_8 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_9 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 15usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_9 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_10 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 2usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_10 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_11 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 18usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_11 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_12 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 16usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_12 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_13 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 16usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_13 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_14 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_14 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_15 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 20usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_15 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_16 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_16 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_17 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_17 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_18 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_18 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_19 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_19 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_20 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_20 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_21 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_21 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_22 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_22 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_23 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 16usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_23 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_24 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_24 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_25 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 31usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_25 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_26 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_26 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_27 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_27 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_28 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_28 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_29 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_29 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_30 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 16usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_30 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_31 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 13usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_31 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_32 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_32 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_33 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_33 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_34 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 13usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_34 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_35 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_35 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_36 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 18usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_36 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_37 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 14usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_37 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_38 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 14usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_38 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_39 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 18usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_39 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_40 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_40 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_41 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 13usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_41 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_42 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_42 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_43 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 25usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_43 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_44 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_44 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_45 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_45 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_46 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_46 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_47 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_47 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_48 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_48 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_49 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 15usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_49 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_50 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_50 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_51 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_51 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_52 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_52 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_53 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_53 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_54 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_54 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_55 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_55 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_56 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_56 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_57 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_57 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_58 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 13usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_58 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_59 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_59 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_60 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_60 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_61 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_61 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_62 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_62 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_63 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_63 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_64 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 17usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_64 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_65 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 16usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_65 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_66 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_66 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_67 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 15usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_67 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_68 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 18usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_68 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_69 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 13usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_69 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_70 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_70 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_71 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_71 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_72 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_72 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_73 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_73 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_74 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 14usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_74 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_75 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_75 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_76 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_76 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_77 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_77 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_78 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_78 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_79 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_79 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_80 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_80 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_81 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_81 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_82 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 18usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_82 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_83 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 18usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_83 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_84 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_84 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_85 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_85 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_86 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_86 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_87 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_87 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_88 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_88 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_89 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 21usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_89 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_90 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_90 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_91 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_91 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_92 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 13usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_92 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_93 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_93 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_94 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_94 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_95 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_95 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_96 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 16usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_96 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_97 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_97 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_98 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_98 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_99 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_99 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_100 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_100 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_101 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_101 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_102 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_102 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_103 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_103 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_104 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_104 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_105 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_105 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_106 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 16usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_106 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_107 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_107 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_108 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_108 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_109 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_109 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_110 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_110 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_111 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_111 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_112 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_112 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_113 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 14usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_113 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_114 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_114 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_115 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_115 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_116 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_116 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_117 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 15usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_117 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_118 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_118 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_119 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_119 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_120 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 15usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_120 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_121 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_121 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_122 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_122 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_123 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_123 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_124 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_124 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_125 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 13usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_125 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_126 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_126 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_127 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_127 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_128 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_128 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_129 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_129 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_130 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 14usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_130 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_131 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 19usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_131 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_132 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_132 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_133 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 13usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_133 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_134 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 14usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_134 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_135 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_135 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_136 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_136 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_137 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_137 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_138 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_138 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_139 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_139 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_140 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_140 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_141 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_141 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_142 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_142 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_143 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_143 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_144 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_144 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_145 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 13usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_145 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_146 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_146 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_147 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_147 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_148 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 13usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_148 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_149 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_149 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_150 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_150 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_151 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 13usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_151 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_152 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_152 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_153 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 14usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_153 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_154 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_154 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_155 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_155 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_156 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_156 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_157 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_157 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_158 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 18usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_158 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_159 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 17usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_159 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_160 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_160 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_161 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_161 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_162 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 16usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_162 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_163 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 36usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_163 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_164 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 25usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_164 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_165 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 17usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_165 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_166 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 31usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_166 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_167 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 20usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_167 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_168 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 19usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_168 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_169 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_169 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_170 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_170 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_171 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_171 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_172 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_172 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_173 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_173 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_174 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_174 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_175 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_175 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_176 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_176 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_177 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 15usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_177 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_178 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 25usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_178 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_179 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_179 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_180 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_180 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_181 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 15usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_181 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_182 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 14usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_182 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_183 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 17usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_183 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_184 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_184 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_185 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_185 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_186 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 15usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_186 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_187 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 15usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_187 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_188 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_188 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_189 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 16usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_189 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_190 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 17usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_190 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_191 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 14usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_191 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_192 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_192 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_193 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 18usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_193 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_194 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_194 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_195 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_195 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_196 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 20usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_196 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_197 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_197 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_198 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 19usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_198 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_199 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_199 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_200 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_200 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_201 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 13usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_201 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_202 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_202 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_203 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_203 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_204 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 19usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_204 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_205 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 15usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_205 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_206 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_206 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_207 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 26usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_207 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_208 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 26usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_208 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_209 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_209 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_210 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 2usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_210 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_211 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_211 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_212 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_212 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_213 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_213 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_214 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 18usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_214 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_215 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 15usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_215 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_216 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 16usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_216 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_217 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 16usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_217 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_218 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_218 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_219 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_219 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_220 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_220 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_221 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_221 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_222 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_222 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_223 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_223 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_224 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_224 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_225 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 17usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_225 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_226 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_226 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_227 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_227 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_228 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 20usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_228 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_229 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_229 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_230 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 2usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_230 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_231 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_231 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_232 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_232 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_233 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_233 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_234 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_234 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_235 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_235 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_236 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_236 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_237 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_237 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_238 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_238 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_239 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 16usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_239 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_240 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_240 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_241 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_241 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_242 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_242 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_243 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_243 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_244 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_244 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_245 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_245 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_246 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_246 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_247 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 14usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_247 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_248 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 2usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_248 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_249 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_249 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_250 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_250 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_251 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_251 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_252 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 18usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_252 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_253 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_253 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_254 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_254 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_255 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_255 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_256 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 23usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_256 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_257 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_257 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_258 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_258 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_259 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_259 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_260 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_260 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_261 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_261 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_262 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_262 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_263 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 18usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_263 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_264 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_264 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_265 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_265 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_266 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_266 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_267 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_267 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_268 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_268 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_269 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_269 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_270 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_270 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_271 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_271 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_272 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_272 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_273 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 18usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_273 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_274 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_274 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_275 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 15usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_275 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_276 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_276 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_277 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_277 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_278 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 18usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_278 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_279 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 13usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_279 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_280 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_280 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_281 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_281 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_282 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_282 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_283 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 19usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_283 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_284 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_284 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_285 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 13usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_285 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_286 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_286 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_287 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_287 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_288 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_288 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_289 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 16usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_289 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_290 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 13usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_290 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_291 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_291 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_292 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_292 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_293 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 14usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_293 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_294 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_294 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_295 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_295 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_296 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_296 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_297 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_297 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_298 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_298 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_299 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_299 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_300 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_300 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_301 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 2usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_301 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_302 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_302 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_303 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_303 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_304 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_304 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_305 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_305 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_306 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_306 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_307 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 14usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_307 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_308 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_308 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_309 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_309 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_310 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 13usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_310 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_311 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 14usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_311 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_312 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_312 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_313 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_313 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_314 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_314 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_315 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 18usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_315 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_316 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_316 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_317 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_317 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_318 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_318 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_319 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_319 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_320 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_320 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_321 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 15usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_321 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_322 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_322 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_323 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_323 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_324 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_324 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_325 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 13usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_325 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_326 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_326 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_327 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_327 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_328 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_328 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_329 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 2usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_329 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_330 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_330 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_331 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 14usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_331 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_332 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 16usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_332 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_333 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_333 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_334 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_334 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_335 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_335 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_336 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_336 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_337 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_337 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_338 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_338 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_339 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_339 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_340 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_340 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_341 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_341 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_342 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_342 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_343 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_343 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_344 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_344 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_345 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_345 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_346 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_346 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_347 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_347 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_348 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 19usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_348 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_349 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_349 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_350 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_350 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_351 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 13usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_351 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_352 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_352 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_353 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_353 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_354 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_354 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_355 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_355 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_356 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_356 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_357 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 3usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_357 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_358 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_358 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_359 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_359 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_360 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_360 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_361 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_361 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_362 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 13usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_362 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_363 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_363 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_364 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_364 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_365 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_365 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_366 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_366 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_367 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_367 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_368 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_368 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_369 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_369 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_370 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_370 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_371 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_371 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_372 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_372 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_373 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 16usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_373 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_374 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_374 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_375 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_375 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_376 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_376 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_377 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_377 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_378 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 14usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_378 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_379 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_379 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_380 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_380 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_381 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_381 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_382 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_382 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_383 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_383 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_384 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_384 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_385 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_385 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_386 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_386 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_387 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 15usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_387 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_388 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_388 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_389 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_389 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_390 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_390 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_391 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_391 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_392 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_392 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_393 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_393 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_394 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_394 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_395 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_395 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_396 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_396 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_397 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_397 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_398 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_398 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_399 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_399 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_400 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 3usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_400 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_401 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_401 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_402 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 3usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_402 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_403 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_403 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_404 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_404 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_405 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_405 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_406 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_406 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_407 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_407 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_408 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_408 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_409 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_409 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_410 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_410 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_411 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 15usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_411 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_412 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_412 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_413 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_413 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_414 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 14usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_414 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_415 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 14usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_415 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_416 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_416 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_417 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_417 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_418 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_418 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_419 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 16usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_419 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_420 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_420 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_421 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 13usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_421 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_422 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_422 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_423 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 13usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_423 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_424 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_424 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_425 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_425 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_426 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_426 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_427 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_427 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_428 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 16usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_428 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_429 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_429 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_430 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_430 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_431 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_431 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_432 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_432 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_433 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_433 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_434 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_434 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_435 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_435 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_436 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_436 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_437 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_437 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_438 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_438 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_439 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_439 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_440 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_440 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_441 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_441 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_442 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 3usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_442 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_443 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_443 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_444 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_444 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_445 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_445 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_446 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_446 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_447 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_447 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_448 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_448 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_449 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 15usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_449 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_450 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_450 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_451 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_451 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_452 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_452 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_453 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_453 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_454 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_454 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_455 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_455 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_456 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_456 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_457 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_457 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_458 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_458 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_459 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 15usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_459 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_460 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_460 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_461 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_461 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_462 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_462 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_463 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 3usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_463 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_464 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_464 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_465 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_465 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_466 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_466 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_467 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_467 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_468 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_468 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_469 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_469 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_470 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_470 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_471 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_471 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_472 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_472 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_473 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_473 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_474 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_474 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_475 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_475 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_476 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_476 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_477 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_477 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_478 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_478 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_479 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_479 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_480 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_480 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_481 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_481 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_482 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_482 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_483 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_483 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_484 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_484 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_485 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 15usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_485 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_486 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_486 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_487 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_487 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_488 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_488 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_489 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_489 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_490 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 2usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_490 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_491 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_491 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_492 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_492 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_493 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 18usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_493 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_494 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 17usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_494 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_495 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_495 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_496 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_496 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_497 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 20usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_497 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_498 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_498 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_499 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_499 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_500 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_500 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_501 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 14usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_501 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_502 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_502 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_503 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_503 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_504 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_504 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_505 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_505 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_506 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_506 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_507 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_507 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_508 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_508 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_509 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 3usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_509 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_510 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_510 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_511 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 3usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_511 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_512 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_512 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_513 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_513 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_514 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_514 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_515 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_515 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_516 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_516 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_517 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_517 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_518 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_518 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_519 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 13usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_519 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_520 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 13usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_520 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_521 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_521 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_522 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_522 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_523 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_523 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_524 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_524 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_525 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_525 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_526 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_526 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_527 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_527 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_528 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_528 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_529 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_529 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_530 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_530 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_531 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_531 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_532 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_532 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_533 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_533 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_534 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_534 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_535 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 2usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_535 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_536 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_536 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_537 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_537 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_538 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_538 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_539 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_539 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_540 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_540 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_541 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_541 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_542 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 14usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_542 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_543 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 16usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_543 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_544 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_544 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_545 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_545 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_546 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_546 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_547 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_547 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_548 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_548 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_549 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_549 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_550 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_550 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_551 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_551 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_552 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 20usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_552 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_553 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_553 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_554 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_554 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_555 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 17usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_555 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_556 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 17usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_556 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_557 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_557 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_558 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_558 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_559 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_559 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_560 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_560 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_561 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_561 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_562 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_562 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_563 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 2usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_563 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_564 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_564 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_565 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_565 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_566 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_566 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_567 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_567 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_568 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_568 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_569 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_569 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_570 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_570 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_571 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_571 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_572 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_572 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_573 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_573 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_574 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 17usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_574 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_575 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_575 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_576 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_576 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_577 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_577 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_578 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_578 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_579 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_579 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_580 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_580 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_581 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_581 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_582 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_582 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_583 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_583 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_584 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_584 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_585 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_585 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_586 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_586 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_587 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 2usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_587 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_588 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_588 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_589 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 15usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_589 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_590 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_590 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_591 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_591 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_592 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_592 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_593 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_593 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_594 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_594 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_595 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_595 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_596 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_596 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_597 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_597 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_598 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 16usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_598 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_599 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_599 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_600 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_600 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_601 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_601 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_602 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_602 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_603 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_603 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_604 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_604 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_605 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_605 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_606 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_606 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_607 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_607 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_608 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_608 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_609 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_609 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_610 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_610 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_611 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_611 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_612 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 19usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_612 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_613 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_613 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_614 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_614 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_615 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_615 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_616 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_616 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_617 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_617 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_618 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 17usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_618 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_619 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_619 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_620 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_620 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_621 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_621 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_622 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_622 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_623 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_623 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_624 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_624 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_625 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_625 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_626 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_626 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_627 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_627 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_628 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_628 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_629 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_629 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_630 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 11usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_630 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_631 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_631 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_632 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_632 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_633 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_633 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_634 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_634 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_635 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_635 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_636 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_636 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_637 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 28usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_637 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_638 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_638 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_639 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_639 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_640 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_640 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_641 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 20usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_641 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_642 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_642 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_643 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_643 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_644 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_644 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_645 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_645 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_646 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_646 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_647 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_647 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_648 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_648 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_649 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_649 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_650 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_650 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_651 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_651 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_652 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_652 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_653 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_653 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_654 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_654 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_655 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_655 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_656 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_656 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_657 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 15usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_657 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_658 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_658 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_659 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_659 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_660 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 10usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_660 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_661 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_661 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_662 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_662 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_663 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_663 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_664 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_664 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_665 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_665 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_666 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_666 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_667 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 3usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_667 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_668 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_668 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_669 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_669 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_670 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_670 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_671 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 15usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_671 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_672 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_672 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_673 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 16usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_673 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_674 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_674 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_675 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_675 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_676 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_676 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_677 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 7usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_677 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_678 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_678 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_679 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 12usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_679 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_680 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_680 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_681 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_681 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_682 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 8usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_682 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_683 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_683 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_684 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 4usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_684 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_685 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_685 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_686 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 9usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_686 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_687 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_687 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_688 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 14usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_688 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_689 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 2usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_689 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_690 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 5usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_690 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_2__bindgen_ty_691 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 6usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_2__bindgen_ty_691 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+impl Default for _Py_global_strings__bindgen_ty_2 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_3 {
+    pub _ascii: PyASCIIObject,
+    pub _data: [u8; 2usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_3 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_global_strings__bindgen_ty_4 {
+    pub _latin1: PyCompactUnicodeObject,
+    pub _data: [u8; 2usize],
+}
+impl Default for _Py_global_strings__bindgen_ty_4 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+impl Default for _Py_global_strings {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct _types_runtime_state {
+    pub next_version_tag: ::std::os::raw::c_uint,
+}
+#[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct type_cache_entry {
     pub version: ::std::os::raw::c_uint,
@@ -1999,6 +11049,45 @@ impl Default for types_state {
 }
 pub type pytype_slotdef = wrapperbase;
 #[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_static_objects {
+    pub singletons: _Py_static_objects__bindgen_ty_1,
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_static_objects__bindgen_ty_1 {
+    pub small_ints: [PyLongObject; 262usize],
+    pub bytes_empty: PyBytesObject,
+    pub bytes_characters: [_Py_static_objects__bindgen_ty_1__bindgen_ty_1; 256usize],
+    pub strings: _Py_global_strings,
+    pub _tuple_empty_gc_not_used: PyGC_Head,
+    pub tuple_empty: PyTupleObject,
+    pub _hamt_bitmap_node_empty_gc_not_used: PyGC_Head,
+    pub hamt_bitmap_node_empty: PyHamtNode_Bitmap,
+    pub context_token_missing: _PyContextTokenMissing,
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _Py_static_objects__bindgen_ty_1__bindgen_ty_1 {
+    pub ob: PyBytesObject,
+    pub eos: ::std::os::raw::c_char,
+}
+impl Default for _Py_static_objects__bindgen_ty_1__bindgen_ty_1 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+impl Default for _Py_static_objects__bindgen_ty_1 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+impl Default for _Py_static_objects {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct _Py_interp_cached_objects {
     pub interned_strings: *mut PyObject,
@@ -2037,6 +11126,116 @@ impl Default for _Py_interp_static_objects__bindgen_ty_1 {
     }
 }
 impl Default for _Py_interp_static_objects {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _Py_slist_item_s {
+    pub next: *mut _Py_slist_item_s,
+}
+impl Default for _Py_slist_item_s {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+pub type _Py_slist_item_t = _Py_slist_item_s;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _Py_slist_t {
+    pub head: *mut _Py_slist_item_t,
+}
+impl Default for _Py_slist_t {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _Py_hashtable_entry_t {
+    pub _Py_slist_item: _Py_slist_item_t,
+    pub key_hash: Py_uhash_t,
+    pub key: *mut ::std::os::raw::c_void,
+    pub value: *mut ::std::os::raw::c_void,
+}
+impl Default for _Py_hashtable_entry_t {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+pub type _Py_hashtable_hash_func =
+    ::std::option::Option<unsafe extern "C" fn(key: *const ::std::os::raw::c_void) -> Py_uhash_t>;
+pub type _Py_hashtable_compare_func = ::std::option::Option<
+    unsafe extern "C" fn(
+        key1: *const ::std::os::raw::c_void,
+        key2: *const ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int,
+>;
+pub type _Py_hashtable_destroy_func =
+    ::std::option::Option<unsafe extern "C" fn(key: *mut ::std::os::raw::c_void)>;
+pub type _Py_hashtable_get_entry_func = ::std::option::Option<
+    unsafe extern "C" fn(
+        ht: *mut _Py_hashtable_t,
+        key: *const ::std::os::raw::c_void,
+    ) -> *mut _Py_hashtable_entry_t,
+>;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _Py_hashtable_allocator_t {
+    pub malloc:
+        ::std::option::Option<unsafe extern "C" fn(size: usize) -> *mut ::std::os::raw::c_void>,
+    pub free: ::std::option::Option<unsafe extern "C" fn(ptr: *mut ::std::os::raw::c_void)>,
+}
+impl Default for _Py_hashtable_allocator_t {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _Py_hashtable_t {
+    pub nentries: usize,
+    pub nbuckets: usize,
+    pub buckets: *mut _Py_slist_t,
+    pub get_entry_func: _Py_hashtable_get_entry_func,
+    pub hash_func: _Py_hashtable_hash_func,
+    pub compare_func: _Py_hashtable_compare_func,
+    pub key_destroy_func: _Py_hashtable_destroy_func,
+    pub value_destroy_func: _Py_hashtable_destroy_func,
+    pub alloc: _Py_hashtable_allocator_t,
+}
+impl Default for _Py_hashtable_t {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct _time_runtime_state {
+    pub ticks_per_second_initialized: ::std::os::raw::c_int,
+    pub ticks_per_second: ::std::os::raw::c_long,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _import_runtime_state {
+    pub inittab: *mut _inittab,
+    pub last_module_index: Py_ssize_t,
+    pub extensions: _import_runtime_state__bindgen_ty_1,
+    pub pkgcontext: *const ::std::os::raw::c_char,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _import_runtime_state__bindgen_ty_1 {
+    pub mutex: PyThread_type_lock,
+    pub hashtable: *mut _Py_hashtable_t,
+}
+impl Default for _import_runtime_state__bindgen_ty_1 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+impl Default for _import_runtime_state {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
@@ -2127,6 +11326,11 @@ impl Default for _Py_list_state {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct _py_object_runtime_state {
+    pub _not_used: ::std::os::raw::c_int,
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
@@ -2259,6 +11463,12 @@ impl Default for _obmalloc_usage {
     }
 }
 #[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct _obmalloc_global_state {
+    pub dump_debug_stats: ::std::os::raw::c_int,
+    pub interpreter_leaks: Py_ssize_t,
+}
+#[repr(C)]
 #[derive(Copy, Clone)]
 pub struct _obmalloc_state {
     pub pools: _obmalloc_pools,
@@ -2280,6 +11490,11 @@ impl Default for _Py_tuple_state {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct _fileutils_state {
+    pub force_ascii: ::std::os::raw::c_int,
 }
 pub const _Py_error_handler__Py_ERROR_UNKNOWN: _Py_error_handler = 0;
 pub const _Py_error_handler__Py_ERROR_STRICT: _Py_error_handler = 1;
@@ -2312,6 +11527,27 @@ pub struct _PyUnicode_Name_CAPI {
     >,
 }
 impl Default for _PyUnicode_Name_CAPI {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _Py_unicode_runtime_ids {
+    pub lock: PyThread_type_lock,
+    pub next_index: Py_ssize_t,
+}
+impl Default for _Py_unicode_runtime_ids {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _Py_unicode_runtime_state {
+    pub ids: _Py_unicode_runtime_ids,
+}
+impl Default for _Py_unicode_runtime_state {
     fn default() -> Self {
         unsafe { ::std::mem::zeroed() }
     }
@@ -2463,9 +11699,1133 @@ impl Default for _is {
     }
 }
 #[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _xidregitem {
+    pub prev: *mut _xidregitem,
+    pub next: *mut _xidregitem,
+    pub cls: *mut PyObject,
+    pub getdata: crossinterpdatafunc,
+}
+impl Default for _xidregitem {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+pub type sig_atomic_t = __sig_atomic_t;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union sigval {
+    pub sival_int: ::std::os::raw::c_int,
+    pub sival_ptr: *mut ::std::os::raw::c_void,
+    _bindgen_union_align: u64,
+}
+impl Default for sigval {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+pub type __sigval_t = sigval;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct siginfo_t {
+    pub si_signo: ::std::os::raw::c_int,
+    pub si_errno: ::std::os::raw::c_int,
+    pub si_code: ::std::os::raw::c_int,
+    pub __pad0: ::std::os::raw::c_int,
+    pub _sifields: siginfo_t__bindgen_ty_1,
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union siginfo_t__bindgen_ty_1 {
+    pub _pad: [::std::os::raw::c_int; 28usize],
+    pub _kill: siginfo_t__bindgen_ty_1__bindgen_ty_1,
+    pub _timer: siginfo_t__bindgen_ty_1__bindgen_ty_2,
+    pub _rt: siginfo_t__bindgen_ty_1__bindgen_ty_3,
+    pub _sigchld: siginfo_t__bindgen_ty_1__bindgen_ty_4,
+    pub _sigfault: siginfo_t__bindgen_ty_1__bindgen_ty_5,
+    pub _sigpoll: siginfo_t__bindgen_ty_1__bindgen_ty_6,
+    pub _sigsys: siginfo_t__bindgen_ty_1__bindgen_ty_7,
+    _bindgen_union_align: [u64; 14usize],
+}
+#[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
+pub struct siginfo_t__bindgen_ty_1__bindgen_ty_1 {
+    pub si_pid: __pid_t,
+    pub si_uid: __uid_t,
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct siginfo_t__bindgen_ty_1__bindgen_ty_2 {
+    pub si_tid: ::std::os::raw::c_int,
+    pub si_overrun: ::std::os::raw::c_int,
+    pub si_sigval: __sigval_t,
+}
+impl Default for siginfo_t__bindgen_ty_1__bindgen_ty_2 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct siginfo_t__bindgen_ty_1__bindgen_ty_3 {
+    pub si_pid: __pid_t,
+    pub si_uid: __uid_t,
+    pub si_sigval: __sigval_t,
+}
+impl Default for siginfo_t__bindgen_ty_1__bindgen_ty_3 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct siginfo_t__bindgen_ty_1__bindgen_ty_4 {
+    pub si_pid: __pid_t,
+    pub si_uid: __uid_t,
+    pub si_status: ::std::os::raw::c_int,
+    pub si_utime: __clock_t,
+    pub si_stime: __clock_t,
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct siginfo_t__bindgen_ty_1__bindgen_ty_5 {
+    pub si_addr: *mut ::std::os::raw::c_void,
+    pub si_addr_lsb: ::std::os::raw::c_short,
+    pub _bounds: siginfo_t__bindgen_ty_1__bindgen_ty_5__bindgen_ty_1,
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union siginfo_t__bindgen_ty_1__bindgen_ty_5__bindgen_ty_1 {
+    pub _addr_bnd: siginfo_t__bindgen_ty_1__bindgen_ty_5__bindgen_ty_1__bindgen_ty_1,
+    pub _pkey: __uint32_t,
+    _bindgen_union_align: [u64; 2usize],
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct siginfo_t__bindgen_ty_1__bindgen_ty_5__bindgen_ty_1__bindgen_ty_1 {
+    pub _lower: *mut ::std::os::raw::c_void,
+    pub _upper: *mut ::std::os::raw::c_void,
+}
+impl Default for siginfo_t__bindgen_ty_1__bindgen_ty_5__bindgen_ty_1__bindgen_ty_1 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+impl Default for siginfo_t__bindgen_ty_1__bindgen_ty_5__bindgen_ty_1 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+impl Default for siginfo_t__bindgen_ty_1__bindgen_ty_5 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct siginfo_t__bindgen_ty_1__bindgen_ty_6 {
+    pub si_band: ::std::os::raw::c_long,
+    pub si_fd: ::std::os::raw::c_int,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct siginfo_t__bindgen_ty_1__bindgen_ty_7 {
+    pub _call_addr: *mut ::std::os::raw::c_void,
+    pub _syscall: ::std::os::raw::c_int,
+    pub _arch: ::std::os::raw::c_uint,
+}
+impl Default for siginfo_t__bindgen_ty_1__bindgen_ty_7 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+impl Default for siginfo_t__bindgen_ty_1 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+impl Default for siginfo_t {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+pub type __sighandler_t = ::std::option::Option<unsafe extern "C" fn(arg1: ::std::os::raw::c_int)>;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct sigaction {
+    pub __sigaction_handler: sigaction__bindgen_ty_1,
+    pub sa_mask: __sigset_t,
+    pub sa_flags: ::std::os::raw::c_int,
+    pub sa_restorer: ::std::option::Option<unsafe extern "C" fn()>,
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union sigaction__bindgen_ty_1 {
+    pub sa_handler: __sighandler_t,
+    pub sa_sigaction: ::std::option::Option<
+        unsafe extern "C" fn(
+            arg1: ::std::os::raw::c_int,
+            arg2: *mut siginfo_t,
+            arg3: *mut ::std::os::raw::c_void,
+        ),
+    >,
+    _bindgen_union_align: u64,
+}
+impl Default for sigaction__bindgen_ty_1 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+impl Default for sigaction {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct stack_t {
+    pub ss_sp: *mut ::std::os::raw::c_void,
+    pub ss_flags: ::std::os::raw::c_int,
+    pub ss_size: usize,
+}
+impl Default for stack_t {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+pub type _Py_sighandler_t = sigaction;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct faulthandler_user_signal {
+    pub enabled: ::std::os::raw::c_int,
+    pub file: *mut PyObject,
+    pub fd: ::std::os::raw::c_int,
+    pub all_threads: ::std::os::raw::c_int,
+    pub chain: ::std::os::raw::c_int,
+    pub previous: _Py_sighandler_t,
+    pub interp: *mut PyInterpreterState,
+}
+impl Default for faulthandler_user_signal {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _faulthandler_runtime_state {
+    pub fatal_error: _faulthandler_runtime_state__bindgen_ty_1,
+    pub thread: _faulthandler_runtime_state__bindgen_ty_2,
+    pub user_signals: *mut faulthandler_user_signal,
+    pub stack: stack_t,
+    pub old_stack: stack_t,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _faulthandler_runtime_state__bindgen_ty_1 {
+    pub enabled: ::std::os::raw::c_int,
+    pub file: *mut PyObject,
+    pub fd: ::std::os::raw::c_int,
+    pub all_threads: ::std::os::raw::c_int,
+    pub interp: *mut PyInterpreterState,
+}
+impl Default for _faulthandler_runtime_state__bindgen_ty_1 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _faulthandler_runtime_state__bindgen_ty_2 {
+    pub file: *mut PyObject,
+    pub fd: ::std::os::raw::c_int,
+    pub timeout_us: ::std::os::raw::c_longlong,
+    pub repeat: ::std::os::raw::c_int,
+    pub interp: *mut PyInterpreterState,
+    pub exit: ::std::os::raw::c_int,
+    pub header: *mut ::std::os::raw::c_char,
+    pub header_len: usize,
+    pub cancel_event: PyThread_type_lock,
+    pub running: PyThread_type_lock,
+}
+impl Default for _faulthandler_runtime_state__bindgen_ty_2 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+impl Default for _faulthandler_runtime_state {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+pub type identifier = *mut PyObject;
+pub type string = *mut PyObject;
+pub type constant = *mut PyObject;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct asdl_int_seq {
+    pub size: Py_ssize_t,
+    pub elements: *mut *mut ::std::os::raw::c_void,
+    pub typed_elements: [::std::os::raw::c_int; 1usize],
+}
+impl Default for asdl_int_seq {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+pub type expr_ty = *mut _expr;
+pub const _expr_context_Load: _expr_context = 1;
+pub const _expr_context_Store: _expr_context = 2;
+pub const _expr_context_Del: _expr_context = 3;
+pub type _expr_context = u32;
+pub use self::_expr_context as expr_context_ty;
+pub const _boolop_And: _boolop = 1;
+pub const _boolop_Or: _boolop = 2;
+pub type _boolop = u32;
+pub use self::_boolop as boolop_ty;
+pub const _operator_Add: _operator = 1;
+pub const _operator_Sub: _operator = 2;
+pub const _operator_Mult: _operator = 3;
+pub const _operator_MatMult: _operator = 4;
+pub const _operator_Div: _operator = 5;
+pub const _operator_Mod: _operator = 6;
+pub const _operator_Pow: _operator = 7;
+pub const _operator_LShift: _operator = 8;
+pub const _operator_RShift: _operator = 9;
+pub const _operator_BitOr: _operator = 10;
+pub const _operator_BitXor: _operator = 11;
+pub const _operator_BitAnd: _operator = 12;
+pub const _operator_FloorDiv: _operator = 13;
+pub type _operator = u32;
+pub use self::_operator as operator_ty;
+pub const _unaryop_Invert: _unaryop = 1;
+pub const _unaryop_Not: _unaryop = 2;
+pub const _unaryop_UAdd: _unaryop = 3;
+pub const _unaryop_USub: _unaryop = 4;
+pub type _unaryop = u32;
+pub use self::_unaryop as unaryop_ty;
+pub type comprehension_ty = *mut _comprehension;
+pub type arguments_ty = *mut _arguments;
+pub type arg_ty = *mut _arg;
+pub type keyword_ty = *mut _keyword;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct asdl_expr_seq {
+    pub size: Py_ssize_t,
+    pub elements: *mut *mut ::std::os::raw::c_void,
+    pub typed_elements: [expr_ty; 1usize],
+}
+impl Default for asdl_expr_seq {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct asdl_comprehension_seq {
+    pub size: Py_ssize_t,
+    pub elements: *mut *mut ::std::os::raw::c_void,
+    pub typed_elements: [comprehension_ty; 1usize],
+}
+impl Default for asdl_comprehension_seq {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct asdl_arg_seq {
+    pub size: Py_ssize_t,
+    pub elements: *mut *mut ::std::os::raw::c_void,
+    pub typed_elements: [arg_ty; 1usize],
+}
+impl Default for asdl_arg_seq {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct asdl_keyword_seq {
+    pub size: Py_ssize_t,
+    pub elements: *mut *mut ::std::os::raw::c_void,
+    pub typed_elements: [keyword_ty; 1usize],
+}
+impl Default for asdl_keyword_seq {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+pub const _expr_kind_BoolOp_kind: _expr_kind = 1;
+pub const _expr_kind_NamedExpr_kind: _expr_kind = 2;
+pub const _expr_kind_BinOp_kind: _expr_kind = 3;
+pub const _expr_kind_UnaryOp_kind: _expr_kind = 4;
+pub const _expr_kind_Lambda_kind: _expr_kind = 5;
+pub const _expr_kind_IfExp_kind: _expr_kind = 6;
+pub const _expr_kind_Dict_kind: _expr_kind = 7;
+pub const _expr_kind_Set_kind: _expr_kind = 8;
+pub const _expr_kind_ListComp_kind: _expr_kind = 9;
+pub const _expr_kind_SetComp_kind: _expr_kind = 10;
+pub const _expr_kind_DictComp_kind: _expr_kind = 11;
+pub const _expr_kind_GeneratorExp_kind: _expr_kind = 12;
+pub const _expr_kind_Await_kind: _expr_kind = 13;
+pub const _expr_kind_Yield_kind: _expr_kind = 14;
+pub const _expr_kind_YieldFrom_kind: _expr_kind = 15;
+pub const _expr_kind_Compare_kind: _expr_kind = 16;
+pub const _expr_kind_Call_kind: _expr_kind = 17;
+pub const _expr_kind_FormattedValue_kind: _expr_kind = 18;
+pub const _expr_kind_JoinedStr_kind: _expr_kind = 19;
+pub const _expr_kind_Constant_kind: _expr_kind = 20;
+pub const _expr_kind_Attribute_kind: _expr_kind = 21;
+pub const _expr_kind_Subscript_kind: _expr_kind = 22;
+pub const _expr_kind_Starred_kind: _expr_kind = 23;
+pub const _expr_kind_Name_kind: _expr_kind = 24;
+pub const _expr_kind_List_kind: _expr_kind = 25;
+pub const _expr_kind_Tuple_kind: _expr_kind = 26;
+pub const _expr_kind_Slice_kind: _expr_kind = 27;
+pub type _expr_kind = u32;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _expr {
+    pub kind: _expr_kind,
+    pub v: _expr__bindgen_ty_1,
+    pub lineno: ::std::os::raw::c_int,
+    pub col_offset: ::std::os::raw::c_int,
+    pub end_lineno: ::std::os::raw::c_int,
+    pub end_col_offset: ::std::os::raw::c_int,
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union _expr__bindgen_ty_1 {
+    pub BoolOp: _expr__bindgen_ty_1__bindgen_ty_1,
+    pub NamedExpr: _expr__bindgen_ty_1__bindgen_ty_2,
+    pub BinOp: _expr__bindgen_ty_1__bindgen_ty_3,
+    pub UnaryOp: _expr__bindgen_ty_1__bindgen_ty_4,
+    pub Lambda: _expr__bindgen_ty_1__bindgen_ty_5,
+    pub IfExp: _expr__bindgen_ty_1__bindgen_ty_6,
+    pub Dict: _expr__bindgen_ty_1__bindgen_ty_7,
+    pub Set: _expr__bindgen_ty_1__bindgen_ty_8,
+    pub ListComp: _expr__bindgen_ty_1__bindgen_ty_9,
+    pub SetComp: _expr__bindgen_ty_1__bindgen_ty_10,
+    pub DictComp: _expr__bindgen_ty_1__bindgen_ty_11,
+    pub GeneratorExp: _expr__bindgen_ty_1__bindgen_ty_12,
+    pub Await: _expr__bindgen_ty_1__bindgen_ty_13,
+    pub Yield: _expr__bindgen_ty_1__bindgen_ty_14,
+    pub YieldFrom: _expr__bindgen_ty_1__bindgen_ty_15,
+    pub Compare: _expr__bindgen_ty_1__bindgen_ty_16,
+    pub Call: _expr__bindgen_ty_1__bindgen_ty_17,
+    pub FormattedValue: _expr__bindgen_ty_1__bindgen_ty_18,
+    pub JoinedStr: _expr__bindgen_ty_1__bindgen_ty_19,
+    pub Constant: _expr__bindgen_ty_1__bindgen_ty_20,
+    pub Attribute: _expr__bindgen_ty_1__bindgen_ty_21,
+    pub Subscript: _expr__bindgen_ty_1__bindgen_ty_22,
+    pub Starred: _expr__bindgen_ty_1__bindgen_ty_23,
+    pub Name: _expr__bindgen_ty_1__bindgen_ty_24,
+    pub List: _expr__bindgen_ty_1__bindgen_ty_25,
+    pub Tuple: _expr__bindgen_ty_1__bindgen_ty_26,
+    pub Slice: _expr__bindgen_ty_1__bindgen_ty_27,
+    _bindgen_union_align: [u64; 3usize],
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _expr__bindgen_ty_1__bindgen_ty_1 {
+    pub op: boolop_ty,
+    pub values: *mut asdl_expr_seq,
+}
+impl Default for _expr__bindgen_ty_1__bindgen_ty_1 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _expr__bindgen_ty_1__bindgen_ty_2 {
+    pub target: expr_ty,
+    pub value: expr_ty,
+}
+impl Default for _expr__bindgen_ty_1__bindgen_ty_2 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _expr__bindgen_ty_1__bindgen_ty_3 {
+    pub left: expr_ty,
+    pub op: operator_ty,
+    pub right: expr_ty,
+}
+impl Default for _expr__bindgen_ty_1__bindgen_ty_3 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _expr__bindgen_ty_1__bindgen_ty_4 {
+    pub op: unaryop_ty,
+    pub operand: expr_ty,
+}
+impl Default for _expr__bindgen_ty_1__bindgen_ty_4 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _expr__bindgen_ty_1__bindgen_ty_5 {
+    pub args: arguments_ty,
+    pub body: expr_ty,
+}
+impl Default for _expr__bindgen_ty_1__bindgen_ty_5 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _expr__bindgen_ty_1__bindgen_ty_6 {
+    pub test: expr_ty,
+    pub body: expr_ty,
+    pub orelse: expr_ty,
+}
+impl Default for _expr__bindgen_ty_1__bindgen_ty_6 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _expr__bindgen_ty_1__bindgen_ty_7 {
+    pub keys: *mut asdl_expr_seq,
+    pub values: *mut asdl_expr_seq,
+}
+impl Default for _expr__bindgen_ty_1__bindgen_ty_7 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _expr__bindgen_ty_1__bindgen_ty_8 {
+    pub elts: *mut asdl_expr_seq,
+}
+impl Default for _expr__bindgen_ty_1__bindgen_ty_8 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _expr__bindgen_ty_1__bindgen_ty_9 {
+    pub elt: expr_ty,
+    pub generators: *mut asdl_comprehension_seq,
+}
+impl Default for _expr__bindgen_ty_1__bindgen_ty_9 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _expr__bindgen_ty_1__bindgen_ty_10 {
+    pub elt: expr_ty,
+    pub generators: *mut asdl_comprehension_seq,
+}
+impl Default for _expr__bindgen_ty_1__bindgen_ty_10 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _expr__bindgen_ty_1__bindgen_ty_11 {
+    pub key: expr_ty,
+    pub value: expr_ty,
+    pub generators: *mut asdl_comprehension_seq,
+}
+impl Default for _expr__bindgen_ty_1__bindgen_ty_11 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _expr__bindgen_ty_1__bindgen_ty_12 {
+    pub elt: expr_ty,
+    pub generators: *mut asdl_comprehension_seq,
+}
+impl Default for _expr__bindgen_ty_1__bindgen_ty_12 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _expr__bindgen_ty_1__bindgen_ty_13 {
+    pub value: expr_ty,
+}
+impl Default for _expr__bindgen_ty_1__bindgen_ty_13 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _expr__bindgen_ty_1__bindgen_ty_14 {
+    pub value: expr_ty,
+}
+impl Default for _expr__bindgen_ty_1__bindgen_ty_14 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _expr__bindgen_ty_1__bindgen_ty_15 {
+    pub value: expr_ty,
+}
+impl Default for _expr__bindgen_ty_1__bindgen_ty_15 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _expr__bindgen_ty_1__bindgen_ty_16 {
+    pub left: expr_ty,
+    pub ops: *mut asdl_int_seq,
+    pub comparators: *mut asdl_expr_seq,
+}
+impl Default for _expr__bindgen_ty_1__bindgen_ty_16 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _expr__bindgen_ty_1__bindgen_ty_17 {
+    pub func: expr_ty,
+    pub args: *mut asdl_expr_seq,
+    pub keywords: *mut asdl_keyword_seq,
+}
+impl Default for _expr__bindgen_ty_1__bindgen_ty_17 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _expr__bindgen_ty_1__bindgen_ty_18 {
+    pub value: expr_ty,
+    pub conversion: ::std::os::raw::c_int,
+    pub format_spec: expr_ty,
+}
+impl Default for _expr__bindgen_ty_1__bindgen_ty_18 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _expr__bindgen_ty_1__bindgen_ty_19 {
+    pub values: *mut asdl_expr_seq,
+}
+impl Default for _expr__bindgen_ty_1__bindgen_ty_19 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _expr__bindgen_ty_1__bindgen_ty_20 {
+    pub value: constant,
+    pub kind: string,
+}
+impl Default for _expr__bindgen_ty_1__bindgen_ty_20 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _expr__bindgen_ty_1__bindgen_ty_21 {
+    pub value: expr_ty,
+    pub attr: identifier,
+    pub ctx: expr_context_ty,
+}
+impl Default for _expr__bindgen_ty_1__bindgen_ty_21 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _expr__bindgen_ty_1__bindgen_ty_22 {
+    pub value: expr_ty,
+    pub slice: expr_ty,
+    pub ctx: expr_context_ty,
+}
+impl Default for _expr__bindgen_ty_1__bindgen_ty_22 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _expr__bindgen_ty_1__bindgen_ty_23 {
+    pub value: expr_ty,
+    pub ctx: expr_context_ty,
+}
+impl Default for _expr__bindgen_ty_1__bindgen_ty_23 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _expr__bindgen_ty_1__bindgen_ty_24 {
+    pub id: identifier,
+    pub ctx: expr_context_ty,
+}
+impl Default for _expr__bindgen_ty_1__bindgen_ty_24 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _expr__bindgen_ty_1__bindgen_ty_25 {
+    pub elts: *mut asdl_expr_seq,
+    pub ctx: expr_context_ty,
+}
+impl Default for _expr__bindgen_ty_1__bindgen_ty_25 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _expr__bindgen_ty_1__bindgen_ty_26 {
+    pub elts: *mut asdl_expr_seq,
+    pub ctx: expr_context_ty,
+}
+impl Default for _expr__bindgen_ty_1__bindgen_ty_26 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _expr__bindgen_ty_1__bindgen_ty_27 {
+    pub lower: expr_ty,
+    pub upper: expr_ty,
+    pub step: expr_ty,
+}
+impl Default for _expr__bindgen_ty_1__bindgen_ty_27 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+impl Default for _expr__bindgen_ty_1 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+impl Default for _expr {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _comprehension {
+    pub target: expr_ty,
+    pub iter: expr_ty,
+    pub ifs: *mut asdl_expr_seq,
+    pub is_async: ::std::os::raw::c_int,
+}
+impl Default for _comprehension {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _arguments {
+    pub posonlyargs: *mut asdl_arg_seq,
+    pub args: *mut asdl_arg_seq,
+    pub vararg: arg_ty,
+    pub kwonlyargs: *mut asdl_arg_seq,
+    pub kw_defaults: *mut asdl_expr_seq,
+    pub kwarg: arg_ty,
+    pub defaults: *mut asdl_expr_seq,
+}
+impl Default for _arguments {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _arg {
+    pub arg: identifier,
+    pub annotation: expr_ty,
+    pub type_comment: string,
+    pub lineno: ::std::os::raw::c_int,
+    pub col_offset: ::std::os::raw::c_int,
+    pub end_lineno: ::std::os::raw::c_int,
+    pub end_col_offset: ::std::os::raw::c_int,
+}
+impl Default for _arg {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _keyword {
+    pub arg: identifier,
+    pub value: expr_ty,
+    pub lineno: ::std::os::raw::c_int,
+    pub col_offset: ::std::os::raw::c_int,
+    pub end_lineno: ::std::os::raw::c_int,
+    pub end_col_offset: ::std::os::raw::c_int,
+}
+impl Default for _keyword {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _parser_runtime_state {
+    pub _not_used: ::std::os::raw::c_int,
+    pub dummy_name: _expr,
+}
+impl Default for _parser_runtime_state {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct debug_alloc_api_t {
+    pub api_id: ::std::os::raw::c_char,
+    pub alloc: PyMemAllocatorEx,
+}
+impl Default for debug_alloc_api_t {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _pymem_allocators {
+    pub mutex: PyThread_type_lock,
+    pub standard: _pymem_allocators__bindgen_ty_1,
+    pub debug: _pymem_allocators__bindgen_ty_2,
+    pub obj_arena: PyObjectArenaAllocator,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _pymem_allocators__bindgen_ty_1 {
+    pub raw: PyMemAllocatorEx,
+    pub mem: PyMemAllocatorEx,
+    pub obj: PyMemAllocatorEx,
+}
+impl Default for _pymem_allocators__bindgen_ty_1 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _pymem_allocators__bindgen_ty_2 {
+    pub raw: debug_alloc_api_t,
+    pub mem: debug_alloc_api_t,
+    pub obj: debug_alloc_api_t,
+}
+impl Default for _pymem_allocators__bindgen_ty_2 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+impl Default for _pymem_allocators {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct pyhash_runtime_state {
+    pub urandom_cache: pyhash_runtime_state__bindgen_ty_1,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct pyhash_runtime_state__bindgen_ty_1 {
+    pub fd: ::std::os::raw::c_int,
+    pub st_dev: dev_t,
+    pub st_ino: ino_t,
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _pythread_runtime_state {
+    pub initialized: ::std::os::raw::c_int,
+    pub _condattr_monotonic: _pythread_runtime_state__bindgen_ty_1,
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _pythread_runtime_state__bindgen_ty_1 {
+    pub ptr: *mut pthread_condattr_t,
+    pub val: pthread_condattr_t,
+}
+impl Default for _pythread_runtime_state__bindgen_ty_1 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+impl Default for _pythread_runtime_state {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _signals_runtime_state {
+    pub handlers: [_signals_runtime_state__bindgen_ty_1; 65usize],
+    pub wakeup: _signals_runtime_state__bindgen_ty_2,
+    pub is_tripped: _Py_atomic_int,
+    pub default_handler: *mut PyObject,
+    pub ignore_handler: *mut PyObject,
+    pub unhandled_keyboard_interrupt: ::std::os::raw::c_int,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct _signals_runtime_state__bindgen_ty_1 {
+    pub tripped: _Py_atomic_int,
+    pub func: _Py_atomic_address,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct _signals_runtime_state__bindgen_ty_2 {
+    pub fd: sig_atomic_t,
+    pub warn_on_full_buffer: ::std::os::raw::c_int,
+}
+impl Default for _signals_runtime_state {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _PyTraceMalloc_Config {
+    pub initialized: _PyTraceMalloc_Config__bindgen_ty_1,
+    pub tracing: ::std::os::raw::c_int,
+    pub max_nframe: ::std::os::raw::c_int,
+}
+pub const _PyTraceMalloc_Config_TRACEMALLOC_NOT_INITIALIZED: _PyTraceMalloc_Config__bindgen_ty_1 =
+    0;
+pub const _PyTraceMalloc_Config_TRACEMALLOC_INITIALIZED: _PyTraceMalloc_Config__bindgen_ty_1 = 1;
+pub const _PyTraceMalloc_Config_TRACEMALLOC_FINALIZED: _PyTraceMalloc_Config__bindgen_ty_1 = 2;
+pub type _PyTraceMalloc_Config__bindgen_ty_1 = u32;
+impl Default for _PyTraceMalloc_Config {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C, packed)]
+#[derive(Debug, Copy, Clone)]
+pub struct tracemalloc_frame {
+    pub filename: *mut PyObject,
+    pub lineno: ::std::os::raw::c_uint,
+}
+impl Default for tracemalloc_frame {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct tracemalloc_traceback {
+    pub hash: Py_uhash_t,
+    pub nframe: u16,
+    pub total_nframe: u16,
+    pub frames: [tracemalloc_frame; 1usize],
+}
+impl Default for tracemalloc_traceback {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _tracemalloc_runtime_state {
+    pub config: _PyTraceMalloc_Config,
+    pub allocators: _tracemalloc_runtime_state__bindgen_ty_1,
+    pub tables_lock: PyThread_type_lock,
+    pub traced_memory: usize,
+    pub peak_traced_memory: usize,
+    pub filenames: *mut _Py_hashtable_t,
+    pub traceback: *mut tracemalloc_traceback,
+    pub tracebacks: *mut _Py_hashtable_t,
+    pub traces: *mut _Py_hashtable_t,
+    pub domains: *mut _Py_hashtable_t,
+    pub empty_traceback: tracemalloc_traceback,
+    pub reentrant_key: Py_tss_t,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _tracemalloc_runtime_state__bindgen_ty_1 {
+    pub mem: PyMemAllocatorEx,
+    pub raw: PyMemAllocatorEx,
+    pub obj: PyMemAllocatorEx,
+}
+impl Default for _tracemalloc_runtime_state__bindgen_ty_1 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+impl Default for _tracemalloc_runtime_state {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _getargs_runtime_state {
+    pub mutex: PyThread_type_lock,
+    pub static_parsers: *mut _PyArg_Parser,
+}
+impl Default for _getargs_runtime_state {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _gilstate_runtime_state {
+    pub check_enabled: ::std::os::raw::c_int,
+    pub autoInterpreterState: *mut PyInterpreterState,
+}
+impl Default for _gilstate_runtime_state {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _Py_AuditHookEntry {
+    pub next: *mut _Py_AuditHookEntry,
+    pub hookCFunction: Py_AuditHookFunction,
+    pub userData: *mut ::std::os::raw::c_void,
+}
+impl Default for _Py_AuditHookEntry {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct pyruntimestate {
+    pub _initialized: ::std::os::raw::c_int,
+    pub preinitializing: ::std::os::raw::c_int,
+    pub preinitialized: ::std::os::raw::c_int,
+    pub core_initialized: ::std::os::raw::c_int,
+    pub initialized: ::std::os::raw::c_int,
+    pub _finalizing: _Py_atomic_address,
+    pub interpreters: pyruntimestate_pyinterpreters,
+    pub main_thread: ::std::os::raw::c_ulong,
+    pub xidregistry: pyruntimestate__xidregistry,
+    pub allocators: _pymem_allocators,
+    pub obmalloc: _obmalloc_global_state,
+    pub pyhash_state: pyhash_runtime_state,
+    pub time: _time_runtime_state,
+    pub threads: _pythread_runtime_state,
+    pub signals: _signals_runtime_state,
+    pub autoTSSkey: Py_tss_t,
+    pub trashTSSkey: Py_tss_t,
+    pub orig_argv: PyWideStringList,
+    pub parser: _parser_runtime_state,
+    pub atexit: _atexit_runtime_state,
+    pub imports: _import_runtime_state,
+    pub ceval: _ceval_runtime_state,
+    pub gilstate: _gilstate_runtime_state,
+    pub getargs: _getargs_runtime_state,
+    pub fileutils: _fileutils_state,
+    pub faulthandler: _faulthandler_runtime_state,
+    pub tracemalloc: _tracemalloc_runtime_state,
+    pub preconfig: PyPreConfig,
+    pub open_code_hook: Py_OpenCodeHookFunction,
+    pub open_code_userdata: *mut ::std::os::raw::c_void,
+    pub audit_hooks: pyruntimestate__bindgen_ty_1,
+    pub object_state: _py_object_runtime_state,
+    pub float_state: _Py_float_runtime_state,
+    pub unicode_state: _Py_unicode_runtime_state,
+    pub types: _types_runtime_state,
+    pub static_objects: _Py_static_objects,
+    pub _main_interpreter: PyInterpreterState,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct pyruntimestate_pyinterpreters {
+    pub mutex: PyThread_type_lock,
+    pub head: *mut PyInterpreterState,
+    pub main: *mut PyInterpreterState,
+    pub next_id: i64,
+}
+impl Default for pyruntimestate_pyinterpreters {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct pyruntimestate__xidregistry {
+    pub mutex: PyThread_type_lock,
+    pub head: *mut _xidregitem,
+}
+impl Default for pyruntimestate__xidregistry {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct pyruntimestate__bindgen_ty_1 {
+    pub mutex: PyThread_type_lock,
+    pub head: *mut _Py_AuditHookEntry,
+}
+impl Default for pyruntimestate__bindgen_ty_1 {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+impl Default for pyruntimestate {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Default)]
 pub struct _dictkeysobject {
-    pub _address: u8,
+    pub dk_refcnt: Py_ssize_t,
+    pub dk_log2_size: u8,
+    pub dk_log2_index_bytes: u8,
+    pub dk_kind: u8,
+    pub dk_version: u32,
+    pub dk_usable: Py_ssize_t,
+    pub dk_nentries: Py_ssize_t,
+    pub dk_indices: __IncompleteArrayField<::std::os::raw::c_char>,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct _dictvalues {
+    pub values: [*mut PyObject; 1usize],
+}
+impl Default for _dictvalues {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
@@ -2475,10 +12835,5 @@ pub struct _PyAsyncGenWrappedValue {
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct PyAsyncGenASend {
-    pub _address: u8,
-}
-#[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
-pub struct pyruntimestate {
     pub _address: u8,
 }

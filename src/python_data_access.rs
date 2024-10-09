@@ -163,17 +163,25 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
             if dict_addr & 1 == 0 {
                 values_addr = 0;
             } else {
-                values_addr = dict_addr - 1;
+                values_addr = dict_addr + 1;
                 dict_addr = 0;
             }
         }
 
         if values_addr != 0 {
-            let ht: crate::python_bindings::v3_11_0::PyHeapTypeObject =
-                process.copy_struct(tp_addr)?;
-            let keys: crate::python_bindings::v3_11_0::PyDictKeysObject =
-                process.copy_struct(ht.ht_cached_keys as usize)?;
-            let entries_addr = ht.ht_cached_keys as usize
+            let ht_cached_keys = if version.major == 3 && version.minor == 12 {
+                let ht: crate::python_bindings::v3_12_0::PyHeapTypeObject =
+                    process.copy_struct(tp_addr)?;
+                ht.ht_cached_keys as usize
+            } else {
+                let ht: crate::python_bindings::v3_11_0::PyHeapTypeObject =
+                    process.copy_struct(tp_addr)?;
+                ht.ht_cached_keys as usize
+            };
+
+            let keys: crate::python_bindings::v3_12_0::PyDictKeysObject =
+                process.copy_struct(ht_cached_keys as usize)?;
+            let entries_addr = ht_cached_keys as usize
                 + (1 << keys.dk_log2_index_bytes)
                 + std::mem::size_of_val(&keys);
             Ok(DictIterator {
