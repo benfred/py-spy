@@ -197,6 +197,8 @@ jobs:
             python-version: 3.11.9
           - os: macos-13
             python-version: 3.11.10
+          - os: macos-13
+            python-version: 3.12.0
 
     steps:
       - uses: actions/checkout@v2
