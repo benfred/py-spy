@@ -1,14 +1,15 @@
-use std::collections::HashSet;
 use anyhow::Error;
+use std::collections::HashSet;
+use std::num::NonZeroUsize;
 
-use cpp_demangle::{DemangleOptions, BorrowedSymbol};
-use remoteprocess::{self, Pid};
+use cpp_demangle::{BorrowedSymbol, DemangleOptions};
 use lazy_static::lazy_static;
 use lru::LruCache;
+use remoteprocess::{self, Pid};
 
 use crate::binary_parser::BinaryInfo;
 use crate::cython;
-use crate::stack_trace::{Frame};
+use crate::stack_trace::Frame;
 use crate::utils::resolve_filename;
 
 pub struct NativeStack {
@@ -25,22 +26,34 @@ pub struct NativeStack {
 }
 
 impl NativeStack {
-    pub fn new(pid: Pid, python: Option<BinaryInfo>, libpython: Option<BinaryInfo>) -> Result<NativeStack, Error> {
+    pub fn new(
+        pid: Pid,
+        python: Option<BinaryInfo>,
+        libpython: Option<BinaryInfo>,
+    ) -> Result<NativeStack, Error> {
         let cython_maps = cython::SourceMaps::new();
 
         let process = remoteprocess::Process::new(pid)?;
         let unwinder = process.unwinder()?;
         let symbolicator = process.symbolicator()?;
 
-        return Ok(NativeStack{cython_maps, unwinder, symbolicator, should_reload: false,
-                              python,
-                              libpython,
-                              process,
-                              symbol_cache: LruCache::new(65536)
-                              });
+        Ok(NativeStack {
+            cython_maps,
+            unwinder,
+            symbolicator,
+            should_reload: false,
+            python,
+            libpython,
+            process,
+            symbol_cache: LruCache::new(NonZeroUsize::new(65536).unwrap()),
+        })
     }
 
-    pub fn merge_native_thread(&mut self, frames: &Vec<Frame>, thread: &remoteprocess::Thread) -> Result<Vec<Frame>, Error> {
+    pub fn merge_native_thread(
+        &mut self,
+        frames: &Vec<Frame>,
+        thread: &remoteprocess::Thread,
+    ) -> Result<Vec<Frame>, Error> {
         if self.should_reload {
             self.symbolicator.reload()?;
             self.should_reload = false;
@@ -50,34 +63,46 @@ impl NativeStack {
         let native_stack = self.get_thread(thread)?;
 
         // TODO: merging the two stack together could happen outside of thread lock
-        return self.merge_native_stack(frames, native_stack);
+        self.merge_native_stack(frames, native_stack)
     }
-    pub fn merge_native_stack(&mut self, frames: &Vec<Frame>, native_stack: Vec<u64>) -> Result<Vec<Frame>, Error> {
+    pub fn merge_native_stack(
+        &mut self,
+        frames: &Vec<Frame>,
+        native_stack: Vec<u64>,
+    ) -> Result<Vec<Frame>, Error> {
         let mut python_frame_index = 0;
         let mut merged = Vec::new();
 
         // merge the native_stack and python stack together
         for addr in native_stack {
             // check in the symbol cache if we have looked up this symbol yet
-            let cached_symbol = self.symbol_cache.get(&addr).map(|f| f.clone());
+            let cached_symbol = self.symbol_cache.get(&addr).cloned();
 
             // merges a remoteprocess::StackFrame into the current merged vec
-            let is_python_addr = self.python.as_ref().map_or(false, |m| m.contains(addr)) ||
-                    self.libpython.as_ref().map_or(false, |m| m.contains(addr));
+            let is_python_addr = self.python.as_ref().map_or(false, |m| m.contains(addr))
+                || self.libpython.as_ref().map_or(false, |m| m.contains(addr));
             let merge_frame = &mut |frame: &remoteprocess::StackFrame| {
                 match self.get_merge_strategy(is_python_addr, frame) {
-                    MergeType::Ignore => {},
+                    MergeType::Ignore => {}
                     MergeType::MergeNativeFrame => {
                         if let Some(python_frame) = self.translate_native_frame(frame) {
                             merged.push(python_frame);
                         }
-                    },
+                    }
                     MergeType::MergePythonFrame => {
                         // if we have a corresponding python frame for the evalframe
                         // merge it into the stack. (if we're out of bounds a later
                         // check will pick up - and report overall totals mismatch)
-                        if python_frame_index < frames.len() {
+
+                        // Merge all python frames until we hit one with `is_entry`.
+                        while python_frame_index < frames.len() {
                             merged.push(frames[python_frame_index].clone());
+
+                            if frames[python_frame_index].is_entry {
+                                break;
+                            }
+
+                            python_frame_index += 1;
                         }
                         python_frame_index += 1;
                     }
@@ -96,22 +121,37 @@ impl NativeStack {
             let mut symbolicated_count = 0;
             let mut first_frame = None;
 
-            self.symbolicator.symbolicate(addr, !is_python_addr, &mut |frame: &remoteprocess::StackFrame| {
-                symbolicated_count += 1;
-                if symbolicated_count == 1 {
-                    first_frame = Some(frame.clone());
-                }
-                merge_frame(frame);
-            }).unwrap_or_else(|e| {
-                if let remoteprocess::Error::NoBinaryForAddress(_) = e {
-                    debug!("don't have a binary for symbols at 0x{:x} - reloading", addr);
-                    self.should_reload = true;
-                }
-                // if we can't symbolicate, just insert a stub here.
-                merged.push(Frame{filename: "?".to_owned(),
-                                  name: format!("0x{:x}", addr),
-                                  line: 0, short_filename: None, module: None, locals: None});
-            });
+            self.symbolicator
+                .symbolicate(
+                    addr,
+                    !is_python_addr,
+                    &mut |frame: &remoteprocess::StackFrame| {
+                        symbolicated_count += 1;
+                        if symbolicated_count == 1 {
+                            first_frame = Some(frame.clone());
+                        }
+                        merge_frame(frame);
+                    },
+                )
+                .unwrap_or_else(|e| {
+                    if let remoteprocess::Error::NoBinaryForAddress(_) = e {
+                        debug!(
+                            "don't have a binary for symbols at 0x{:x} - reloading",
+                            addr
+                        );
+                        self.should_reload = true;
+                    }
+                    // if we can't symbolicate, just insert a stub here.
+                    merged.push(Frame {
+                        filename: "?".to_owned(),
+                        name: format!("0x{:x}", addr),
+                        line: 0,
+                        short_filename: None,
+                        module: None,
+                        locals: None,
+                        is_entry: true,
+                    });
+                });
 
             if symbolicated_count == 1 {
                 self.symbol_cache.put(addr, first_frame.unwrap());
@@ -134,11 +174,17 @@ impl NativeStack {
                 // if we have seen exactly one more python frame in the native stack than the python stack - let it go.
                 // (can happen when the python stack has been unwound, but haven't exited the PyEvalFrame function
                 // yet)
-                info!("Have {} native and {} python threads in stack - allowing for now",
-                    python_frame_index, frames.len());
+                info!(
+                    "Have {} native and {} python threads in stack - allowing for now",
+                    python_frame_index,
+                    frames.len()
+                );
             } else {
-                 return Err(format_err!("Failed to merge native and python frames (Have {} native and {} python)",
-                                       python_frame_index, frames.len()));
+                return Err(format_err!(
+                    "Failed to merge native and python frames (Have {} native and {} python)",
+                    python_frame_index,
+                    frames.len()
+                ));
             }
         }
 
@@ -150,7 +196,11 @@ impl NativeStack {
         Ok(merged)
     }
 
-    fn get_merge_strategy(&self, check_python: bool, frame: &remoteprocess::StackFrame) -> MergeType {
+    fn get_merge_strategy(
+        &self,
+        check_python: bool,
+        frame: &remoteprocess::StackFrame,
+    ) -> MergeType {
         if check_python {
             if let Some(ref function) = frame.function {
                 // We want to include some internal python functions. For example, calls like time.sleep
@@ -180,17 +230,17 @@ impl NativeStack {
                 // which is replaced by the function from the python stack
                 // note: we're splitting on both _ and . to handle symbols like
                 // _PyEval_EvalFrameDefault.cold.2962
-                let mut tokens = function.split(&['_', '.'][..]).filter(|&x| x.len() > 0);
+                let mut tokens = function.split(&['_', '.'][..]).filter(|&x| !x.is_empty());
                 match tokens.next() {
-                    Some("PyEval") => {
-                        match tokens.next() {
-                            Some("EvalFrameDefault") => MergeType::MergePythonFrame,
-                            Some("EvalFrameEx") => MergeType::MergePythonFrame,
-                            _ => MergeType::Ignore
-                        }
+                    Some("PyEval") => match tokens.next() {
+                        Some("EvalFrameDefault") => MergeType::MergePythonFrame,
+                        Some("EvalFrameEx") => MergeType::MergePythonFrame,
+                        _ => MergeType::Ignore,
                     },
-                    Some(prefix) if WHITELISTED_PREFIXES.contains(prefix) => MergeType::MergeNativeFrame,
-                    _ => MergeType::Ignore
+                    Some(prefix) if WHITELISTED_PREFIXES.contains(prefix) => {
+                        MergeType::MergeNativeFrame
+                    }
+                    _ => MergeType::Ignore,
                 }
             } else {
                 // is this correct? if we don't have a function name and in python binary should ignore?
@@ -204,7 +254,7 @@ impl NativeStack {
     /// translates a native frame into a optional frame. none indicates we should ignore this frame
     fn translate_native_frame(&self, frame: &remoteprocess::StackFrame) -> Option<Frame> {
         match &frame.function {
-            Some(func) =>  {
+            Some(func) => {
                 if ignore_frame(func, &frame.module) {
                     return None;
                 }
@@ -214,11 +264,9 @@ impl NativeStack {
 
                 // try to resolve the filename relative to the module if given
                 let filename = match frame.filename.as_ref() {
-                    Some(filename) => {
-                        resolve_filename(filename, &frame.module)
-                            .unwrap_or_else(|| filename.clone())
-                    },
-                    None => frame.module.clone()
+                    Some(filename) => resolve_filename(filename, &frame.module)
+                        .unwrap_or_else(|| filename.clone()),
+                    None => frame.module.clone(),
                 };
 
                 let mut demangled = None;
@@ -230,18 +278,30 @@ impl NativeStack {
                         }
                     }
                 }
-                let name = demangled.as_ref().unwrap_or_else(|| &func);
+                let name = demangled.as_ref().unwrap_or(func);
                 if cython::ignore_frame(name) {
                     return None;
                 }
-                let name = cython::demangle(&name).to_owned();
-                Some(Frame{filename, line, name, short_filename: None, module: Some(frame.module.clone()), locals: None})
-            },
-            None => {
-                Some(Frame{filename: frame.module.clone(),
-                           name: format!("0x{:x}", frame.addr), locals: None,
-                           line: 0, short_filename: None, module: Some(frame.module.clone())})
+                let name = cython::demangle(name).to_owned();
+                Some(Frame {
+                    filename,
+                    line,
+                    name,
+                    short_filename: None,
+                    module: Some(frame.module.clone()),
+                    locals: None,
+                    is_entry: true,
+                })
             }
+            None => Some(Frame {
+                filename: frame.module.clone(),
+                name: format!("0x{:x}", frame.addr),
+                locals: None,
+                line: 0,
+                short_filename: None,
+                module: Some(frame.module.clone()),
+                is_entry: true,
+            }),
         }
     }
 
@@ -258,12 +318,12 @@ impl NativeStack {
 enum MergeType {
     Ignore,
     MergePythonFrame,
-    MergeNativeFrame
+    MergeNativeFrame,
 }
 
 // the intent here is to remove top-level libc or pthreads calls
 // from the stack traces. This almost certainly can be done better
-#[cfg(target_os="linux")]
+#[cfg(target_os = "linux")]
 fn ignore_frame(function: &str, module: &str) -> bool {
     if function == "__libc_start_main" && module.contains("/libc") {
         return true;
@@ -280,7 +340,7 @@ fn ignore_frame(function: &str, module: &str) -> bool {
     false
 }
 
-#[cfg(target_os="macos")]
+#[cfg(target_os = "macos")]
 fn ignore_frame(function: &str, module: &str) -> bool {
     if function == "_start" && module.contains("/libdyld.dylib") {
         return true;

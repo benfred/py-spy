@@ -1,4 +1,4 @@
-#[cfg(unwind)]
+#[cfg(feature = "unwind")]
 pub fn resolve_filename(filename: &str, modulename: &str) -> Option<String> {
     // check the filename first, if it exists use it
     use std::path::Path;
@@ -11,9 +11,9 @@ pub fn resolve_filename(filename: &str, modulename: &str) -> Option<String> {
     let module = Path::new(modulename);
     if let Some(parent) = module.parent() {
         if let Some(name) = path.file_name() {
-        let temp = parent.join(name);
+            let temp = parent.join(name);
             if temp.exists() {
-                return Some(temp.to_string_lossy().to_owned().to_string())
+                return Some(temp.to_string_lossy().to_string());
             }
         }
     }

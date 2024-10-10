@@ -1,17 +1,19 @@
+#![allow(clippy::type_complexity)]
+
 use std::collections::HashMap;
-use std::sync::mpsc::{self, Sender, Receiver};
-use std::sync::{Mutex, Arc};
-use std::time::Duration;
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::Duration;
 
 use anyhow::Error;
 
 use remoteprocess::Pid;
 
-use crate::timer::Timer;
-use crate::python_spy::PythonSpy;
 use crate::config::Config;
-use crate::stack_trace::{StackTrace, ProcessInfo};
+use crate::python_spy::PythonSpy;
+use crate::stack_trace::{ProcessInfo, StackTrace};
+use crate::timer::Timer;
 use crate::version::Version;
 
 pub struct Sampler {
@@ -23,7 +25,7 @@ pub struct Sampler {
 pub struct Sample {
     pub traces: Vec<StackTrace>,
     pub sampling_errors: Option<Vec<(Pid, Error)>>,
-    pub late: Option<Duration>
+    pub late: Option<Duration>,
 }
 
 impl Sampler {
@@ -38,20 +40,23 @@ impl Sampler {
     /// Creates a new sampler object, reading from a single process only
     fn new_sampler(pid: Pid, config: &Config) -> Result<Sampler, Error> {
         let (tx, rx): (Sender<Sample>, Receiver<Sample>) = mpsc::channel();
-        let (initialized_tx, initialized_rx): (Sender<Result<Version, Error>>, Receiver<Result<Version, Error>>) = mpsc::channel();
+        let (initialized_tx, initialized_rx): (
+            Sender<Result<Version, Error>>,
+            Receiver<Result<Version, Error>>,
+        ) = mpsc::channel();
         let config = config.clone();
         let sampling_thread = thread::spawn(move || {
             // We need to create this object inside the thread here since PythonSpy objects don't
             // have the Send trait implemented on linux
             let mut spy = match PythonSpy::retry_new(pid, &config, 20) {
                 Ok(spy) => {
-                    if let Err(_) = initialized_tx.send(Ok(spy.version.clone())) {
+                    if initialized_tx.send(Ok(spy.version.clone())).is_err() {
                         return;
                     }
                     spy
-                },
-                Err(e) =>  {
-                    if initialized_tx.send(Err(e)).is_err() {}
+                }
+                Err(e) => {
+                    initialized_tx.send(Err(e)).unwrap();
                     return;
                 }
             };
@@ -62,7 +67,10 @@ impl Sampler {
                     Ok(traces) => traces,
                     Err(e) => {
                         if spy.process.exe().is_err() {
-                            info!("stopped sampling pid {} because the process exited", spy.pid);
+                            info!(
+                                "stopped sampling pid {} because the process exited",
+                                spy.pid
+                            );
                             break;
                         }
                         sampling_errors = Some(vec![(spy.pid, e)]);
@@ -71,14 +79,25 @@ impl Sampler {
                 };
 
                 let late = sleep.err();
-                if tx.send(Sample{traces: traces, sampling_errors, late}).is_err() {
+                if tx
+                    .send(Sample {
+                        traces,
+                        sampling_errors,
+                        late,
+                    })
+                    .is_err()
+                {
                     break;
                 }
             }
         });
 
         let version = initialized_rx.recv()??;
-        Ok(Sampler{rx: Some(rx), version: Some(version), sampling_thread: Some(sampling_thread)})
+        Ok(Sampler {
+            rx: Some(rx),
+            version: Some(version),
+            sampling_thread: Some(sampling_thread),
+        })
     }
 
     /// Creates a new sampler object that samples any python process in the
@@ -89,15 +108,19 @@ impl Sampler {
         // Initialize a PythonSpy object per child, and build up the process tree
         let mut spies = HashMap::new();
         let mut retries = 10;
-        spies.insert(pid, PythonSpyThread::new(pid, None, &config)?);
+        spies.insert(pid, PythonSpyThread::new(pid, None, config)?);
 
         loop {
             for (childpid, parentpid) in process.child_processes()? {
                 // If we can't create the child process, don't worry about it
                 // can happen with zombie child processes etc
-                match PythonSpyThread::new(childpid, Some(parentpid), &config) {
-                    Ok(spy)  => { spies.insert(childpid, spy); },
-                    Err(e) => { warn!("Failed to open process {}: {}", childpid, e); }
+                match PythonSpyThread::new(childpid, Some(parentpid), config) {
+                    Ok(spy) => {
+                        spies.insert(childpid, spy);
+                    }
+                    Err(e) => {
+                        warn!("Failed to open process {}: {}", childpid, e);
+                    }
                 }
             }
 
@@ -110,7 +133,10 @@ impl Sampler {
             // Otherwise sleep for a short time and retry
             retries -= 1;
             if retries == 0 {
-                return Err(format_err!("No python processes found in process {} or any of its subprocesses", pid));
+                return Err(format_err!(
+                    "No python processes found in process {} or any of its subprocesses",
+                    pid
+                ));
             }
             std::thread::sleep(std::time::Duration::from_millis(100));
         }
@@ -124,17 +150,26 @@ impl Sampler {
             while process.exe().is_ok() {
                 match monitor_spies.lock() {
                     Ok(mut spies) => {
-                        for (childpid, parentpid) in process.child_processes().expect("failed to get subprocesses") {
+                        for (childpid, parentpid) in process
+                            .child_processes()
+                            .expect("failed to get subprocesses")
+                        {
                             if spies.contains_key(&childpid) {
                                 continue;
                             }
                             match PythonSpyThread::new(childpid, Some(parentpid), &monitor_config) {
-                                Ok(spy) => { spies.insert(childpid, spy); }
-                                Err(e) => { warn!("Failed to create spy for {}: {}", childpid, e);  }
+                                Ok(spy) => {
+                                    spies.insert(childpid, spy);
+                                }
+                                Err(e) => {
+                                    warn!("Failed to create spy for {}: {}", childpid, e);
+                                }
                             }
                         }
-                    },
-                    Err(e) => { error!("Failed to acquire lock: {}", e); }
+                    }
+                    Err(e) => {
+                        error!("Failed to acquire lock: {}", e);
+                    }
                 }
                 std::thread::sleep(Duration::from_millis(100));
             }
@@ -168,11 +203,11 @@ impl Sampler {
                 // collect the traces from each python spy if possible
                 for spy in spies.values_mut() {
                     match spy.collect() {
-                        Some(Ok(mut t)) => { traces.append(&mut t) },
+                        Some(Ok(mut t)) => traces.append(&mut t),
                         Some(Err(e)) => {
-                            let errors = sampling_errors.get_or_insert_with(|| Vec::new());
+                            let errors = sampling_errors.get_or_insert_with(Vec::new);
                             errors.push((spy.process.pid, e));
-                        },
+                        }
                         None => {}
                     }
                 }
@@ -181,15 +216,22 @@ impl Sampler {
                 for trace in traces.iter_mut() {
                     let pid = trace.pid;
                     // Annotate each trace with the process info for the current
-                    let process = process_info.entry(pid).or_insert_with(|| {
-                        get_process_info(pid, &spies).map(|p| Arc::new(*p))
-                    });
+                    let process = process_info
+                        .entry(pid)
+                        .or_insert_with(|| get_process_info(pid, &spies).map(|p| Arc::new(*p)));
                     trace.process_info = process.clone();
                 }
 
                 // Send the collected info back
                 let late = sleep.err();
-                if tx.send(Sample{traces, sampling_errors, late}).is_err() {
+                if tx
+                    .send(Sample {
+                        traces,
+                        sampling_errors,
+                        late,
+                    })
+                    .is_err()
+                {
                     break;
                 }
 
@@ -200,7 +242,11 @@ impl Sampler {
             }
         });
 
-        Ok(Sampler{rx: Some(rx), version: None, sampling_thread: Some(sampling_thread)})
+        Ok(Sampler {
+            rx: Some(rx),
+            version: None,
+            sampling_thread: Some(sampling_thread),
+        })
     }
 }
 
@@ -229,61 +275,84 @@ struct PythonSpyThread {
     notified: bool,
     pub process: remoteprocess::Process,
     pub parent: Option<Pid>,
-    pub command_line: String
+    pub command_line: String,
 }
 
 impl PythonSpyThread {
     fn new(pid: Pid, parent: Option<Pid>, config: &Config) -> Result<PythonSpyThread, Error> {
-        let (initialized_tx, initialized_rx): (Sender<Result<Version, Error>>, Receiver<Result<Version, Error>>) = mpsc::channel();
+        let (initialized_tx, initialized_rx): (
+            Sender<Result<Version, Error>>,
+            Receiver<Result<Version, Error>>,
+        ) = mpsc::channel();
         let (notify_tx, notify_rx): (Sender<()>, Receiver<()>) = mpsc::channel();
-        let (sample_tx, sample_rx): (Sender<Result<Vec<StackTrace>, Error>>, Receiver<Result<Vec<StackTrace>, Error>>) = mpsc::channel();
+        let (sample_tx, sample_rx): (
+            Sender<Result<Vec<StackTrace>, Error>>,
+            Receiver<Result<Vec<StackTrace>, Error>>,
+        ) = mpsc::channel();
         let config = config.clone();
         let process = remoteprocess::Process::new(pid)?;
-        let command_line = process.cmdline().map(|x| x.join(" ")).unwrap_or("".to_owned());
+        let command_line = process
+            .cmdline()
+            .map(|x| x.join(" "))
+            .unwrap_or_else(|_| "".to_owned());
 
         thread::spawn(move || {
             // We need to create this object inside the thread here since PythonSpy objects don't
             // have the Send trait implemented on linux
             let mut spy = match PythonSpy::retry_new(pid, &config, 5) {
                 Ok(spy) => {
-                    if let Err(_) = initialized_tx.send(Ok(spy.version.clone())) {
+                    if initialized_tx.send(Ok(spy.version.clone())).is_err() {
                         return;
                     }
                     spy
-                },
-                Err(e) =>  {
+                }
+                Err(e) => {
                     warn!("Failed to profile python from process {}: {}", pid, e);
-                    if initialized_tx.send(Err(e)).is_err() {}
+                    initialized_tx.send(Err(e)).unwrap();
                     return;
                 }
             };
 
             for _ in notify_rx.iter() {
                 let result = spy.get_stack_traces();
-                if let Err(_) = result {
-                    if spy.process.exe().is_err() {
-                        info!("stopped sampling pid {} because the process exited", spy.pid);
-                        break;
-                    }
+                if result.is_err() && spy.process.exe().is_err() {
+                    info!(
+                        "stopped sampling pid {} because the process exited",
+                        spy.pid
+                    );
+                    break;
                 }
                 if sample_tx.send(result).is_err() {
                     break;
                 }
             }
         });
-        Ok(PythonSpyThread{initialized_rx, notify_tx, sample_rx, process, command_line, parent, initialized: None, running: false, notified: false})
+        Ok(PythonSpyThread {
+            initialized_rx,
+            notify_tx,
+            sample_rx,
+            process,
+            command_line,
+            parent,
+            initialized: None,
+            running: false,
+            notified: false,
+        })
     }
 
-    fn wait_initialized(&mut self) -> bool  {
+    fn wait_initialized(&mut self) -> bool {
         match self.initialized_rx.recv() {
             Ok(status) => {
                 self.running = status.is_ok();
                 self.initialized = Some(status);
                 self.running
-            },
+            }
             Err(e) => {
                 // shouldn't happen, but will be ok if it does
-                warn!("Failed to get initialization status from PythonSpyThread: {}", e);
+                warn!(
+                    "Failed to get initialization status from PythonSpyThread: {}",
+                    e
+                );
                 false
             }
         }
@@ -298,7 +367,7 @@ impl PythonSpyThread {
                 self.running = status.is_ok();
                 self.initialized = Some(status);
                 self.running
-            },
+            }
             Err(std::sync::mpsc::TryRecvError::Empty) => false,
             Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                 // this *shouldn't* happen
@@ -310,12 +379,16 @@ impl PythonSpyThread {
 
     fn notify(&mut self) {
         match self.notify_tx.send(()) {
-            Ok(_) => { self.notified = true; },
-            Err(_) => { self.running = false; }
+            Ok(_) => {
+                self.notified = true;
+            }
+            Err(_) => {
+                self.running = false;
+            }
         }
     }
 
-    fn collect(&mut self) -> Option<Result<Vec<StackTrace>, Error>>  {
+    fn collect(&mut self) -> Option<Result<Vec<StackTrace>, Error>> {
         if !self.notified {
             return None;
         }
@@ -332,7 +405,13 @@ impl PythonSpyThread {
 
 fn get_process_info(pid: Pid, spies: &HashMap<Pid, PythonSpyThread>) -> Option<Box<ProcessInfo>> {
     spies.get(&pid).map(|spy| {
-        let parent = spy.parent.and_then(|parentpid| get_process_info(parentpid, spies));
-        Box::new(ProcessInfo{pid, parent, command_line: spy.command_line.clone()})
+        let parent = spy
+            .parent
+            .and_then(|parentpid| get_process_info(parentpid, spies));
+        Box::new(ProcessInfo {
+            pid,
+            parent,
+            command_line: spy.command_line.clone(),
+        })
     })
 }

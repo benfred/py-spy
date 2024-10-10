@@ -26,16 +26,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-use std::collections::{HashMap};
+use std::collections::HashMap;
 use std::io;
 use std::io::Write;
 
 use crate::stack_trace;
-use remoteprocess::{Tid, Pid};
+use remoteprocess::{Pid, Tid};
 
-use anyhow::{Error};
+use anyhow::Error;
 use serde_derive::{Deserialize, Serialize};
-use serde_json;
 
 use crate::config::Config;
 
@@ -128,40 +127,51 @@ enum ValueUnit {
 }
 
 impl SpeedscopeFile {
-  pub fn new(samples: &HashMap<(Pid, Tid), Vec<Vec<usize>>>, frames: &Vec<Frame>,
-             thread_name_map: &HashMap<(Pid, Tid), String>, sample_rate: u64) -> SpeedscopeFile {
+    pub fn new(
+        samples: &HashMap<(Pid, Tid), Vec<Vec<usize>>>,
+        frames: &[Frame],
+        thread_name_map: &HashMap<(Pid, Tid), String>,
+        sample_rate: u64,
+    ) -> SpeedscopeFile {
+        let mut profiles: Vec<Profile> = samples
+            .iter()
+            .map(|(thread_id, samples)| {
+                let end_value = samples.len();
+                // we sample at 100 Hz, so scale the end value and weights to match the time unit
+                let scaled_end_value = end_value as f64 / sample_rate as f64;
+                let weights: Vec<f64> = samples
+                    .iter()
+                    .map(|_s| 1_f64 / sample_rate as f64)
+                    .collect();
 
-    let mut profiles: Vec<Profile> = samples.iter().map(|(thread_id, samples)| {
-        let end_value = samples.len();
-        // we sample at 100 Hz, so scale the end value and weights to match the time unit
-        let scaled_end_value = end_value as f64 / sample_rate as f64;
-        let weights: Vec<f64> = (&samples).iter().map(|_s| 1_f64 / sample_rate as f64).collect();
+                Profile {
+                    profile_type: ProfileType::Sampled,
+                    name: thread_name_map
+                        .get(thread_id)
+                        .map_or_else(|| "py-spy".to_string(), |x| x.clone()),
+                    unit: ValueUnit::Seconds,
+                    start_value: 0.0,
+                    end_value: scaled_end_value,
+                    samples: samples.clone(),
+                    weights,
+                }
+            })
+            .collect();
 
-        Profile {
-            profile_type: ProfileType::Sampled,
-            name: thread_name_map.get(thread_id).map_or_else(|| "py-spy".to_string(), |x| x.clone()),
-            unit: ValueUnit::Seconds,
-            start_value: 0.0,
-            end_value: scaled_end_value,
-            samples: samples.clone(),
-            weights
+        profiles.sort_by(|a, b| a.name.cmp(&b.name));
+
+        SpeedscopeFile {
+            // This is always the same
+            schema: "https://www.speedscope.app/file-format-schema.json".to_string(),
+            active_profile_index: None,
+            name: Some("py-spy profile".to_string()),
+            exporter: Some(format!("py-spy@{}", env!("CARGO_PKG_VERSION"))),
+            profiles,
+            shared: Shared {
+                frames: frames.to_owned(),
+            },
         }
-      }).collect();
-
-    profiles.sort_by(|a, b| a.name.cmp(&b.name));
-
-    SpeedscopeFile {
-      // This is always the same
-      schema: "https://www.speedscope.app/file-format-schema.json".to_string(),
-      active_profile_index: None,
-      name: Some("py-spy profile".to_string()),
-      exporter: Some(format!("py-spy@{}", env!("CARGO_PKG_VERSION"))),
-      profiles: profiles,
-      shared: Shared {
-          frames: frames.clone()
-      }
     }
-  }
 }
 
 impl Frame {
@@ -170,8 +180,12 @@ impl Frame {
             name: stack_frame.name.clone(),
             // TODO: filename?
             file: Some(stack_frame.filename.clone()),
-            line: if show_line_numbers { Some(stack_frame.line as u32) } else { None },
-            col: None
+            line: if show_line_numbers {
+                Some(stack_frame.line as u32)
+            } else {
+                None
+            },
+            col: None,
         }
     }
 }
@@ -197,30 +211,40 @@ impl Stats {
 
     pub fn record(&mut self, stack: &stack_trace::StackTrace) -> Result<(), io::Error> {
         let show_line_numbers = self.config.show_line_numbers;
-        let mut frame_indices: Vec<usize> = stack.frames.iter().map(|frame| {
-            let frames = &mut self.frames;
-            let mut key = frame.clone();
-            if !show_line_numbers {
-                key.line = 0;
-            }
-            *self.frame_to_index.entry(key).or_insert_with(|| {
-                let len = frames.len();
-                frames.push(Frame::new(&frame, show_line_numbers));
-                len
+        let mut frame_indices: Vec<usize> = stack
+            .frames
+            .iter()
+            .map(|frame| {
+                let frames = &mut self.frames;
+                let mut key = frame.clone();
+                if !show_line_numbers {
+                    key.line = 0;
+                }
+                *self.frame_to_index.entry(key).or_insert_with(|| {
+                    let len = frames.len();
+                    frames.push(Frame::new(frame, show_line_numbers));
+                    len
+                })
             })
-        }).collect();
+            .collect();
         frame_indices.reverse();
 
         let key = (stack.pid as Pid, stack.thread_id as Tid);
 
-        self.samples.entry(key).or_insert_with(|| {
-            vec![]
-        }).push(frame_indices);
+        self.samples.entry(key).or_default().push(frame_indices);
         let subprocesses = self.config.subprocesses;
         self.thread_name_map.entry(key).or_insert_with(|| {
-            let thread_name = stack.thread_name.as_ref().map_or_else(|| "".to_string(), |x| x.clone());
+            let thread_name = stack
+                .thread_name
+                .as_ref()
+                .map_or_else(|| "".to_string(), |x| x.clone());
             if subprocesses {
-                format!("Process {} Thread {} \"{}\"", stack.pid, stack.format_threadid(), thread_name)
+                format!(
+                    "Process {} Thread {} \"{}\"",
+                    stack.pid,
+                    stack.format_threadid(),
+                    thread_name
+                )
             } else {
                 format!("Thread {} \"{}\"", stack.format_threadid(), thread_name)
             }
@@ -230,7 +254,12 @@ impl Stats {
     }
 
     pub fn write(&self, w: &mut dyn Write) -> Result<(), Error> {
-        let json = serde_json::to_string(&SpeedscopeFile::new(&self.samples, &self.frames, &self.thread_name_map, self.config.sampling_rate))?;
+        let json = serde_json::to_string(&SpeedscopeFile::new(
+            &self.samples,
+            &self.frames,
+            &self.thread_name_map,
+            self.config.sampling_rate,
+        ))?;
         writeln!(w, "{}", json)?;
         Ok(())
     }
@@ -244,7 +273,11 @@ mod tests {
     #[test]
     fn test_speedscope_units() {
         let sample_rate = 100;
-        let config = Config{show_line_numbers: true, sampling_rate: sample_rate, ..Default::default()};
+        let config = Config {
+            show_line_numbers: true,
+            sampling_rate: sample_rate,
+            ..Default::default()
+        };
         let mut stats = Stats::new(&config);
         let mut cursor = Cursor::new(Vec::new());
 
@@ -255,6 +288,7 @@ mod tests {
             short_filename: None,
             line: 0,
             locals: None,
+            is_entry: true,
         };
 
         let trace = stack_trace::StackTrace {
