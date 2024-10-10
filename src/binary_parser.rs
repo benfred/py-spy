@@ -6,6 +6,7 @@ use anyhow::Error;
 use goblin::Object;
 use memmap::Mmap;
 
+#[allow(dead_code)]
 pub struct BinaryInfo {
     pub symbols: HashMap<String, u64>,
     pub bss_addr: u64,

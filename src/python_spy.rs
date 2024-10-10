@@ -26,6 +26,7 @@ use crate::stack_trace::{get_gil_threadid, get_stack_trace, StackTrace};
 use crate::version::Version;
 
 /// Lets you retrieve stack traces of a running python program
+#[allow(dead_code)]
 pub struct PythonSpy {
     pub pid: Pid,
     pub process: Process,
