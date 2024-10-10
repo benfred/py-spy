@@ -1,3 +1,6 @@
+[features]
+unwind = []
+
 [package]
 name = "py-spy"
 version = "0.3.14"
@@ -45,4 +48,4 @@ py-spy-testdata = "0.1.0"
 termios = "0.3.3"
 
 [target.'cfg(windows)'.dependencies]
-winapi = {version = "0.3", features = ["winbase", "consoleapi", "wincon", "handleapi", "timeapi", "processenv" ]}
+winapi = {version = "0.3", features = ["errhandlingapi", "winbase", "consoleapi", "wincon", "handleapi", "timeapi", "processenv" ]}

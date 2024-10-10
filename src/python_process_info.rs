@@ -10,7 +10,9 @@ use std::slice;
 use anyhow::{Context, Error, Result};
 use lazy_static::lazy_static;
 use proc_maps::{get_process_maps, MapRange};
-use remoteprocess::{Pid, ProcessMemory};
+#[cfg(not(target_os = "macos"))]
+use remoteprocess::Pid;
+use remoteprocess::ProcessMemory;
 
 use crate::binary_parser::{parse_binary, BinaryInfo};
 use crate::config::Config;
@@ -100,7 +102,7 @@ impl PythonProcessInfo {
             let filename = std::path::PathBuf::from(format!("/proc/{}/exe", process.pid));
 
             // TODO: consistent types? u64 -> usize? for map.start etc
-            let python_binary = parse_binary(&filename, map.start() as u64, map.size() as u64);
+            let python_binary = parse_binary(&filename, map.start() as u64);
 
             // windows symbols are stored in separate files (.pdb), load
             #[cfg(windows)]
@@ -156,8 +158,7 @@ impl PythonProcessInfo {
                     ));
 
                     #[allow(unused_mut)]
-                    let mut parsed =
-                        parse_binary(filename, libpython.start() as u64, libpython.size() as u64)?;
+                    let mut parsed = parse_binary(filename, libpython.start() as u64)?;
                     #[cfg(windows)]
                     parsed.symbols.extend(get_windows_python_symbols(
                         process.pid,
@@ -203,11 +204,8 @@ impl PythonProcessInfo {
                             libpython.filename.display()
                         );
 
-                        let mut binary = parse_binary(
-                            &libpython.filename,
-                            libpython.segment.vmaddr,
-                            libpython.segment.vmsize,
-                        )?;
+                        let mut binary =
+                            parse_binary(&libpython.filename, libpython.segment.vmaddr)?;
 
                         // TODO: bss addr offsets returned from parsing binary are wrong
                         // (assumes data section isn't split from text section like done here).
@@ -603,7 +601,7 @@ pub trait ContainsAddr {
 
 impl ContainsAddr for Vec<MapRange> {
     #[cfg(windows)]
-    fn contains_addr(&self, addr: usize) -> bool {
+    fn contains_addr(&self, _addr: usize) -> bool {
         // On windows, we can't just check if a pointer is valid by looking to see if it points
         // to something in the virtual memory map. Brute-force it instead
         true
