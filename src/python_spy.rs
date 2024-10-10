@@ -1,5 +1,3 @@
-#[cfg(windows)]
-use regex::RegexBuilder;
 use std::collections::HashMap;
 #[cfg(all(target_os = "linux", feature = "unwind"))]
 use std::collections::HashSet;
