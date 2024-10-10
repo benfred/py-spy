@@ -10,7 +10,9 @@ use std::slice;
 use anyhow::{Context, Error, Result};
 use lazy_static::lazy_static;
 use proc_maps::{get_process_maps, MapRange};
-use remoteprocess::{Pid, ProcessMemory};
+#[cfg(not(target_os = "macos"))]
+use remoteprocess::Pid;
+use remoteprocess::ProcessMemory;
 
 use crate::binary_parser::{parse_binary, BinaryInfo};
 use crate::config::Config;
@@ -604,7 +606,7 @@ pub trait ContainsAddr {
 
 impl ContainsAddr for Vec<MapRange> {
     #[cfg(windows)]
-    fn contains_addr(&self, addr: usize) -> bool {
+    fn contains_addr(&self, _addr: usize) -> bool {
         // On windows, we can't just check if a pointer is valid by looking to see if it points
         // to something in the virtual memory map. Brute-force it instead
         true

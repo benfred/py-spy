@@ -31,6 +31,7 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
     - uses: actions/checkout@v3
+    - uses: Swatinem/rust-cache@v2
     - name: Install Dependencies
       run: sudo apt install libunwind-dev
       if: runner.os == 'Linux'
@@ -39,6 +40,9 @@ jobs:
         python-version: 3.9
     - name: Build
       run: cargo build --release --verbose --examples
+    - uses: actions/setup-python@v4
+      with:
+        python-version: 3.9
     - name: Test
       id: test
       continue-on-error: true
@@ -92,6 +96,7 @@ jobs:
         CARGO_HOME: /root/.cargo
     steps:
     - uses: actions/checkout@v3
+    - uses: Swatinem/rust-cache@v2
     - name: Build
       run: |
         python3 -m pip install --upgrade maturin
