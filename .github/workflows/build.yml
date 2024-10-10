@@ -36,13 +36,13 @@ jobs:
       if: runner.os == 'Linux'
     - name: Build
       run: cargo build --release --verbose --examples
+    - uses: actions/setup-python@v4
+      with:
+        python-version: 3.9
     - name: Test
       id: test
       continue-on-error: true
       run: cargo test --release
-    - uses: actions/setup-python@v4
-      with:
-        python-version: 3.11
     - name: Test (retry#1)
       id: test1
       run: cargo test --release
