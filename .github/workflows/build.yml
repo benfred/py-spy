@@ -31,6 +31,7 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
     - uses: actions/checkout@v3
+    - uses: Swatinem/rust-cache@v2
     - name: Install Dependencies
       run: sudo apt install libunwind-dev
       if: runner.os == 'Linux'
@@ -92,6 +93,7 @@ jobs:
         CARGO_HOME: /root/.cargo
     steps:
     - uses: actions/checkout@v3
+    - uses: Swatinem/rust-cache@v2
     - name: Build
       run: |
         python3 -m pip install --upgrade maturin
