@@ -1,3 +1,4 @@
+from collections import defaultdict
 import requests
 import pathlib
 import re
@@ -13,8 +14,10 @@ def parse_version(v):
 def get_github_python_versions():
     versions_json = requests.get(_VERSIONS_URL).json()
     raw_versions = [v["version"] for v in versions_json]
-    versions = []
-    for version_str in raw_versions: 
+
+    minor_versions = defaultdict(list)
+
+    for version_str in raw_versions:
         if "-" in version_str:
             continue
 
@@ -26,8 +29,22 @@ def get_github_python_versions():
         elif major == 2 and minor < 7:
             # we don't test python support before 2.7
             continue
+        minor_versions[(major, minor)].append(patch)
 
-        versions.append(version_str)
+    versions = []
+    for (major, minor), patches in minor_versions.items():
+        patches.sort()
+
+        # for older versions of python, don't test all patches
+        # (just test first and last) to keep the test matrix down
+        if (major == 2 or minor < 10):
+            patches = [patches[0], patches[-1]]
+
+        if (major == 3 and minor >= 12):
+            continue
+
+        versions.extend(f"{major}.{minor}.{patch}" for patch in patches)
+
     return versions
 
 
@@ -55,7 +72,7 @@ if __name__ == "__main__":
     exclusions = []
     for v in versions:
         if v.startswith("3.11"):
-            exclusions.append("          - os: macos-latest\n")
+            exclusions.append("          - os: macos-13\n")
             exclusions.append(f"            python-version: {v}\n")
     test_wheels = transformed.index("  test-wheels:\n")
     first_line = transformed.index("        exclude:\n", test_wheels)
