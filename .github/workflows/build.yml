@@ -36,7 +36,7 @@ jobs:
       if: runner.os == 'Linux'
     - uses: actions/setup-python@v4
       with:
-        python-version: 3.10
+        python-version: '3.10'
     - name: Build
       run: cargo build --release --verbose --examples
     - name: Test
