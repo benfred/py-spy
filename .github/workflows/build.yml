@@ -100,13 +100,13 @@ jobs:
         python3 -m pip install --upgrade maturin
         maturin build --release -o dist --target $RUST_MUSL_CROSS_TARGET --features unwind
         maturin sdist -o dist
-        if: matrix.target == "x86_64-musl"
+      if: matrix.target == "x86_64-musl"
     - name: Build
       run: |
         python3 -m pip install --upgrade maturin
         maturin build --release -o dist --target $RUST_MUSL_CROSS_TARGET
         maturin sdist -o dist
-        if: matrix.target != "x86_64-musl"
+      if: matrix.target != "x86_64-musl"
     - name: Rename Wheels
       run: |
         python3 -c "import shutil; import glob; wheels = glob.glob('dist/*.whl'); [shutil.move(wheel, wheel.replace('py3', 'py2.py3')) for wheel in wheels if 'py2' not in wheel]"
