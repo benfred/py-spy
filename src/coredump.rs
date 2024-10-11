@@ -191,7 +191,7 @@ impl PythonCoreDump {
                 .find(|m| m.filename().is_some() & m.is_exec())
                 .ok_or_else(|| format_err!("Failed to get binary from coredump"))?;
             let python_filename = map.filename().unwrap();
-            let python_binary = parse_binary(python_filename, map.start() as _);
+            let python_binary = parse_binary(python_filename, map.start() as _, map.size() as _);
             info!("Found python binary @ {}", python_filename.display());
             (python_filename.to_owned(), python_binary)
         };
@@ -211,7 +211,8 @@ impl PythonCoreDump {
             if let Some(libpython) = libmap {
                 if let Some(filename) = &libpython.filename() {
                     info!("Found libpython binary @ {}", filename.display());
-                    let parsed = parse_binary(filename, libpython.start() as u64)?;
+                    let parsed =
+                        parse_binary(filename, libpython.start() as u64, libpython.size() as u64)?;
                     libpython_binary = Some(parsed);
                 }
             }
