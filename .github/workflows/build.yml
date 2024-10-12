@@ -55,8 +55,8 @@ jobs:
     - name: Build Wheel
       run: |
         pip install --upgrade maturin
-        maturin build --release -o dist
-      if: runner.os != 'Linux'
+        maturin build --release -o dist --all-features
+      if: runner.os == 'Windows'
     - name: Build Wheel - universal2
       env:
         DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
@@ -66,6 +66,7 @@ jobs:
         rustup target add aarch64-apple-darwin
         rustup target add x86_64-apple-darwin
         pip install --upgrade maturin
+        maturin build --release -o dist
         maturin build --release -o dist --target universal2-apple-darwin
       if: matrix.os == 'macos-latest'
     - name: Rename Wheels
@@ -97,8 +98,15 @@ jobs:
     - name: Build
       run: |
         python3 -m pip install --upgrade maturin
+        maturin build --release -o dist --target $RUST_MUSL_CROSS_TARGET --features unwind
+        maturin sdist -o dist
+      if: matrix.target == 'x86_64-musl'
+    - name: Build
+      run: |
+        python3 -m pip install --upgrade maturin
         maturin build --release -o dist --target $RUST_MUSL_CROSS_TARGET
         maturin sdist -o dist
+      if: matrix.target != 'x86_64-musl'
     - name: Rename Wheels
       run: |
         python3 -c "import shutil; import glob; wheels = glob.glob('dist/*.whl'); [shutil.move(wheel, wheel.replace('py3', 'py2.py3')) for wheel in wheels if 'py2' not in wheel]"
