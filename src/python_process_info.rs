@@ -102,7 +102,7 @@ impl PythonProcessInfo {
             let filename = std::path::PathBuf::from(format!("/proc/{}/exe", process.pid));
 
             // TODO: consistent types? u64 -> usize? for map.start etc
-            let python_binary = parse_binary(&filename, map.start() as u64);
+            let python_binary = parse_binary(&filename, map.start() as u64, map.size() as u64);
 
             // windows symbols are stored in separate files (.pdb), load
             #[cfg(windows)]
@@ -158,7 +158,8 @@ impl PythonProcessInfo {
                     ));
 
                     #[allow(unused_mut)]
-                    let mut parsed = parse_binary(filename, libpython.start() as u64)?;
+                    let mut parsed =
+                        parse_binary(filename, libpython.start() as u64, libpython.size() as u64)?;
                     #[cfg(windows)]
                     parsed.symbols.extend(get_windows_python_symbols(
                         process.pid,
@@ -204,8 +205,11 @@ impl PythonProcessInfo {
                             libpython.filename.display()
                         );
 
-                        let mut binary =
-                            parse_binary(&libpython.filename, libpython.segment.vmaddr)?;
+                        let mut binary = parse_binary(
+                            &libpython.filename,
+                            libpython.segment.vmaddr,
+                            libpython.segment.vmsize,
+                        )?;
 
                         // TODO: bss addr offsets returned from parsing binary are wrong
                         // (assumes data section isn't split from text section like done here).
