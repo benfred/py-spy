@@ -429,12 +429,12 @@ mod elfcore {
     }
 }
 
+#[cfg(target_arch = "x86_64")]
 #[cfg(test)]
 mod test {
     use super::*;
     use py_spy_testdata::get_coredump_path;
 
-    #[cfg(target_pointer_width = "64")]
     #[test]
     fn test_coredump() {
         // we won't have the python binary for the core dump here,
