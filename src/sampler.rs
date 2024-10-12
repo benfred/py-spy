@@ -219,7 +219,7 @@ impl Sampler {
                     let process = process_info
                         .entry(pid)
                         .or_insert_with(|| get_process_info(pid, &spies).map(|p| Arc::new(*p)));
-                    trace.process_info = process.clone();
+                    trace.process_info.clone_from(process);
                 }
 
                 // Send the collected info back
