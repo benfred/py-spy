@@ -7,10 +7,37 @@ use crate::stack_trace::StackTrace;
 
 use remoteprocess::Pid;
 
+fn get_stack_traces_with_config(pid: Pid, config: &Config) -> Result<Vec<StackTrace>, Error> {
+    let mut process = PythonSpy::new(pid, config)?;
+    let mut traces = process.get_stack_traces()?;
+    if config.subprocesses {
+        let unflattened: Result<Vec<Vec<StackTrace>>, Error> = process
+            .process
+            .child_processes()
+            .expect("failed to get subprocesses")
+            .into_iter()
+            .filter_map(|(cpid, ppid)| {
+                // child_processes() returns the whole process tree, since we're recursing here
+                // though we could end up printing grandchild processes multiple times. Limit down
+                // to just once
+                if ppid == pid {
+                    Some(get_stack_traces_with_config(cpid, config))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let mut subtraces = unflattened?.into_iter().flatten().collect();
+        traces.append(&mut subtraces);
+    }
+
+    Ok(traces)
+}
+
 pub fn print_traces(pid: Pid, config: &Config, parent: Option<Pid>) -> Result<(), Error> {
     let mut process = PythonSpy::new(pid, config)?;
     if config.dump_json {
-        let traces = process.get_stack_traces()?;
+        let traces = get_stack_traces_with_config(pid, config)?;
         println!("{}", serde_json::to_string_pretty(&traces)?);
         return Ok(());
     }
