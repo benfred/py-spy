@@ -22,7 +22,9 @@ pip install py-spy
 You can also download prebuilt binaries from the [GitHub Releases
 Page](https://github.com/benfred/py-spy/releases).
 
-If you're a Rust user, py-spy can also be installed with: ```cargo install py-spy```.
+If you're a Rust user, py-spy can also be installed with: ```cargo install py-spy```. Note this
+builds py-spy from source and requires `libunwind` on Linux and Window, e.g., 
+`apt install libunwind-dev`.
 
 On macOS, [py-spy is in Homebrew](https://formulae.brew.sh/formula/py-spy#default) and 
 can be installed with ```brew install py-spy```.
