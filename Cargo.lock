@@ -1071,6 +1071,7 @@ dependencies = [
  "rand_distr",
  "regex",
  "remoteprocess",
+ "rustc-demangle",
  "serde",
  "serde_derive",
  "serde_json",
