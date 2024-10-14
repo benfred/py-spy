@@ -9,11 +9,9 @@ mod config;
 mod console_viewer;
 #[cfg(target_os = "linux")]
 mod coredump;
-#[cfg(feature = "unwind")]
-mod cython;
 mod dump;
 mod flamegraph;
-#[cfg(feature = "unwind")]
+#[cfg(all(feature = "unwind", target_os = "linux", target_arch = "x86_64"))]
 mod native_stack_trace;
 mod python_bindings;
 mod python_data_access;

@@ -8,9 +8,11 @@ use lru::LruCache;
 use remoteprocess::{self, Pid};
 
 use crate::binary_parser::BinaryInfo;
-use crate::cython;
 use crate::stack_trace::Frame;
 use crate::utils::resolve_filename;
+
+#[path = "cython.rs"]
+mod cython;
 
 pub struct NativeStack {
     should_reload: bool,

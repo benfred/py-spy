@@ -1,6 +1,3 @@
-[features]
-unwind = []
-
 [package]
 name = "py-spy"
 version = "0.4.0"
@@ -49,3 +46,7 @@ termios = "0.3.3"
 
 [target.'cfg(windows)'.dependencies]
 winapi = {version = "0.3", features = ["errhandlingapi", "winbase", "consoleapi", "wincon", "handleapi", "timeapi", "processenv" ]}
+
+[features]
+default = ["unwind"]
+unwind = ["remoteprocess/unwind"]
