@@ -2,7 +2,7 @@ name: Update Python Test Versions
 on:
   workflow_dispatch:
   schedule:
-  - cron: "0 1 * * *"
+    - cron: "0 1 * * *"
 jobs:
   update-dep:
     runs-on: ubuntu-latest
@@ -17,12 +17,14 @@ jobs:
         run: pip install --upgrade requests
       - name: Scan for new python versions
         run: python ci/update_python_test_versions.py
+      - name: Format results
+        run: npx prettier --write ".github/workflows/update_python_test.yml"
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v4
         with:
-            commit-message: Update tested python versions
-            title: Update tested python versions
-            branch: update-python-versions
-            labels: |
-                skip-changelog
-                dependencies
+          commit-message: Update tested python versions
+          title: Update tested python versions
+          branch: update-python-versions
+          labels: |
+            skip-changelog
+            dependencies
