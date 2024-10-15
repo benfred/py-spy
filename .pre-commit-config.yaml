@@ -1,21 +1,26 @@
 repos:
-      - repo: https://github.com/codespell-project/codespell
-        rev: v2.2.4
-        hooks:
-        - id: codespell
-          additional_dependencies: [tomli]
-          args: ["--toml", "pyproject.toml"]
-          exclude: (?x)^(ci/testdata.*|images.*)$
-      - repo: https://github.com/doublify/pre-commit-rust
-        rev: v1.0
-        hooks:
-        - id: fmt
-        - id: cargo-check
-      - repo: local
-        hooks:
-        - id: cargo-clippy
-          name: cargo clippy
-          entry: cargo clippy -- -D warnings
-          language: system
-          files: \.rs$
-          pass_filenames: false
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.2.4
+    hooks:
+      - id: codespell
+        additional_dependencies: [tomli]
+        args: ["--toml", "pyproject.toml"]
+        exclude: (?x)^(ci/testdata.*|images.*)$
+  - repo: https://github.com/doublify/pre-commit-rust
+    rev: v1.0
+    hooks:
+      - id: fmt
+      - id: cargo-check
+  - repo: local
+    hooks:
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy -- -D warnings
+        language: system
+        files: \.rs$
+        pass_filenames: false
+  - repo: https://github.com/rbubley/mirrors-prettier
+    rev: v3.3.3
+    hooks:
+      - id: prettier
+        types: [yaml]
