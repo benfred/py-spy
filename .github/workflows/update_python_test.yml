@@ -14,7 +14,7 @@ jobs:
         with:
           python-version: 3.9
       - name: Install
-        run: pip install --upgrade requests
+        run: pip install --upgrade requests yaml
       - name: Scan for new python versions
         run: python ci/update_python_test_versions.py
       - name: Format results
