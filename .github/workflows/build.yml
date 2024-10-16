@@ -89,9 +89,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [i686-musl, armv7-musleabihf, aarch64-musl, x86_64-musl]
+        target:
+          [
+            i686-unknown-linux-musl,
+            armv7-unknown-linux-musleabihf,
+            aarch64-unknown-linux-musl,
+            x86_64-unknown-linux-musl,
+          ]
     container:
-      image: docker://benfred/rust-musl-cross:${{ matrix.target }}
+      image: ghcr.io/benfred/rust-musl-cross:${{ matrix.target }}
       env:
         RUSTUP_HOME: /root/.rustup
         CARGO_HOME: /root/.cargo
@@ -101,15 +107,15 @@ jobs:
       - name: Build
         run: |
           python3 -m pip install --upgrade maturin
-          maturin build --release -o dist --target $RUST_MUSL_CROSS_TARGET --features unwind
+          maturin build --release -o dist --target ${{ matrix.target }} --features unwind
           maturin sdist -o dist
-        if: matrix.target == 'x86_64-musl'
+        if: matrix.target == 'x86_64-unknown-linux-musl'
       - name: Build
         run: |
           python3 -m pip install --upgrade maturin
-          maturin build --release -o dist --target $RUST_MUSL_CROSS_TARGET
+          maturin build --release -o dist --target ${{ matrix.target }}
           maturin sdist -o dist
-        if: matrix.target != 'x86_64-musl'
+        if: matrix.target != 'x86_64-unknown-linux-musl'
       - name: Rename Wheels
         run: |
           python3 -c "import shutil; import glob; wheels = glob.glob('dist/*.whl'); [shutil.move(wheel, wheel.replace('py3', 'py2.py3')) for wheel in wheels if 'py2' not in wheel]"
