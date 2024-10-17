@@ -1065,6 +1065,7 @@ dependencies = [
  "log",
  "lru",
  "memmap",
+ "num-traits",
  "proc-maps",
  "py-spy-testdata",
  "rand",
