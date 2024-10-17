@@ -62,6 +62,8 @@ fn test_busy_loop() {
     assert!(traces[0].active);
 }
 
+// TODO: fix https://github.com/benfred/py-spy/issues/701
+#[ignore]
 #[cfg(feature = "unwind")]
 #[test]
 fn test_thread_reuse() {

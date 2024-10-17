@@ -1,6 +1,3 @@
-[features]
-unwind = []
-
 [package]
 name = "py-spy"
 version = "0.3.14"
@@ -11,7 +8,6 @@ description = "Sampling profiler for Python programs "
 readme = "README.md"
 exclude = ["images/*", "test_programs/*"]
 license = "MIT"
-build="build.rs"
 edition="2021"
 
 [dependencies]
@@ -38,7 +34,7 @@ serde_derive = "1.0"
 serde_json = "1.0"
 rand = "0.8"
 rand_distr = "0.4"
-remoteprocess = {version="0.4.12", features=["unwind"]}
+remoteprocess = "0.4.12"
 chrono = "0.4.26"
 
 [dev-dependencies]
@@ -49,3 +45,7 @@ termios = "0.3.3"
 
 [target.'cfg(windows)'.dependencies]
 winapi = {version = "0.3", features = ["errhandlingapi", "winbase", "consoleapi", "wincon", "handleapi", "timeapi", "processenv" ]}
+
+[features]
+default = ["unwind"]
+unwind = ["remoteprocess/unwind"]

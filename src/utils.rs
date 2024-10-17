@@ -1,4 +1,4 @@
-#[cfg(feature = "unwind")]
+#[cfg(all(feature = "unwind", target_os = "linux", target_arch = "x86_64"))]
 pub fn resolve_filename(filename: &str, modulename: &str) -> Option<String> {
     // check the filename first, if it exists use it
     use std::path::Path;

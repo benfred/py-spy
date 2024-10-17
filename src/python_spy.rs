@@ -1,15 +1,11 @@
 use std::collections::HashMap;
-#[cfg(all(target_os = "linux", feature = "unwind"))]
-use std::collections::HashSet;
-#[cfg(all(target_os = "linux", feature = "unwind"))]
-use std::iter::FromIterator;
 use std::path::Path;
 
 use anyhow::{Context, Error, Result};
 use remoteprocess::{Pid, Process, ProcessMemory, Tid};
 
 use crate::config::{Config, LockingStrategy};
-#[cfg(feature = "unwind")]
+#[cfg(all(feature = "unwind", target_os = "linux", target_arch = "x86_64"))]
 use crate::native_stack_trace::NativeStack;
 use crate::python_bindings::{
     v2_7_15, v3_10_0, v3_11_0, v3_12_0, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0, v3_9_5,
@@ -31,7 +27,7 @@ pub struct PythonSpy {
     pub interpreter_address: usize,
     pub threadstate_address: usize,
     pub config: Config,
-    #[cfg(feature = "unwind")]
+    #[cfg(all(feature = "unwind", target_os = "linux", target_arch = "x86_64"))]
     pub native: Option<NativeStack>,
     pub short_filenames: HashMap<String, Option<String>>,
     pub python_thread_ids: HashMap<u64, Tid>,
@@ -64,7 +60,7 @@ impl PythonSpy {
         // lets us figure out which thread has the GIL
         let threadstate_address = get_threadstate_address(&python_info, &version, config)?;
 
-        #[cfg(feature = "unwind")]
+        #[cfg(all(feature = "unwind", target_os = "linux", target_arch = "x86_64"))]
         let native = if config.native {
             Some(NativeStack::new(
                 pid,
@@ -81,7 +77,7 @@ impl PythonSpy {
             version,
             interpreter_address,
             threadstate_address,
-            #[cfg(feature = "unwind")]
+            #[cfg(all(feature = "unwind", target_os = "linux", target_arch = "x86_64"))]
             native,
             #[cfg(target_os = "linux")]
             dockerized: python_info.dockerized,
@@ -288,7 +284,7 @@ impl PythonSpy {
             }
 
             // Merge in the native stack frames if necessary
-            #[cfg(feature = "unwind")]
+            #[cfg(all(feature = "unwind", target_os = "linux", target_arch = "x86_64"))]
             {
                 if self.config.native {
                     if let Some(native) = self.native.as_mut() {
@@ -386,7 +382,10 @@ impl PythonSpy {
         Ok(None)
     }
 
-    #[cfg(all(target_os = "linux", not(feature = "unwind")))]
+    #[cfg(all(
+        target_os = "linux",
+        not(all(feature = "unwind", target_arch = "x86_64"))
+    ))]
     fn _get_os_thread_id<I: InterpreterState>(
         &mut self,
         _python_thread_id: u64,
@@ -395,12 +394,14 @@ impl PythonSpy {
         Ok(None)
     }
 
-    #[cfg(all(target_os = "linux", feature = "unwind"))]
+    #[cfg(all(target_os = "linux", feature = "unwind", target_arch = "x86_64"))]
     fn _get_os_thread_id<I: InterpreterState>(
         &mut self,
         python_thread_id: u64,
         interp: &I,
     ) -> Result<Option<Tid>, Error> {
+        use std::collections::HashSet;
+
         // in nonblocking mode, we can't get the threadid reliably (method here requires reading the RBX
         // register which requires a ptrace attach). fallback to heuristic thread activity here
         if self.config.blocking == LockingStrategy::NonBlocking {
@@ -446,6 +447,8 @@ impl PythonSpy {
                 Ok(pthread_id) => {
                     if pthread_id != 0 {
                         self.python_thread_ids.insert(pthread_id, threadid);
+                    } else if self.config.native {
+                        panic!("Native stack traces not supported on this platform");
                     }
                 }
                 Err(e) => {
@@ -480,12 +483,12 @@ impl PythonSpy {
         Ok(None)
     }
 
-    #[cfg(all(target_os = "linux", feature = "unwind"))]
+    #[cfg(all(target_os = "linux", feature = "unwind", target_arch = "x86_64"))]
     pub fn _get_pthread_id(
         &self,
         unwinder: &remoteprocess::Unwinder,
         thread: &remoteprocess::Thread,
-        threadids: &HashSet<u64>,
+        threadids: &std::collections::HashSet<u64>,
     ) -> Result<u64, Error> {
         let mut pthread_id = 0;
 

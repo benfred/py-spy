@@ -166,7 +166,11 @@ impl Config {
             .help("Collect stack traces from native extensions written in Cython, C or C++");
 
         // Only show `--native` on platforms where it's supported
-        if !cfg!(feature = "unwind") {
+        if !cfg!(all(
+            feature = "unwind",
+            target_os = "linux",
+            target_arch = "x86_64"
+        )) {
             native = native.hide(true);
         }
 
@@ -362,7 +366,7 @@ impl Config {
         let (subcommand, matches) = matches.subcommand().unwrap();
 
         // Check if `--native` was used on an unsupported platform
-        if !cfg!(feature = "unwind") && matches.contains_id("native") {
+        if native.is_hide_set() && matches.contains_id("native") {
             eprintln!(
                 "Collecting stack traces from native extensions (`--native`) is not supported on your platform."
             );
@@ -437,9 +441,7 @@ impl Config {
             .value_of("pid")
             .map(|p| p.parse().expect("invalid pid"));
         config.full_filenames = matches.occurrences_of("full_filenames") > 0;
-        if cfg!(feature = "unwind") {
-            config.native = matches.occurrences_of("native") > 0;
-        }
+        config.native = matches.occurrences_of("native") > 0;
 
         config.capture_output = config.command != "record" || matches.occurrences_of("capture") > 0;
         if !config.capture_output {

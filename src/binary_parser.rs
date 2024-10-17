@@ -17,7 +17,7 @@ pub struct BinaryInfo {
 }
 
 impl BinaryInfo {
-    #[cfg(feature = "unwind")]
+    #[cfg(all(feature = "unwind", target_os = "linux", target_arch = "x86_64"))]
     pub fn contains(&self, addr: u64) -> bool {
         addr >= self.addr && addr < (self.addr + self.size)
     }
