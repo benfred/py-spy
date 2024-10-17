@@ -31,7 +31,7 @@ lru = "0.10"
 regex = ">=1.6.0"
 tempfile = "3.6.0"
 proc-maps = "0.3.2"
-memmap = "0.7.0"
+memmap2 = "0.9.4"
 cpp_demangle = "0.4"
 serde = {version="1.0", features=["rc"]}
 serde_derive = "1.0"
