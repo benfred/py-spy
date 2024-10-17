@@ -273,7 +273,13 @@ impl NativeStack {
                 if func.starts_with('_') {
                     if let Ok((sym, _)) = BorrowedSymbol::with_tail(func.as_bytes()) {
                         let options = DemangleOptions::new().no_params().no_return_type();
-                        if let Ok(sym) = sym.demangle(&options) {
+                        if let Ok(mut sym) = sym.demangle(&options) {
+                            // try to demangle with rustc_demangle for better representation for Rust symbols
+                            if let Ok(sym2) = rustc_demangle::try_demangle(func) {
+                                if sym2.as_str().len() < sym.len() {
+                                    sym = sym2.to_string();
+                                }
+                            }
                             demangled = Some(sym);
                         }
                     }
