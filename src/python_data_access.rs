@@ -67,7 +67,7 @@ pub fn copy_long<P: ProcessMemory>(
     let (size, negative, digit, value_size) = match version {
         Version {
             major: 3,
-            minor: 12,
+            minor: 12..=13,
             ..
         } => {
             // PyLongObject format changed in python 3.12
@@ -160,7 +160,7 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
         let mut dict_addr: usize = process.copy_struct(addr - 3 * std::mem::size_of::<usize>())?;
 
         // for python 3.12, the values/dict are combined into a single tagged pointer
-        if version.major == 3 && version.minor == 12 {
+        if version.major == 3 && version.minor >= 12 {
             if dict_addr & 1 == 0 {
                 values_addr = 0;
             } else {
@@ -170,7 +170,7 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
         }
 
         if values_addr != 0 {
-            let ht_cached_keys = if version.major == 3 && version.minor == 12 {
+            let ht_cached_keys = if version.major == 3 && version.minor >= 12 {
                 let ht: crate::python_bindings::v3_12_0::PyHeapTypeObject =
                     process.copy_struct(tp_addr)?;
                 ht.ht_cached_keys as usize
@@ -208,7 +208,7 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
         match version {
             Version {
                 major: 3,
-                minor: 11..=12,
+                minor: 11..=13,
                 ..
             } => {
                 let dict: crate::python_bindings::v3_11_0::PyDictObject =
