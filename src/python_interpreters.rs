@@ -455,8 +455,8 @@ impl FrameObject for v3_13_0::_PyInterpreterFrame {
         self.f_executable as *mut v3_13_0::PyCodeObject
     }
     fn lasti(&self) -> i32 {
-        // TODO:
-        0
+        let co_code = self.f_executable as *const _ as *const u8;
+        unsafe { (self.instr_ptr as *const u8).offset_from(co_code) as i32 }
     }
     fn back(&self) -> *mut Self {
         self.previous
