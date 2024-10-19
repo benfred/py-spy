@@ -38,10 +38,10 @@ def get_github_python_versions():
 
         # for older versions of python, don't test all patches
         # (just test first and last) to keep the test matrix down
-        if major == 2 or minor <= 10:
+        if major == 2 or minor <= 11:
             patches = [patches[0], patches[-1]]
 
-        if major == 3 and minor >= 13:
+        if major == 3 and minor > 13:
             continue
 
         versions.extend(f"{major}.{minor}.{patch}" for patch in patches)
@@ -82,7 +82,7 @@ def update_python_test_versions():
     # since it currently fails in GHA on SIP errors
     exclusions = []
     for v in versions:
-        if v.startswith("3.11") or v.startswith("3.12"):
+        if v.startswith("3.11") or v.startswith("3.12") or v.startswith("3.13"):
             exclusions.append("          - os: macos-13\n")
             exclusions.append(f"            python-version: {v}\n")
     first_exclude_line = lines.index("        exclude:\n", first_line)

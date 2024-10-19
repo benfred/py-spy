@@ -17,7 +17,8 @@ use remoteprocess::ProcessMemory;
 use crate::binary_parser::{parse_binary, BinaryInfo};
 use crate::config::Config;
 use crate::python_bindings::{
-    pyruntime, v2_7_15, v3_10_0, v3_11_0, v3_12_0, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0, v3_9_5,
+    pyruntime, v2_7_15, v3_10_0, v3_11_0, v3_12_0, v3_13_0, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0,
+    v3_9_5,
 };
 use crate::python_interpreters::{InterpreterState, ThreadState};
 use crate::stack_trace::get_stack_traces;
@@ -345,7 +346,7 @@ where
     match version {
         Version {
             major: 3,
-            minor: 7..=12,
+            minor: 7..=13,
             ..
         } => {
             if let Some(&addr) = python_info.get_symbol("_PyRuntime") {
@@ -379,7 +380,7 @@ where
             }
         }
     };
-    info!("Failed to get interp_head from symbols, scanning BSS section from main binary");
+    info!("Failed to find runtime address from symbols, scanning BSS section from main binary");
 
     // try scanning the BSS section of the binary for things that might be the interpreterstate
     let err = if let Some(ref pb) = python_info.python_binary {
@@ -524,6 +525,11 @@ where
             minor: 12,
             ..
         } => check::<v3_12_0::_is, P>(addrs, maps, process),
+        Version {
+            major: 3,
+            minor: 13,
+            ..
+        } => check::<v3_13_0::_is, P>(addrs, maps, process),
         _ => Err(format_err!("Unsupported version of Python: {}", version)),
     }
 }

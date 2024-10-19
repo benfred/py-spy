@@ -2,6 +2,7 @@ pub mod v2_7_15;
 pub mod v3_10_0;
 pub mod v3_11_0;
 pub mod v3_12_0;
+pub mod v3_13_0;
 pub mod v3_3_7;
 pub mod v3_5_5;
 pub mod v3_6_6;
@@ -75,6 +76,13 @@ pub mod pyruntime {
                 minor: 11..=12,
                 ..
             } => 40,
+            // TODO: we can get this from the _PyRuntime.debug_offsets.runtime_state.interpreters_head
+            // way easier than we can get by updating manually, we should take advantagbe of that
+            Version {
+                major: 3,
+                minor: 13,
+                ..
+            } => 632,
             _ => 24,
         }
     }

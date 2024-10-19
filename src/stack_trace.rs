@@ -132,7 +132,13 @@ where
             .copy_pointer(frame.code())
             .context("Failed to copy PyCodeObject")?;
 
-        let filename = copy_string(code.filename(), process).context("Failed to copy filename")?;
+        let filename = copy_string(code.filename(), process).context("Failed to copy filename");
+        if filename.is_err() {
+            // TODO: handle case where code isn't codeobject in py3.13+
+            frame_ptr = frame.back();
+            continue;
+        }
+        let filename = filename?;
 
         // skip <shim> entries in python 3.12+
         if filename == "<shim>" {
