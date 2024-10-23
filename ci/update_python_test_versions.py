@@ -82,7 +82,7 @@ def update_python_test_versions():
     # since it currently fails in GHA on SIP errors
     exclusions = []
     for v in versions:
-        if v.startswith("3.11") or v.startswith("3.12") or v.startswith("3.13"):
+        if v.startswith("3.11") or v.startswith("3.12"):
             exclusions.append("          - os: macos-13\n")
             exclusions.append(f"            python-version: {v}\n")
     first_exclude_line = lines.index("        exclude:\n", first_line)

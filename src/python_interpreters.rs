@@ -403,7 +403,6 @@ macro_rules! Python3Impl {
 }
 
 // Python 3.13
-// TODO: this shares some similarities with python 3.12/3.11, we should refactor to a common macro
 Python3Impl!(v3_13_0);
 
 impl InterpreterState for v3_13_0::PyInterpreterState {
