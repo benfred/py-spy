@@ -446,9 +446,6 @@ impl ThreadState for v3_13_0::PyThreadState {
 impl FrameObject for v3_13_0::_PyInterpreterFrame {
     type CodeObject = v3_13_0::PyCodeObject;
     fn code(&self) -> *mut Self::CodeObject {
-        // TODO: this has been replaced with f_executable
-        // ... which means we might have to check the type etc
-        // https://github.com/python/cpython/issues/100987#issuecomment-1465963433
         self.f_executable as *mut v3_13_0::PyCodeObject
     }
     fn lasti(&self) -> i32 {
