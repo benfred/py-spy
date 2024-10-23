@@ -346,7 +346,32 @@ where
     match version {
         Version {
             major: 3,
-            minor: 7..=13,
+            minor: 13,
+            ..
+        } => {
+            if let Some(&addr) = python_info.get_symbol("_PyRuntime") {
+                // figure out the interpreters_head location using the debug_offsets
+                let debug_offsets: v3_13_0::_Py_DebugOffsets =
+                    process.copy_struct(addr as usize)?;
+                let addr = process.copy_struct(
+                    addr as usize + debug_offsets.runtime_state.interpreters_head as usize,
+                )?;
+
+                // Make sure the interpreter addr is valid before returning
+                match check_interpreter_addresses(&[addr], &*python_info.maps, process, version) {
+                    Ok(addr) => return Ok(addr),
+                    Err(_) => {
+                        warn!(
+                            "Interpreter address from _PyRuntime symbol is invalid {:016x}",
+                            addr
+                        );
+                    }
+                };
+            }
+        }
+        Version {
+            major: 3,
+            minor: 7..=12,
             ..
         } => {
             if let Some(&addr) = python_info.get_symbol("_PyRuntime") {
