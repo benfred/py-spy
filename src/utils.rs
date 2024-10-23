@@ -20,3 +20,7 @@ pub fn resolve_filename(filename: &str, modulename: &str) -> Option<String> {
 
     None
 }
+
+pub fn offset_of<T, M>(object: *const T, member: *const M) -> usize {
+    member as usize - object as usize
+}

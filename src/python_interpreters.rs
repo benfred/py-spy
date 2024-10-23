@@ -14,6 +14,7 @@ This means we can't dereference them directly.
 use crate::python_bindings::{
     v2_7_15, v3_10_0, v3_11_0, v3_12_0, v3_13_0, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0, v3_9_5,
 };
+use crate::utils::offset_of;
 
 pub trait InterpreterState {
     type ThreadState: ThreadState;
@@ -98,10 +99,6 @@ pub trait TypeObject {
     fn name(&self) -> *const ::std::os::raw::c_char;
     fn dictoffset(&self) -> isize;
     fn flags(&self) -> usize;
-}
-
-fn offset_of<T, M>(object: *const T, member: *const M) -> usize {
-    member as usize - object as usize
 }
 
 /// This macro provides a common impl for PyThreadState/PyFrameObject/PyCodeObject traits
