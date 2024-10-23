@@ -226,44 +226,6 @@ jobs:
         os: [ubuntu-20.04, macos-13]
         # some versions of python can't be tested on GHA with osx because of SIP:
         exclude:
-          - os: macos-13
-            python-version: 3.11.0
-          - os: macos-13
-            python-version: 3.11.1
-          - os: macos-13
-            python-version: 3.11.2
-          - os: macos-13
-            python-version: 3.11.3
-          - os: macos-13
-            python-version: 3.11.4
-          - os: macos-13
-            python-version: 3.11.5
-          - os: macos-13
-            python-version: 3.11.6
-          - os: macos-13
-            python-version: 3.11.7
-          - os: macos-13
-            python-version: 3.11.8
-          - os: macos-13
-            python-version: 3.11.9
-          - os: macos-13
-            python-version: 3.11.10
-          - os: macos-13
-            python-version: 3.12.0
-          - os: macos-13
-            python-version: 3.12.1
-          - os: macos-13
-            python-version: 3.12.2
-          - os: macos-13
-            python-version: 3.12.3
-          - os: macos-13
-            python-version: 3.12.4
-          - os: macos-13
-            python-version: 3.12.5
-          - os: macos-13
-            python-version: 3.12.6
-          - os: macos-13
-            python-version: 3.12.7
 
     steps:
       - uses: actions/checkout@v2
