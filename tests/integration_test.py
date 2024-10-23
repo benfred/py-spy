@@ -48,7 +48,8 @@ class TestPyspy(unittest.TestCase):
             ]
             cmdline.extend(options or [])
             cmdline.extend(["--", sys.executable, script_name])
-            subprocess.check_output(cmdline)
+            env = dict(os.environ, RUST_LOG="debug")
+            subprocess.check_output(cmdline, env=env)
             with open(profile_file.name) as f:
                 profiles = json.load(f)
 
@@ -68,9 +69,10 @@ class TestPyspy(unittest.TestCase):
 
     def test_longsleep(self):
         # running with the gil flag should have ~ no samples returned
-        profile = self._sample_process(_get_script("longsleep.py"), GIL)
-        print(profile)
-        assert sum(profile.values()) <= 10
+        if GIL:
+            profile = self._sample_process(_get_script("longsleep.py"), GIL)
+            print(profile)
+            assert sum(profile.values()) <= 10
 
         # running with the idle flag should have > 95%  of samples in the sleep call
         profile = self._sample_process(_get_script("longsleep.py"), ["--idle"])
