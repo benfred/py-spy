@@ -224,8 +224,6 @@ jobs:
           ]
         # TODO: also test windows
         os: [ubuntu-20.04, macos-13]
-        # some versions of python can't be tested on GHA with osx because of SIP:
-        exclude:
 
     steps:
       - uses: actions/checkout@v2
