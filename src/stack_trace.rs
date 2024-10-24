@@ -133,6 +133,13 @@ where
             .context("Failed to copy PyCodeObject")?;
 
         let filename = copy_string(code.filename(), process).context("Failed to copy filename")?;
+
+        // skip <shim> entries in python 3.12+
+        if filename == "<shim>" {
+            frame_ptr = frame.back();
+            continue;
+        }
+
         let name = copy_string(code.name(), process).context("Failed to copy function name")?;
 
         let line = match lineno {

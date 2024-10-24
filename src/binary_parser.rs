@@ -10,6 +10,10 @@ pub struct BinaryInfo {
     pub symbols: HashMap<String, u64>,
     pub bss_addr: u64,
     pub bss_size: u64,
+    #[allow(dead_code)]
+    pub addr: u64,
+    #[allow(dead_code)]
+    pub size: u64,
 }
 
 impl BinaryInfo {
@@ -20,7 +24,7 @@ impl BinaryInfo {
 }
 
 /// Uses goblin to parse a binary file, returns information on symbols/bss/adjusted offset etc
-pub fn parse_binary(filename: &Path, addr: u64) -> Result<BinaryInfo, Error> {
+pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo, Error> {
     let offset = addr;
 
     let mut symbols = HashMap::new();
@@ -78,6 +82,8 @@ pub fn parse_binary(filename: &Path, addr: u64) -> Result<BinaryInfo, Error> {
                 symbols,
                 bss_addr,
                 bss_size,
+                addr,
+                size,
             })
         }
 
@@ -132,6 +138,8 @@ pub fn parse_binary(filename: &Path, addr: u64) -> Result<BinaryInfo, Error> {
                 symbols,
                 bss_addr: bss_header.sh_addr + offset,
                 bss_size: bss_header.sh_size,
+                addr,
+                size,
             })
         }
         Object::PE(pe) => {
@@ -160,6 +168,8 @@ pub fn parse_binary(filename: &Path, addr: u64) -> Result<BinaryInfo, Error> {
                         symbols,
                         bss_addr,
                         bss_size,
+                        addr,
+                        size,
                     }
                 })
         }
