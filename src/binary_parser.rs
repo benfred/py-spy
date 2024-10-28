@@ -4,7 +4,7 @@ use std::path::Path;
 
 use anyhow::Error;
 use goblin::Object;
-use memmap::Mmap;
+use memmap2::Mmap;
 
 pub struct BinaryInfo {
     pub symbols: HashMap<String, u64>,

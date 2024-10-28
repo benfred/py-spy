@@ -11,7 +11,7 @@ dependencies = [
  "cpp_demangle",
  "fallible-iterator",
  "gimli",
- "memmap2",
+ "memmap2 0.5.10",
  "object",
  "rustc-demangle",
  "smallvec",
@@ -913,6 +913,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "memmap2"
+version = "0.9.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe751422e4a8caa417e13c3ea66452215d7d63e19e604f4980461212f3ae1322"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "minimal-lexical"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1125,7 +1134,7 @@ dependencies = [
  "libc",
  "log",
  "lru",
- "memmap",
+ "memmap2 0.9.4",
  "proc-maps",
  "py-spy-testdata",
  "rand",
