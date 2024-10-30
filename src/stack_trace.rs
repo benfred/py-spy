@@ -132,19 +132,33 @@ where
         let frame = process
             .copy_pointer(frame_ptr)
             .context("Failed to copy PyFrameObject")?;
+
         let code = process
             .copy_pointer(frame.code())
             .context("Failed to copy PyCodeObject")?;
 
-        let filename = copy_string(code.filename(), process).context("Failed to copy filename")?;
+        let filename = copy_string(code.filename(), process).context("Failed to copy filename");
+        let name = copy_string(code.name(), process).context("Failed to copy function name");
+
+        // just skip processing the current frame if we can't load the filename or function name.
+        // this can happen in python 3.13+ since the f_executable isn't guaranteed to be
+        // a PyCodeObject. We could check the type (and mimic the logic of PyCode_Check here)
+        // but that would require extra overhead of reading the ob_type per frame - and we
+        // would also have to figure out what the address of PyCode_Type is (which will be
+        // easier if something like https://github.com/python/cpython/issues/100987#issuecomment-1487227139
+        // is merged )
+        if filename.is_err() || name.is_err() {
+            frame_ptr = frame.back();
+            continue;
+        }
+        let filename = filename?;
+        let name = name?;
 
         // skip <shim> entries in python 3.12+
         if filename == "<shim>" {
             frame_ptr = frame.back();
             continue;
         }
-
-        let name = copy_string(code.name(), process).context("Failed to copy function name")?;
 
         let line = match lineno {
             LineNo::NoLine => 0,

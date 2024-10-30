@@ -16,11 +16,6 @@ Frame = namedtuple("Frame", ["file", "name", "line", "col"])
 # (doesn't seem to be working quite right - TODO: investigate)
 GIL = ["--gil"] if not sys.platform.startswith("win") else []
 
-# also disable GIL checks on python 3.12+ for now
-if sys.version_info.major == 3 or sys.version_info.minor >= 12:
-    GIL = []
-
-
 PYSPY = which("py-spy")
 
 
@@ -68,9 +63,10 @@ class TestPyspy(unittest.TestCase):
 
     def test_longsleep(self):
         # running with the gil flag should have ~ no samples returned
-        profile = self._sample_process(_get_script("longsleep.py"), GIL)
-        print(profile)
-        assert sum(profile.values()) <= 10
+        if GIL:
+            profile = self._sample_process(_get_script("longsleep.py"), GIL)
+            print(profile)
+            assert sum(profile.values()) <= 10
 
         # running with the idle flag should have > 95%  of samples in the sleep call
         profile = self._sample_process(_get_script("longsleep.py"), ["--idle"])

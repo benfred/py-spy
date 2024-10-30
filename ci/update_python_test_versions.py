@@ -38,10 +38,10 @@ def get_github_python_versions():
 
         # for older versions of python, don't test all patches
         # (just test first and last) to keep the test matrix down
-        if major == 2 or minor <= 10:
+        if major == 2 or minor <= 11:
             patches = [patches[0], patches[-1]]
 
-        if major == 3 and minor >= 13:
+        if major == 3 and minor > 13:
             continue
 
         versions.extend(f"{major}.{minor}.{patch}" for patch in patches)
