@@ -62,7 +62,8 @@ impl PythonSpy {
         info!("Found interpreter at 0x{:016x}", interpreter_address);
 
         // lets us figure out which thread has the GIL
-        let threadstate_address = get_threadstate_address(&python_info, &version, config)?;
+        let threadstate_address =
+            get_threadstate_address(interpreter_address, &python_info, &version, config)?;
 
         #[cfg(feature = "unwind")]
         let native = if config.native {
@@ -206,17 +207,18 @@ impl PythonSpy {
             None
         };
 
-        // TODO: hoist most of this code out to stack_trace.rs, and
-        // then annotate the output of that with things like native stack traces etc
-        //      have moved in gil / locals etc
-        let gil_thread_id =
-            get_gil_threadid::<I, Process>(self.threadstate_address, &self.process)?;
-
         // Get the python interpreter, and loop over all the python threads
         let interp: I = self
             .process
             .copy_struct(self.interpreter_address)
             .context("Failed to copy PyInterpreterState from process")?;
+
+        // get the threadid of the gil if appropriate
+        let gil_thread_id = if interp.gil_locked().unwrap_or(true) {
+            get_gil_threadid::<I, Process>(self.threadstate_address, &self.process)?
+        } else {
+            0
+        };
 
         let mut traces = Vec::new();
         let mut threads = interp.head();

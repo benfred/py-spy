@@ -529,6 +529,7 @@ where
 }
 
 pub fn get_threadstate_address(
+    interpreter_address: usize,
     python_info: &PythonProcessInfo,
     version: &Version,
     config: &Config,
@@ -536,7 +537,16 @@ pub fn get_threadstate_address(
     let threadstate_address = match version {
         Version {
             major: 3,
-            minor: 7..=12,
+            minor: 12,
+            ..
+        } => {
+            let interp: v3_12_0::_is = Default::default();
+            let offset = crate::utils::offset_of(&interp, &interp._gil.last_holder._value);
+            interpreter_address + offset
+        }
+        Version {
+            major: 3,
+            minor: 7..=11,
             ..
         } => match python_info.get_symbol("_PyRuntime") {
             Some(&addr) => {
