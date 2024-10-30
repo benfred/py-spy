@@ -276,6 +276,11 @@ jobs:
       - name: Install wheel
         run: |
           pip install --force-reinstall --no-index --find-links . py-spy
+      - name: Show elf sections
+        id: readelf
+        run: readelf -S `which python`
+        if: runner.os != 'macOS'
+        continue-on-error: true
       - name: Test Wheel
         id: test
         run: python tests/integration_test.py
