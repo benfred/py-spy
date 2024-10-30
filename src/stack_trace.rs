@@ -77,7 +77,11 @@ where
     I: InterpreterState,
     P: ProcessMemory,
 {
-    let gil_thread_id = get_gil_threadid::<I, P>(threadstate_address, process)?;
+    let gil_thread_id = if interpreter.gil_locked().unwrap_or(true) {
+        get_gil_threadid::<I, P>(threadstate_address, process)?
+    } else {
+        0
+    };
 
     let mut ret = Vec::new();
     let mut threads = interpreter.head();
