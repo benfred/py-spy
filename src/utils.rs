@@ -38,6 +38,10 @@ pub fn is_subrange<T: Eq + Ord + Add + CheckedAdd + Zero>(
         && sub_start + sub_size <= start + size
 }
 
+pub fn offset_of<T, M>(object: *const T, member: *const M) -> usize {
+    member as usize - object as usize
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
