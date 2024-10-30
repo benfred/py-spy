@@ -6,6 +6,8 @@ use anyhow::Error;
 use goblin::Object;
 use memmap2::Mmap;
 
+use crate::utils::is_subrange;
+
 pub struct BinaryInfo {
     pub symbols: HashMap<String, u64>,
     pub bss_addr: u64,
@@ -52,6 +54,12 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
                                 filename.display()
                             )
                         })??;
+                    if !is_subrange(0, buffer.len(), arch.offset as usize, arch.size as usize) {
+                        return Err(format_err!(
+                            "Invalid offset/size in FAT archive in {}",
+                            filename.display()
+                        ));
+                    }
                     let bytes = &buffer[arch.offset as usize..][..arch.size as usize];
                     goblin::mach::MachO::parse(bytes, 0)?
                 }
@@ -62,8 +70,12 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
             for segment in mach.segments.iter() {
                 for (section, _) in &segment.sections()? {
                     if section.name()? == "__bss" {
-                        bss_addr = section.addr + offset;
-                        bss_size = section.size;
+                        if let Some(addr) = section.addr.checked_add(offset) {
+                            if addr.checked_add(section.size).is_some() {
+                                bss_addr = addr;
+                                bss_size = section.size;
+                            }
+                        }
                     }
                 }
             }
@@ -126,18 +138,62 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
             // the map address is relatively small. In this case we can default to 0.
             let offset = offset.saturating_sub(program_header.p_vaddr);
 
+            let mut bss_addr = 0;
+            let mut bss_size = 0;
+            let mut bss_end = 0;
+            if let Some(addr) = bss_header.sh_addr.checked_add(offset) {
+                if bss_header.sh_size.checked_add(addr).is_none() {
+                    return Err(format_err!(
+                        "Invalid bss address/size in {}",
+                        filename.display()
+                    ));
+                }
+                bss_addr = addr;
+                bss_size = bss_header.sh_size;
+                bss_end = bss_header.sh_addr + bss_header.sh_size;
+            }
+
             for sym in elf.syms.iter() {
-                let name = elf.strtab[sym.st_name].to_string();
-                symbols.insert(name, sym.st_value + offset);
+                // Skip imported symbols
+                if sym.is_import()
+                    || (bss_end != 0
+                        && sym.st_size != 0
+                        && !is_subrange(0u64, bss_end, sym.st_value, sym.st_size))
+                {
+                    continue;
+                }
+                if let Some(pos) = sym.st_value.checked_add(offset) {
+                    if sym.is_function() && !is_subrange(addr, size, pos, sym.st_size) {
+                        continue;
+                    }
+                    if let Some(name) = elf.strtab.get_unsafe(sym.st_name) {
+                        symbols.insert(name.to_string(), pos);
+                    }
+                }
             }
             for dynsym in elf.dynsyms.iter() {
-                let name = elf.dynstrtab[dynsym.st_name].to_string();
-                symbols.insert(name, dynsym.st_value + offset);
+                // Skip imported symbols
+                if dynsym.is_import()
+                    || (bss_end != 0
+                        && dynsym.st_size != 0
+                        && !is_subrange(0u64, bss_end, dynsym.st_value, dynsym.st_size))
+                {
+                    continue;
+                }
+                if let Some(pos) = dynsym.st_value.checked_add(offset) {
+                    if dynsym.is_function() && !is_subrange(addr, size, pos, dynsym.st_size) {
+                        continue;
+                    }
+                    if let Some(name) = elf.dynstrtab.get_unsafe(dynsym.st_name) {
+                        symbols.insert(name.to_string(), pos);
+                    }
+                }
             }
+
             Ok(BinaryInfo {
                 symbols,
-                bss_addr: bss_header.sh_addr + offset,
-                bss_size: bss_header.sh_size,
+                bss_addr,
+                bss_size,
                 addr,
                 size,
             })
@@ -146,7 +202,9 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
             for export in pe.exports {
                 if let Some(name) = export.name {
                     if let Some(export_offset) = export.offset {
-                        symbols.insert(name.to_string(), export_offset as u64 + offset);
+                        if let Some(addr) = offset.checked_add(export_offset as u64) {
+                            symbols.insert(name.to_string(), addr);
+                        }
                     }
                 }
             }
@@ -161,8 +219,14 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
                     )
                 })
                 .map(|data_section| {
-                    let bss_addr = u64::from(data_section.virtual_address) + offset;
-                    let bss_size = u64::from(data_section.virtual_size);
+                    let mut bss_addr = 0;
+                    let mut bss_size = 0;
+                    if let Some(addr) = offset.checked_add(data_section.virtual_address as u64) {
+                        if addr.checked_add(data_section.virtual_size as u64).is_some() {
+                            bss_addr = addr;
+                            bss_size = u64::from(data_section.virtual_size);
+                        }
+                    }
 
                     BinaryInfo {
                         symbols,
