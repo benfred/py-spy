@@ -16,11 +16,6 @@ Frame = namedtuple("Frame", ["file", "name", "line", "col"])
 # (doesn't seem to be working quite right - TODO: investigate)
 GIL = ["--gil"] if not sys.platform.startswith("win") else []
 
-# also disable GIL checks on python 3.12+ for now
-if sys.version_info.major == 3 or sys.version_info.minor >= 12:
-    GIL = []
-
-
 PYSPY = which("py-spy")
 
 

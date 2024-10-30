@@ -568,6 +568,15 @@ pub fn get_threadstate_address(
     let threadstate_address = match version {
         Version {
             major: 3,
+            minor: 13,
+            ..
+        } => {
+            let interp: v3_13_0::_is = Default::default();
+            let offset = crate::utils::offset_of(&interp, &interp._gil.last_holder);
+            interpreter_address + offset
+        }
+        Version {
+            major: 3,
             minor: 12,
             ..
         } => {

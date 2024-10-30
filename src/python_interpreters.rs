@@ -419,6 +419,9 @@ impl InterpreterState for v3_13_0::PyInterpreterState {
     fn head(&self) -> *mut Self::ThreadState {
         self.threads.head
     }
+    fn gil_locked(&self) -> Option<bool> {
+        Some(self._gil.locked != 0)
+    }
     fn modules(&self) -> *mut Self::Object {
         self.imports.modules
     }
