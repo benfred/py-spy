@@ -4,7 +4,7 @@ use std::path::Path;
 
 use anyhow::Error;
 use goblin::Object;
-use memmap::Mmap;
+use memmap2::Mmap;
 
 use crate::utils::is_subrange;
 
