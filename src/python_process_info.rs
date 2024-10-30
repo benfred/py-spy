@@ -354,7 +354,10 @@ where
 
                 // Make sure the interpreter addr is valid before returning
                 match check_interpreter_addresses(&[addr], &*python_info.maps, process, version) {
-                    Ok(addr) => return Ok(addr),
+                    Ok(addr) => {
+                        warn!("skipping symbol interpreter to test BSS scanning code {:016x}", addr);
+                    //    return Ok(addr),
+                    }
                     Err(_) => {
                         warn!(
                             "Interpreter address from _PyRuntime symbol is invalid {:016x}",
