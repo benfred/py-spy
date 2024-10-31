@@ -248,7 +248,7 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
             let mut pyruntime_size = 0;
             let mut found_data = false;
             for section in pe.sections.iter() {
-                if section.name.starts_with(b"data") {
+                if section.name.starts_with(b".data") {
                     found_data = true;
                     if let Some(addr) = offset.checked_add(section.virtual_address as u64) {
                         if addr.checked_add(section.virtual_size as u64).is_some() {
