@@ -242,6 +242,10 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
                 }
             }
 
+            for section in pe.sections.iter() {
+                info!("pe section name '{:?}'", section.name);
+            }
+
             let (bss_addr, bss_size) = pe
                 .sections
                 .iter()
