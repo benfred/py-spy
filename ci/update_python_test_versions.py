@@ -9,7 +9,7 @@ _VERSIONS_URL = "https://raw.githubusercontent.com/actions/python-versions/main/
 
 
 def parse_version(v):
-    return tuple(int(part) for part in re.split("\W", v)[:3])
+    return tuple(int(part) for part in re.split(r"\W", v)[:3])
 
 
 def get_github_python_versions():
