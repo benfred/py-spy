@@ -67,12 +67,22 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
                 }
             };
 
+            let mut pyruntime_addr = 0;
+            let mut pyruntime_size = 0;
             let mut bss_addr = 0;
             let mut bss_size = 0;
             for segment in mach.segments.iter() {
                 for (section, _) in &segment.sections()? {
                     let name = section.name()?;
-                    println!("mach section name {}", name);
+                    if name == "PyRuntime" {
+                        if let Some(addr) = section.addr.checked_add(offset) {
+                            if addr.checked_add(section.size).is_some() {
+                                pyruntime_addr = addr;
+                                pyruntime_size = section.size;
+                            }
+                        }
+                    }
+
                     if name == "__bss" {
                         if let Some(addr) = section.addr.checked_add(offset) {
                             if addr.checked_add(section.size).is_some() {
@@ -98,9 +108,8 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
                 symbols,
                 bss_addr,
                 bss_size,
-                // TODO: handle mach
-                pyruntime_addr: 0,
-                pyruntime_size: 0,
+                pyruntime_addr,
+                pyruntime_size,
                 addr,
                 size,
             })
