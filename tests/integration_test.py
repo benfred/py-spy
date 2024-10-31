@@ -31,11 +31,15 @@ class TestPyspy(unittest.TestCase):
         # record option, and setting different flags. To get the profile output
         # we're using the speedscope format (since we can read that in as json)
         with tempfile.NamedTemporaryFile() as profile_file:
+            filename = profile_file.name
+            if sys.platform.startswith("win"):
+                filename = "profile.json"
+
             cmdline = [
                 PYSPY,
                 "record",
                 "-o",
-                profile_file.name,
+                filename,
                 "--format",
                 "speedscope",
                 "-d",
@@ -43,9 +47,9 @@ class TestPyspy(unittest.TestCase):
             ]
             cmdline.extend(options or [])
             cmdline.extend(["--", sys.executable, script_name])
-            env = dict(os.environ, RUST_LOG="debug")
+            env = dict(os.environ, RUST_LOG="info")
             subprocess.check_output(cmdline, env=env)
-            with open(profile_file.name) as f:
+            with open(filename) as f:
                 profiles = json.load(f)
 
         frames = profiles["shared"]["frames"]
