@@ -12,6 +12,8 @@ pub struct BinaryInfo {
     pub symbols: HashMap<String, u64>,
     pub bss_addr: u64,
     pub bss_size: u64,
+    pub pyruntime_addr: u64,
+    pub pyruntime_size: u64,
     #[allow(dead_code)]
     pub addr: u64,
     #[allow(dead_code)]
@@ -69,7 +71,9 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
             let mut bss_size = 0;
             for segment in mach.segments.iter() {
                 for (section, _) in &segment.sections()? {
-                    if section.name()? == "__bss" {
+                    let name = section.name()?;
+                    println!("mach section name {}", name);
+                    if name == "__bss" {
                         if let Some(addr) = section.addr.checked_add(offset) {
                             if addr.checked_add(section.size).is_some() {
                                 bss_addr = addr;
@@ -94,6 +98,9 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
                 symbols,
                 bss_addr,
                 bss_size,
+                // TODO: handle mach
+                pyruntime_addr: 0,
+                pyruntime_size: 0,
                 addr,
                 size,
             })
@@ -153,6 +160,21 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
                 bss_end = bss_header.sh_addr + bss_header.sh_size;
             }
 
+            let pyruntime_header = elf.section_headers.iter().find(|header| {
+                strtab
+                    .get_at(header.sh_name)
+                    .map_or(false, |name| name == ".PyRuntime")
+            });
+
+            let mut pyruntime_addr = 0;
+            let mut pyruntime_size = 0;
+            if let Some(header) = pyruntime_header {
+                if let Some(addr) = header.sh_addr.checked_add(offset) {
+                    pyruntime_addr = addr;
+                    pyruntime_size = header.sh_size;
+                }
+            }
+
             for sym in elf.syms.iter() {
                 // Skip imported symbols
                 if sym.is_import()
@@ -194,6 +216,8 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
                 symbols,
                 bss_addr,
                 bss_size,
+                pyruntime_addr,
+                pyruntime_size,
                 addr,
                 size,
             })
@@ -209,7 +233,8 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
                 }
             }
 
-            pe.sections
+            let (bss_addr, bss_size) = pe
+                .sections
                 .iter()
                 .find(|section| section.name.starts_with(b".data"))
                 .ok_or_else(|| {
@@ -227,15 +252,19 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
                             bss_size = u64::from(data_section.virtual_size);
                         }
                     }
+                    (bss_addr, bss_size)
+                })?;
 
-                    BinaryInfo {
-                        symbols,
-                        bss_addr,
-                        bss_size,
-                        addr,
-                        size,
-                    }
-                })
+            Ok(BinaryInfo {
+                symbols,
+                bss_addr,
+                bss_size,
+                addr,
+                size,
+                // TODO: handle PE
+                pyruntime_size: 0,
+                pyruntime_addr: 0,
+            })
         }
         _ => Err(format_err!("Unhandled binary type")),
     }
