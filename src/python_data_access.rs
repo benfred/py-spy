@@ -1,9 +1,11 @@
 #![allow(clippy::unnecessary_cast)]
 use anyhow::Error;
 
+use crate::python_bindings::v3_13_0;
 use crate::python_interpreters::{
     BytesObject, InterpreterState, ListObject, Object, StringObject, TupleObject, TypeObject,
 };
+use crate::utils::offset_of;
 use crate::version::Version;
 use remoteprocess::ProcessMemory;
 
@@ -67,7 +69,7 @@ pub fn copy_long<P: ProcessMemory>(
     let (size, negative, digit, value_size) = match version {
         Version {
             major: 3,
-            minor: 12,
+            minor: 12..=13,
             ..
         } => {
             // PyLongObject format changed in python 3.12
@@ -153,10 +155,14 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
         version: &'a Version,
         addr: usize,
         tp_addr: usize,
+        flags: usize,
     ) -> Result<DictIterator<'a, P>, Error> {
         // Handles logic of _PyObject_ManagedDictPointer in python 3.11
         let mut values_addr: usize =
             process.copy_struct(addr - 4 * std::mem::size_of::<usize>())?;
+
+        // TODO: MANAGED_DICT_OFFSET is -3 if GIL isn't disabled, -1 otherwise (in py3.13+)
+        // handle gil-less python branches
         let mut dict_addr: usize = process.copy_struct(addr - 3 * std::mem::size_of::<usize>())?;
 
         // for python 3.12, the values/dict are combined into a single tagged pointer
@@ -170,7 +176,7 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
         }
 
         if values_addr != 0 {
-            let ht_cached_keys = if version.major == 3 && version.minor == 12 {
+            let ht_cached_keys = if version.major == 3 && version.minor >= 12 {
                 let ht: crate::python_bindings::v3_12_0::PyHeapTypeObject =
                     process.copy_struct(tp_addr)?;
                 ht.ht_cached_keys as usize
@@ -180,8 +186,19 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
                 ht.ht_cached_keys as usize
             };
 
+            // handle inline values in py3.13+
+            // https://github.com/python/cpython/issues/115776
+            if flags & PY_TPFLAGS_INLINE_VALUES != 0 {
+                // PyDictValues is stored inline after the initial PyObject
+                let dict_values: v3_13_0::_dictvalues = Default::default();
+                let values_offset = offset_of(&dict_values, &dict_values.values);
+
+                values_addr = addr + std::mem::size_of::<v3_13_0::PyObject>() + values_offset;
+            }
+
             let keys: crate::python_bindings::v3_12_0::PyDictKeysObject =
                 process.copy_struct(ht_cached_keys as usize)?;
+
             let entries_addr = ht_cached_keys as usize
                 + (1 << keys.dk_log2_index_bytes)
                 + std::mem::size_of_val(&keys);
@@ -208,12 +225,13 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
         match version {
             Version {
                 major: 3,
-                minor: 11..=12,
+                minor: 11..=13,
                 ..
             } => {
                 let dict: crate::python_bindings::v3_11_0::PyDictObject =
                     process.copy_struct(addr)?;
                 let keys = process.copy_pointer(dict.ma_keys)?;
+
                 let entries_addr = dict.ma_keys as usize
                     + (1 << keys.dk_log2_index_bytes)
                     + std::mem::size_of_val(&keys);
@@ -322,6 +340,7 @@ impl<'a, P: ProcessMemory> Iterator for DictIterator<'a, P> {
     }
 }
 
+pub const PY_TPFLAGS_INLINE_VALUES: usize = 1 << 2;
 pub const PY_TPFLAGS_MANAGED_DICT: usize = 1 << 4;
 const PY_TPFLAGS_INT_SUBCLASS: usize = 1 << 23;
 const PY_TPFLAGS_LONG_SUBCLASS: usize = 1 << 24;
