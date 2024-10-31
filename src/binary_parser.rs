@@ -242,41 +242,45 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
                 }
             }
 
+            let mut bss_addr = 0;
+            let mut bss_size = 0;
+            let mut pyruntime_addr = 0;
+            let mut pyruntime_size = 0;
             for section in pe.sections.iter() {
-                info!("pe section name '{:?}'", section.name);
-            }
-
-            let (bss_addr, bss_size) = pe
-                .sections
-                .iter()
-                .find(|section| section.name.starts_with(b".data"))
-                .ok_or_else(|| {
-                    format_err!(
-                        "Failed to find .data section in PE binary of {}",
-                        filename.display()
-                    )
-                })
-                .map(|data_section| {
-                    let mut bss_addr = 0;
-                    let mut bss_size = 0;
-                    if let Some(addr) = offset.checked_add(data_section.virtual_address as u64) {
-                        if addr.checked_add(data_section.virtual_size as u64).is_some() {
+                if section.name.starts_with(b"data") {
+                    if let Some(addr) = offset.checked_add(section.virtual_address as u64) {
+                        if addr.checked_add(section.virtual_size as u64).is_some() {
                             bss_addr = addr;
-                            bss_size = u64::from(data_section.virtual_size);
+                            bss_size = u64::from(section.virtual_size);
                         }
                     }
-                    (bss_addr, bss_size)
-                })?;
+                } else if section.name.starts_with(b"PyRuntim") {
+                    // note that the name is only 8 chars here, so we don't check for
+                    // trailing 'e' in PyRuntime
+                    if let Some(addr) = offset.checked_add(section.virtual_address as u64) {
+                        if addr.checked_add(section.virtual_size as u64).is_some() {
+                            pyruntime_addr = addr;
+                            pyruntime_size = u64::from(section.virtual_size);
+                        }
+                    }
+                }
+            }
+
+            if bss_addr == 0 {
+                return Err(format_err!(
+                    "Failed to find .data section in PE binary of {}",
+                    filename.display()
+                ));
+            }
 
             Ok(BinaryInfo {
                 symbols,
                 bss_addr,
                 bss_size,
+                pyruntime_size,
+                pyruntime_addr,
                 addr,
                 size,
-                // TODO: handle PE
-                pyruntime_size: 0,
-                pyruntime_addr: 0,
             })
         }
         _ => Err(format_err!("Unhandled binary type")),
