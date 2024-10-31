@@ -218,7 +218,19 @@ jobs:
         os: [ubuntu-20.04, macos-13, windows-latest]
         # some versions of python can't be tested on GHA with osx because of SIP:
         exclude:
+          - os: windows-latest
+            python-version: 3.6.15
+          - os: windows-latest
+            python-version: 3.7.17
+          - os: windows-latest
+            python-version: 3.8.18
+          - os: windows-latest
+            python-version: 3.9.20
+          - os: windows-latest
+            python-version: 3.10.15
           - os: macos-13
+            python-version: 3.11.10
+          - os: windows-latest
             python-version: 3.11.10
           - os: macos-13
             python-version: 3.12.0
