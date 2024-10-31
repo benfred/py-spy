@@ -437,6 +437,21 @@ fn get_interpreter_address_from_binary<P>(
 where
     P: ProcessMemory,
 {
+    // First check the pyruntime section it was found
+    if binary.pyruntime_addr != 0 {
+        let bss = process.copy(
+            binary.pyruntime_addr as usize,
+            binary.pyruntime_size as usize,
+        )?;
+        #[allow(clippy::cast_ptr_alignment)]
+        let addrs = unsafe {
+            slice::from_raw_parts(bss.as_ptr() as *const usize, bss.len() / size_of::<usize>())
+        };
+        if let Ok(addr) = check_interpreter_addresses(addrs, maps, process, version) {
+            return Ok(addr);
+        }
+    }
+
     // We're going to scan the BSS/data section for things, and try to narrowly scan things that
     // look like pointers to PyinterpreterState
     let bss = process.copy(binary.bss_addr as usize, binary.bss_size as usize)?;
