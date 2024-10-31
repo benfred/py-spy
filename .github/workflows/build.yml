@@ -219,8 +219,6 @@ jobs:
         # some versions of python can't be tested on GHA with osx because of SIP:
         exclude:
           - os: macos-13
-            python-version: 3.11.0
-          - os: macos-13
             python-version: 3.11.10
           - os: macos-13
             python-version: 3.12.0

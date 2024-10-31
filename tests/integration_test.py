@@ -43,7 +43,8 @@ class TestPyspy(unittest.TestCase):
             ]
             cmdline.extend(options or [])
             cmdline.extend(["--", sys.executable, script_name])
-            subprocess.check_output(cmdline)
+            env = dict(os.environ, RUST_LOG="debug")
+            subprocess.check_output(cmdline, env=env)
             with open(profile_file.name) as f:
                 profiles = json.load(f)
 
