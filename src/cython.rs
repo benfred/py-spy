@@ -127,7 +127,6 @@ pub fn ignore_frame(name: &str) -> bool {
         "__Pyx_PyFunction_FastCallDict",
         "__Pyx_PyObject_CallOneArg",
         "__Pyx_PyObject_Call",
-        "__Pyx_PyObject_Call",
         "__pyx_FusedFunction_call",
     ];
 

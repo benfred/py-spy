@@ -16,7 +16,7 @@ impl Version {
     pub fn scan_bytes(data: &[u8]) -> Result<Version, Error> {
         lazy_static! {
             static ref RE: Regex = Regex::new(
-                r"((2|3)\.(3|4|5|6|7|8|9|10|11)\.(\d{1,2}))((a|b|c|rc)\d{1,2})?(\+(?:[0-9a-z-]+(?:[.][0-9a-z-]+)*)?)? (.{1,64})"
+                r"((2|3)\.(3|4|5|6|7|8|9|10|11|12|13)\.(\d{1,2}))((a|b|c|rc)\d{1,2})?(\+(?:[0-9a-z-]+(?:[.][0-9a-z-]+)*)?)? (.{1,64})"
             )
             .unwrap();
         }

@@ -1,9 +1,11 @@
 #![allow(clippy::unnecessary_cast)]
 use anyhow::Error;
 
+use crate::python_bindings::v3_13_0;
 use crate::python_interpreters::{
     BytesObject, InterpreterState, ListObject, Object, StringObject, TupleObject, TypeObject,
 };
+use crate::utils::offset_of;
 use crate::version::Version;
 use remoteprocess::ProcessMemory;
 
@@ -59,20 +61,56 @@ pub fn copy_bytes<T: BytesObject, P: ProcessMemory>(
 }
 
 /// Copies a i64 from a PyLongObject. Returns the value + if it overflowed
-pub fn copy_long<P: ProcessMemory>(process: &P, addr: usize) -> Result<(i64, bool), Error> {
-    // this is PyLongObject for a specific version of python, but this works since it's binary compatible
-    // layout across versions we're targeting
-    let value =
-        process.copy_pointer(addr as *const crate::python_bindings::v3_7_0::PyLongObject)?;
-    let negative: i64 = if value.ob_base.ob_size < 0 { -1 } else { 1 };
-    let size = value.ob_base.ob_size * (negative as isize);
+pub fn copy_long<P: ProcessMemory>(
+    process: &P,
+    version: &Version,
+    addr: usize,
+) -> Result<(i64, bool), Error> {
+    let (size, negative, digit, value_size) = match version {
+        Version {
+            major: 3,
+            minor: 12..=13,
+            ..
+        } => {
+            // PyLongObject format changed in python 3.12
+            let value = process
+                .copy_pointer(addr as *const crate::python_bindings::v3_12_0::PyLongObject)?;
+            let size = value.long_value.lv_tag >> 3;
+            let negative: i64 = if (value.long_value.lv_tag & 3) == 2 {
+                -1
+            } else {
+                1
+            };
+            (
+                size,
+                negative,
+                value.long_value.ob_digit[0] as u32,
+                std::mem::size_of_val(&value),
+            )
+        }
+        _ => {
+            // this is PyLongObject for a specific version of python, but this works since it's binary compatible
+            // layout across versions we're targeting
+            let value = process
+                .copy_pointer(addr as *const crate::python_bindings::v3_7_0::PyLongObject)?;
+            let negative: i64 = if value.ob_base.ob_size < 0 { -1 } else { 1 };
+            let size = (value.ob_base.ob_size * (negative as isize)) as usize;
+            (
+                size,
+                negative,
+                value.ob_digit[0] as u32,
+                std::mem::size_of_val(&value),
+            )
+        }
+    };
+
     match size {
         0 => Ok((0, false)),
-        1 => Ok((negative * (value.ob_digit[0] as i64), false)),
+        1 => Ok((negative * (digit as i64), false)),
 
         #[cfg(target_pointer_width = "64")]
         2 => {
-            let digits: [u32; 2] = process.copy_struct(addr + std::mem::size_of_val(&value) - 8)?;
+            let digits: [u32; 2] = process.copy_struct(addr + value_size - 8)?;
             let mut ret: i64 = 0;
             for i in 0..size {
                 ret += (digits[i as usize] as i64) << (30 * i);
@@ -81,7 +119,7 @@ pub fn copy_long<P: ProcessMemory>(process: &P, addr: usize) -> Result<(i64, boo
         }
         #[cfg(target_pointer_width = "32")]
         2..=4 => {
-            let digits: [u16; 4] = process.copy_struct(addr + std::mem::size_of_val(&value) - 4)?;
+            let digits: [u16; 4] = process.copy_struct(addr + value_size - 4)?;
             let mut ret: i64 = 0;
             for i in 0..size {
                 ret += (digits[i as usize] as i64) << (15 * i);
@@ -89,7 +127,7 @@ pub fn copy_long<P: ProcessMemory>(process: &P, addr: usize) -> Result<(i64, boo
             Ok((negative * ret, false))
         }
         // we don't support arbitrary sized integers yet, signal this by returning that we've overflowed
-        _ => Ok((value.ob_base.ob_size as i64, true)),
+        _ => Ok((size as i64, true)),
     }
 }
 
@@ -117,17 +155,51 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
         version: &'a Version,
         addr: usize,
         tp_addr: usize,
+        flags: usize,
     ) -> Result<DictIterator<'a, P>, Error> {
         // Handles logic of _PyObject_ManagedDictPointer in python 3.11
-        let values_addr: usize = process.copy_struct(addr - 4 * std::mem::size_of::<usize>())?;
-        let dict_addr: usize = process.copy_struct(addr - 3 * std::mem::size_of::<usize>())?;
+        let mut values_addr: usize =
+            process.copy_struct(addr - 4 * std::mem::size_of::<usize>())?;
+
+        // TODO: MANAGED_DICT_OFFSET is -3 if GIL isn't disabled, -1 otherwise (in py3.13+)
+        // handle gil-less python branches
+        let mut dict_addr: usize = process.copy_struct(addr - 3 * std::mem::size_of::<usize>())?;
+
+        // for python 3.12, the values/dict are combined into a single tagged pointer
+        if version.major == 3 && version.minor == 12 {
+            if dict_addr & 1 == 0 {
+                values_addr = 0;
+            } else {
+                values_addr = dict_addr + 1;
+                dict_addr = 0;
+            }
+        }
 
         if values_addr != 0 {
-            let ht: crate::python_bindings::v3_11_0::PyHeapTypeObject =
-                process.copy_struct(tp_addr)?;
-            let keys: crate::python_bindings::v3_11_0::PyDictKeysObject =
-                process.copy_struct(ht.ht_cached_keys as usize)?;
-            let entries_addr = ht.ht_cached_keys as usize
+            let ht_cached_keys = if version.major == 3 && version.minor >= 12 {
+                let ht: crate::python_bindings::v3_12_0::PyHeapTypeObject =
+                    process.copy_struct(tp_addr)?;
+                ht.ht_cached_keys as usize
+            } else {
+                let ht: crate::python_bindings::v3_11_0::PyHeapTypeObject =
+                    process.copy_struct(tp_addr)?;
+                ht.ht_cached_keys as usize
+            };
+
+            // handle inline values in py3.13+
+            // https://github.com/python/cpython/issues/115776
+            if flags & PY_TPFLAGS_INLINE_VALUES != 0 {
+                // PyDictValues is stored inline after the initial PyObject
+                let dict_values: v3_13_0::_dictvalues = Default::default();
+                let values_offset = offset_of(&dict_values, &dict_values.values);
+
+                values_addr = addr + std::mem::size_of::<v3_13_0::PyObject>() + values_offset;
+            }
+
+            let keys: crate::python_bindings::v3_12_0::PyDictKeysObject =
+                process.copy_struct(ht_cached_keys as usize)?;
+
+            let entries_addr = ht_cached_keys as usize
                 + (1 << keys.dk_log2_index_bytes)
                 + std::mem::size_of_val(&keys);
             Ok(DictIterator {
@@ -153,12 +225,13 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
         match version {
             Version {
                 major: 3,
-                minor: 11,
+                minor: 11..=13,
                 ..
             } => {
                 let dict: crate::python_bindings::v3_11_0::PyDictObject =
                     process.copy_struct(addr)?;
                 let keys = process.copy_pointer(dict.ma_keys)?;
+
                 let entries_addr = dict.ma_keys as usize
                     + (1 << keys.dk_log2_index_bytes)
                     + std::mem::size_of_val(&keys);
@@ -267,6 +340,7 @@ impl<'a, P: ProcessMemory> Iterator for DictIterator<'a, P> {
     }
 }
 
+pub const PY_TPFLAGS_INLINE_VALUES: usize = 1 << 2;
 pub const PY_TPFLAGS_MANAGED_DICT: usize = 1 << 4;
 const PY_TPFLAGS_INT_SUBCLASS: usize = 1 << 23;
 const PY_TPFLAGS_LONG_SUBCLASS: usize = 1 << 24;
@@ -319,7 +393,7 @@ where
         format_int(copy_int(process, addr)?)
     } else if flags & PY_TPFLAGS_LONG_SUBCLASS != 0 {
         // we don't handle arbitrary sized integer values (max is 2**60)
-        let (value, overflowed) = copy_long(process, addr)?;
+        let (value, overflowed) = copy_long(process, version, addr)?;
         if overflowed {
             if value > 0 {
                 "+bigint".to_owned()

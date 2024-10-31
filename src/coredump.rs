@@ -15,7 +15,7 @@ use crate::binary_parser::{parse_binary, BinaryInfo};
 use crate::config::Config;
 use crate::dump::print_trace;
 use crate::python_bindings::{
-    v2_7_15, v3_10_0, v3_11_0, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0, v3_9_5,
+    v2_7_15, v3_10_0, v3_11_0, v3_12_0, v3_13_0, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0, v3_9_5,
 };
 use crate::python_data_access::format_variable;
 use crate::python_interpreters::InterpreterState;
@@ -88,26 +88,30 @@ impl CoreDump {
         let mut status = Vec::new();
         for note in notes.flatten() {
             if note.n_type == goblin::elf::note::NT_PRPSINFO {
-                psinfo = Some(unsafe { *(note.desc.as_ptr() as *const elfcore::elf_prpsinfo) });
+                psinfo = Some(unsafe {
+                    std::ptr::read_unaligned(note.desc.as_ptr() as *const elfcore::elf_prpsinfo)
+                });
             } else if note.n_type == goblin::elf::note::NT_PRSTATUS {
-                let thread_status =
-                    unsafe { *(note.desc.as_ptr() as *const elfcore::elf_prstatus) };
+                let thread_status: elfcore::elf_prstatus = unsafe {
+                    std::ptr::read_unaligned(note.desc.as_ptr() as *const elfcore::elf_prstatus)
+                };
                 status.push(thread_status);
             } else if note.n_type == goblin::elf::note::NT_FILE {
                 let data = note.desc;
                 let ptrs = data.as_ptr() as *const usize;
 
-                let count = unsafe { *ptrs };
-                let _page_size = unsafe { *ptrs.offset(1) };
+                let count = unsafe { std::ptr::read_unaligned(ptrs) };
+                let _page_size = unsafe { std::ptr::read_unaligned(ptrs.offset(1)) };
 
                 let string_table = &data[(std::mem::size_of::<usize>() * (2 + count * 3))..];
 
                 for (i, filename) in string_table.split(|chr| *chr == 0).enumerate() {
                     if i < count {
                         let i = i as isize;
-                        let start = unsafe { *ptrs.offset(i * 3 + 2) };
-                        let _end = unsafe { *ptrs.offset(i * 3 + 3) };
-                        let _page_offset = unsafe { *ptrs.offset(i * 3 + 4) };
+                        let start = unsafe { std::ptr::read_unaligned(ptrs.offset(i * 3 + 2)) };
+                        let _end = unsafe { std::ptr::read_unaligned(ptrs.offset(i * 3 + 3)) };
+                        let _page_offset =
+                            unsafe { std::ptr::read_unaligned(ptrs.offset(i * 3 + 4)) };
 
                         let pathname = Path::new(&OsStr::from_bytes(filename)).to_path_buf();
                         filenames.insert(start, pathname);
@@ -191,7 +195,7 @@ impl PythonCoreDump {
                 .find(|m| m.filename().is_some() & m.is_exec())
                 .ok_or_else(|| format_err!("Failed to get binary from coredump"))?;
             let python_filename = map.filename().unwrap();
-            let python_binary = parse_binary(python_filename, map.start() as _);
+            let python_binary = parse_binary(python_filename, map.start() as _, map.size() as _);
             info!("Found python binary @ {}", python_filename.display());
             (python_filename.to_owned(), python_binary)
         };
@@ -211,7 +215,8 @@ impl PythonCoreDump {
             if let Some(libpython) = libmap {
                 if let Some(filename) = &libpython.filename() {
                     info!("Found libpython binary @ {}", filename.display());
-                    let parsed = parse_binary(filename, libpython.start() as u64)?;
+                    let parsed =
+                        parse_binary(filename, libpython.start() as u64, libpython.size() as u64)?;
                     libpython_binary = Some(parsed);
                 }
             }
@@ -241,7 +246,8 @@ impl PythonCoreDump {
 
         // lets us figure out which thread has the GIL
         let config = Config::default();
-        let threadstate_address = get_threadstate_address(&python_info, &version, &config)?;
+        let threadstate_address =
+            get_threadstate_address(interpreter_address, &python_info, &version, &config)?;
         info!("found threadstate at 0x{:016x}", threadstate_address);
 
         Ok(PythonCoreDump {
@@ -302,6 +308,16 @@ impl PythonCoreDump {
                 minor: 11,
                 ..
             } => self._get_stack::<v3_11_0::_is>(config),
+            Version {
+                major: 3,
+                minor: 12,
+                ..
+            } => self._get_stack::<v3_12_0::_is>(config),
+            Version {
+                major: 3,
+                minor: 13,
+                ..
+            } => self._get_stack::<v3_13_0::_is>(config),
             _ => Err(format_err!(
                 "Unsupported version of Python: {}",
                 self.version
