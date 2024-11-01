@@ -75,7 +75,14 @@ impl PythonProcessInfo {
             let map = maps.iter().find(|m| {
                 if let Some(pathname) = m.filename() {
                     if let Some(pathname) = pathname.to_str() {
-                        return is_python_bin(pathname) && m.is_exec();
+                        #[cfg(not(windows))]
+                        {
+                            return is_python_bin(pathname) && m.is_exec();
+                        }
+                        #[cfg(windows)]
+                        {
+                            return is_python_bin(pathname);
+                        }
                     }
                 }
                 false
@@ -139,7 +146,14 @@ impl PythonProcessInfo {
             let libmap = maps.iter().find(|m| {
                 if let Some(pathname) = m.filename() {
                     if let Some(pathname) = pathname.to_str() {
-                        return is_python_lib(pathname) && m.is_exec();
+                        #[cfg(not(windows))]
+                        {
+                            return is_python_lib(pathname) && m.is_exec();
+                        }
+                        #[cfg(windows)]
+                        {
+                            return is_python_lib(pathname);
+                        }
                     }
                 }
                 false
