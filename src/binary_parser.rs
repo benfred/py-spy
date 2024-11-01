@@ -201,10 +201,8 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
         Object::PE(pe) => {
             for export in pe.exports {
                 if let Some(name) = export.name {
-                    if let Some(export_offset) = export.offset {
-                        if let Some(addr) = offset.checked_add(export_offset as u64) {
-                            symbols.insert(name.to_string(), addr);
-                        }
+                    if let Some(addr) = offset.checked_add(export.rva as u64) {
+                        symbols.insert(name.to_string(), addr);
                     }
                 }
             }

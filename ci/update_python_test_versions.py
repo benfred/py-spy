@@ -14,8 +14,14 @@ def parse_version(v):
 
 def get_github_python_versions():
     versions_json = requests.get(_VERSIONS_URL).json()
-    raw_versions = [v["version"] for v in versions_json]
 
+    # windows platform support isn't great for older versions of python
+    # get a map of version: platform/arch so we can exclude here
+    platforms = {}
+    for v in versions_json:
+        platforms[v["version"]] = set((f["platform"], f["arch"]) for f in v["files"])
+
+    raw_versions = [v["version"] for v in versions_json]
     minor_versions = defaultdict(list)
 
     for version_str in raw_versions:
@@ -46,11 +52,13 @@ def get_github_python_versions():
 
         versions.extend(f"{major}.{minor}.{patch}" for patch in patches)
 
-    return versions
+    return versions, platforms
 
 
 def update_python_test_versions():
-    versions = sorted(get_github_python_versions(), key=parse_version)
+    versions, platforms = get_github_python_versions()
+    versions = sorted(versions, key=parse_version)
+
     build_yml_path = (
         pathlib.Path(__file__).parent.parent / ".github" / "workflows" / "build.yml"
     )
@@ -82,9 +90,15 @@ def update_python_test_versions():
     # since it currently fails in GHA on SIP errors
     exclusions = []
     for v in versions:
-        if v.startswith("3.11.10") or v.startswith("3.12"):
+        # if we don't have a python version for osx/windows skip
+        if ("darwin", "x64") not in platforms[v] or v.startswith("3.12"):
             exclusions.append("          - os: macos-13\n")
             exclusions.append(f"            python-version: {v}\n")
+
+        if ("win32", "x64") not in platforms[v] or v.startswith("3.12"):
+            exclusions.append("          - os: windows-latest\n")
+            exclusions.append(f"            python-version: {v}\n")
+
     first_exclude_line = lines.index("        exclude:\n", first_line)
     last_exclude_line = lines.index("\n", first_exclude_line)
     lines = lines[: first_exclude_line + 1] + exclusions + lines[last_exclude_line:]
