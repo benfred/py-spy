@@ -132,9 +132,11 @@ impl PythonProcessInfo {
                     *address -= offset;
                 }
 
-                if pb.bss_addr != 0 {
-                    pb.bss_addr -= offset;
-                }
+                pb.bss_sections = pb
+                    .bss_sections
+                    .iter()
+                    .map(|&(addr, size)| (addr - offset, size))
+                    .collect();
                 pb
             });
 
@@ -230,8 +232,9 @@ impl PythonProcessInfo {
                         // (assumes data section isn't split from text section like done here).
                         // BSS occurs somewhere in the data section, just scan that
                         // (could later tighten this up to look at segment sections too)
-                        binary.bss_addr = libpython.segment.vmaddr;
-                        binary.bss_size = libpython.segment.vmsize;
+                        binary
+                            .bss_sections
+                            .push((libpython.segment.vmaddr, libpython.segment.vmsize));
                         libpython_binary = Some(binary);
                     }
                 }
@@ -288,30 +291,41 @@ where
     // If possible, grab the sys.version string from the processes memory (mac osx).
     if let Some(&addr) = python_info.get_symbol("Py_GetVersion.version") {
         info!("Getting version from symbol address");
-        if let Ok(bytes) = process.copy(addr as usize, 128) {
-            if let Ok(version) = Version::scan_bytes(&bytes) {
-                return Ok(version);
+        let res: Result<Option<Version>, Error> = (|| {
+            let bytes = process.copy(addr as usize, 128)?;
+            Version::scan_bytes(&bytes)
+        })();
+        match res {
+            Ok(Some(version)) => return Ok(version),
+            Ok(None) => (),
+            Err(err) => {
+                warn!("In Py_GetVersion.version: {}", err);
             }
         }
     }
 
     // otherwise get version info from scanning BSS section for sys.version string
-    if let Some(ref pb) = python_info.python_binary {
-        info!("Getting version from python binary BSS");
-        let bss = process.copy(pb.bss_addr as usize, pb.bss_size as usize)?;
-        match Version::scan_bytes(&bss) {
-            Ok(version) => return Ok(version),
-            Err(err) => info!("Failed to get version from BSS section: {}", err),
-        }
-    }
-
-    // try again if there is a libpython.so
-    if let Some(ref libpython) = python_info.libpython_binary {
-        info!("Getting version from libpython BSS");
-        let bss = process.copy(libpython.bss_addr as usize, libpython.bss_size as usize)?;
-        match Version::scan_bytes(&bss) {
-            Ok(version) => return Ok(version),
-            Err(err) => info!("Failed to get version from libpython BSS section: {}", err),
+    for (name, pb) in &[
+        ("python binary", &python_info.python_binary),
+        ("libpython", &python_info.libpython_binary),
+    ] {
+        let Some(pb) = pb else {
+            continue;
+        };
+        info!("Getting version from {} BSS", name);
+        for &(addr, size) in &pb.bss_sections {
+            info!("Trying section (addr={:#x}, size={:#x})", addr, size);
+            let res: Result<Option<Version>, Error> = (|| {
+                let bytes = process.copy(addr as usize, size as usize)?;
+                Version::scan_bytes(&bytes)
+            })();
+            match res {
+                Ok(Some(version)) => return Ok(version),
+                Ok(None) => (),
+                Err(err) => {
+                    info!("In section (addr={:#x}, size={:#x}): {}", addr, size, err);
+                }
+            }
         }
     }
 
@@ -372,12 +386,12 @@ where
                 )?;
 
                 // Make sure the interpreter addr is valid before returning
-                match check_interpreter_addresses(&[addr], &*python_info.maps, process, version) {
+                match check_interpreter_address(addr, &*python_info.maps, process, version) {
                     Ok(addr) => return Ok(addr),
-                    Err(_) => {
+                    Err(err) => {
                         warn!(
-                            "Interpreter address from _PyRuntime symbol is invalid {:016x}",
-                            addr
+                            "Interpreter address from _PyRuntime symbol is invalid {:016x}: {}",
+                            addr, err
                         );
                     }
                 };
@@ -393,12 +407,12 @@ where
                     .copy_struct(addr as usize + pyruntime::get_interp_head_offset(version))?;
 
                 // Make sure the interpreter addr is valid before returning
-                match check_interpreter_addresses(&[addr], &*python_info.maps, process, version) {
+                match check_interpreter_address(addr, &*python_info.maps, process, version) {
                     Ok(addr) => return Ok(addr),
-                    Err(_) => {
+                    Err(err) => {
                         warn!(
-                            "Interpreter address from _PyRuntime symbol is invalid {:016x}",
-                            addr
+                            "Interpreter address from _PyRuntime symbol is invalid {:016x}: {}",
+                            addr, err
                         );
                     }
                 };
@@ -407,12 +421,12 @@ where
         _ => {
             if let Some(&addr) = python_info.get_symbol("interp_head") {
                 let addr = process.copy_struct(addr as usize)?;
-                match check_interpreter_addresses(&[addr], &*python_info.maps, process, version) {
+                match check_interpreter_address(addr, &*python_info.maps, process, version) {
                     Ok(addr) => return Ok(addr),
-                    Err(_) => {
+                    Err(err) => {
                         warn!(
-                            "Interpreter address from interp_head symbol is invalid {:016x}",
-                            addr
+                            "Interpreter address from interp_head symbol is invalid {:016x}: {}",
+                            addr, err
                         );
                     }
                 };
@@ -451,85 +465,108 @@ fn get_interpreter_address_from_binary<P>(
 where
     P: ProcessMemory,
 {
-    // First check the pyruntime section it was found
-    if binary.pyruntime_addr != 0 {
-        let bss = process.copy(
-            binary.pyruntime_addr as usize,
-            binary.pyruntime_size as usize,
-        )?;
-        #[allow(clippy::cast_ptr_alignment)]
-        let addrs = unsafe {
-            slice::from_raw_parts(bss.as_ptr() as *const usize, bss.len() / size_of::<usize>())
-        };
-        if let Ok(addr) = check_interpreter_addresses(addrs, maps, process, version) {
-            return Ok(addr);
+    for &(addr, size) in &binary.bss_sections {
+        // We're going to scan the BSS/data/pyruntime sections for things, and try to narrowly scan
+        // things that look like pointers to PyinterpreterState
+        info!("Trying section (addr={:#x}, size={:#x})", addr, size);
+        let res: Result<Option<usize>, Error> = (|| {
+            let bss = process.copy(addr as usize, size as usize)?;
+            #[allow(clippy::cast_ptr_alignment)]
+            let addrs = unsafe {
+                slice::from_raw_parts(bss.as_ptr() as *const usize, bss.len() / size_of::<usize>())
+            };
+            for (i, result) in
+                check_interpreter_addresses(addrs, maps, process, version)?.enumerate()
+            {
+                match result {
+                    Ok(addr) => return Ok(Some(addr)),
+                    Err(err) => debug!("...for potential address {:#x}: {}", addrs[i], err),
+                }
+            }
+            Ok(None)
+        })();
+        match res {
+            Ok(Some(addr)) => return Ok(addr),
+            Ok(None) => (),
+            Err(err) => {
+                warn!("In section (addr={:#x}, size={:#x}): {}", addr, size, err);
+            }
         }
     }
-
-    // We're going to scan the BSS/data section for things, and try to narrowly scan things that
-    // look like pointers to PyinterpreterState
-    let bss = process.copy(binary.bss_addr as usize, binary.bss_size as usize)?;
-
-    #[allow(clippy::cast_ptr_alignment)]
-    let addrs = unsafe {
-        slice::from_raw_parts(bss.as_ptr() as *const usize, bss.len() / size_of::<usize>())
-    };
-    check_interpreter_addresses(addrs, maps, process, version)
+    Err(format_err!(
+        "Failed to find a python interpreter in any bss section"
+    ))
 }
 
 // Checks whether a block of memory (from BSS/.data etc) contains pointers that are pointing
-// to a valid PyInterpreterState
-fn check_interpreter_addresses<P>(
-    addrs: &[usize],
-    maps: &dyn ContainsAddr,
-    process: &P,
-    version: &Version,
-) -> Result<usize, Error>
+// to a valid PyInterpreterState.
+// Returns an outer error if the Python version is invalid;
+// otherwise returns an iterator of one Result per input address.
+fn check_interpreter_addresses<'a, P>(
+    addrs: &'a [usize],
+    maps: &'a dyn ContainsAddr,
+    process: &'a P,
+    version: &'a Version,
+) -> Result<Box<dyn Iterator<Item = Result<usize, Error>> + 'a>, Error>
 where
     P: ProcessMemory,
 {
     // This function does all the work, but needs a type of the interpreter
-    fn check<I, P>(addrs: &[usize], maps: &dyn ContainsAddr, process: &P) -> Result<usize, Error>
+    fn check<'a, I, P>(
+        addrs: &'a [usize],
+        maps: &'a dyn ContainsAddr,
+        process: &'a P,
+    ) -> Box<dyn Iterator<Item = Result<usize, Error>> + 'a>
     where
         I: InterpreterState,
         P: ProcessMemory,
     {
-        for &addr in addrs {
-            if maps.contains_addr(addr) {
-                // this address points to valid memory. try loading it up as a PyInterpreterState
-                // to further check
-                let interp: I = match process.copy_struct(addr) {
-                    Ok(interp) => interp,
-                    Err(_) => continue,
-                };
-
-                // get the pythreadstate pointer from the interpreter object, and if it is also
-                // a valid pointer then load it up.
-                let threads = interp.head();
-                if maps.contains_addr(threads as usize) {
-                    // If the threadstate points back to the interpreter like we expect, then
-                    // this is almost certainly the address of the intrepreter
-                    let thread = match process.copy_pointer(threads) {
-                        Ok(thread) => thread,
-                        Err(_) => continue,
-                    };
-
-                    // as a final sanity check, try getting the stack_traces, and only return if this works
-                    if thread.interp() as usize == addr
-                        && get_stack_traces(&interp, process, 0, None).is_ok()
-                    {
-                        return Ok(addr);
-                    }
-                }
+        Box::new(addrs.iter().map(|&addr| {
+            if !maps.contains_addr(addr) {
+                return Err(format_err!(
+                    "PyInterpreterState address not mapped: {:?}",
+                    addr
+                ));
             }
-        }
-        Err(format_err!(
-            "Failed to find a python interpreter in the .data section"
-        ))
+            // this address points to valid memory. try loading it up as a PyInterpreterState
+            // to further check
+            let interp: I = process
+                .copy_struct(addr)
+                .context("Failed to load PyInterpreterState")?;
+
+            // get the pythreadstate pointer from the interpreter object, and if it is also
+            // a valid pointer then load it up.
+            let threads = interp.head();
+            if !maps.contains_addr(threads as usize) {
+                return Err(format_err!(
+                    "PyThreadState address not mapped: {:?}",
+                    threads
+                ));
+            }
+
+            let thread = process
+                .copy_pointer(threads)
+                .context("Failed to load PyThreadState")?;
+
+            // If the threadstate points back to the interpreter like we expect, then
+            // this is almost certainly the address of the intrepreter
+            if thread.interp() as usize != addr {
+                return Err(format_err!(
+                    "Interpreter from thread state {:?} mismatches original {:?}",
+                    thread.interp(),
+                    addr
+                ));
+            }
+
+            // as a final sanity check, try getting the stack_traces, and only return if this works
+            get_stack_traces(&interp, process, 0, None)?;
+
+            Ok(addr)
+        }))
     }
 
     // different versions have different layouts, check as appropriate
-    match version {
+    Ok(match version {
         Version {
             major: 2,
             minor: 3..=7,
@@ -584,8 +621,23 @@ where
             minor: 13,
             ..
         } => check::<v3_13_0::_is, P>(addrs, maps, process),
-        _ => Err(format_err!("Unsupported version of Python: {}", version)),
-    }
+        _ => return Err(format_err!("Unsupported version of Python: {}", version)),
+    })
+}
+
+// Wrapper for check_interpreter_addresses with a single address.
+fn check_interpreter_address<P>(
+    addr: usize,
+    maps: &dyn ContainsAddr,
+    process: &P,
+    version: &Version,
+) -> Result<usize, Error>
+where
+    P: ProcessMemory,
+{
+    check_interpreter_addresses(&[addr], maps, process, version)?
+        .next()
+        .unwrap()
 }
 
 pub fn get_threadstate_address(

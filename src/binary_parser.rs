@@ -10,10 +10,7 @@ use crate::utils::is_subrange;
 
 pub struct BinaryInfo {
     pub symbols: HashMap<String, u64>,
-    pub bss_addr: u64,
-    pub bss_size: u64,
-    pub pyruntime_addr: u64,
-    pub pyruntime_size: u64,
+    pub bss_sections: Vec<(u64, u64)>, // (addr, size) pairs
     #[allow(dead_code)]
     pub addr: u64,
     #[allow(dead_code)]
@@ -67,27 +64,14 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
                 }
             };
 
-            let mut pyruntime_addr = 0;
-            let mut pyruntime_size = 0;
-            let mut bss_addr = 0;
-            let mut bss_size = 0;
+            let mut bss_sections = Vec::new();
             for segment in mach.segments.iter() {
                 for (section, _) in &segment.sections()? {
                     let name = section.name()?;
-                    if name == "PyRuntime" {
+                    if name == "__bss" || name == "__common" || name == "PyRuntime" {
                         if let Some(addr) = section.addr.checked_add(offset) {
                             if addr.checked_add(section.size).is_some() {
-                                pyruntime_addr = addr;
-                                pyruntime_size = section.size;
-                            }
-                        }
-                    }
-
-                    if name == "__bss" {
-                        if let Some(addr) = section.addr.checked_add(offset) {
-                            if addr.checked_add(section.size).is_some() {
-                                bss_addr = addr;
-                                bss_size = section.size;
+                                bss_sections.push((addr, section.size));
                             }
                         }
                     }
@@ -106,36 +90,13 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
             }
             Ok(BinaryInfo {
                 symbols,
-                bss_addr,
-                bss_size,
-                pyruntime_addr,
-                pyruntime_size,
+                bss_sections,
                 addr,
                 size,
             })
         }
 
         Object::Elf(elf) => {
-            let strtab = elf.shdr_strtab;
-            let bss_header = elf
-                .section_headers
-                .iter()
-                // filter down to things that are both NOBITS sections and are named .bss
-                .filter(|header| header.sh_type == goblin::elf::section_header::SHT_NOBITS)
-                .filter(|header| {
-                    strtab
-                        .get_at(header.sh_name)
-                        .map_or(true, |name| name == ".bss")
-                })
-                // if we have multiple sections here, take the largest
-                .max_by_key(|header| header.sh_size)
-                .ok_or_else(|| {
-                    format_err!(
-                        "Failed to find BSS section header in {}",
-                        filename.display()
-                    )
-                })?;
-
             let program_header = elf
                 .program_headers
                 .iter()
@@ -154,34 +115,31 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
             // the map address is relatively small. In this case we can default to 0.
             let offset = offset.saturating_sub(program_header.p_vaddr);
 
-            let mut bss_addr = 0;
-            let mut bss_size = 0;
+            let strtab = elf.shdr_strtab;
+            let mut bss_sections = Vec::new();
             let mut bss_end = 0;
-            if let Some(addr) = bss_header.sh_addr.checked_add(offset) {
-                if bss_header.sh_size.checked_add(addr).is_none() {
-                    return Err(format_err!(
-                        "Invalid bss address/size in {}",
-                        filename.display()
-                    ));
-                }
-                bss_addr = addr;
-                bss_size = bss_header.sh_size;
-                bss_end = bss_header.sh_addr + bss_header.sh_size;
-            }
 
-            let pyruntime_header = elf.section_headers.iter().find(|header| {
-                strtab
-                    .get_at(header.sh_name)
-                    .map_or(false, |name| name == ".PyRuntime")
-            });
-
-            let mut pyruntime_addr = 0;
-            let mut pyruntime_size = 0;
-            if let Some(header) = pyruntime_header {
-                if let Some(addr) = header.sh_addr.checked_add(offset) {
-                    pyruntime_addr = addr;
-                    pyruntime_size = header.sh_size;
-                }
+            for bss_header in elf
+                .section_headers
+                .iter()
+                // filter down to things that are both NOBITS sections and are named .bss
+                .filter(|header| header.sh_type == goblin::elf::section_header::SHT_NOBITS)
+                .filter(|header| {
+                    strtab
+                        .get_at(header.sh_name)
+                        .map_or(true, |name| name == ".bss" || name == ".PyRuntime")
+                })
+            {
+                let Some(addr) = bss_header.sh_addr.checked_add(offset) else {
+                    warn!("Invalid bss address in {}", filename.display());
+                    continue;
+                };
+                let Some(end) = addr.checked_add(bss_header.sh_size) else {
+                    warn!("Invalid bss size in {}", filename.display());
+                    continue;
+                };
+                bss_sections.push((addr, bss_header.sh_size));
+                bss_end = bss_end.max(end);
             }
 
             for sym in elf.syms.iter() {
@@ -231,10 +189,7 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
 
             Ok(BinaryInfo {
                 symbols,
-                bss_addr,
-                bss_size,
-                pyruntime_addr,
-                pyruntime_size,
+                bss_sections,
                 addr,
                 size,
             })
@@ -248,27 +203,17 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
                 }
             }
 
-            let mut bss_addr = 0;
-            let mut bss_size = 0;
-            let mut pyruntime_addr = 0;
-            let mut pyruntime_size = 0;
+            let mut bss_sections = Vec::new();
             let mut found_data = false;
             for section in pe.sections.iter() {
-                if section.name.starts_with(b".data") {
+                let data = section.name.starts_with(b".data");
+                if data {
                     found_data = true;
+                }
+                if data || section.name.starts_with(b"PyRuntim") {
                     if let Some(addr) = offset.checked_add(section.virtual_address as u64) {
                         if addr.checked_add(section.virtual_size as u64).is_some() {
-                            bss_addr = addr;
-                            bss_size = u64::from(section.virtual_size);
-                        }
-                    }
-                } else if section.name.starts_with(b"PyRuntim") {
-                    // note that the name is only 8 chars here, so we don't check for
-                    // trailing 'e' in PyRuntime
-                    if let Some(addr) = offset.checked_add(section.virtual_address as u64) {
-                        if addr.checked_add(section.virtual_size as u64).is_some() {
-                            pyruntime_addr = addr;
-                            pyruntime_size = u64::from(section.virtual_size);
+                            bss_sections.push((addr, u64::from(section.virtual_size)))
                         }
                     }
                 }
@@ -283,10 +228,7 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
 
             Ok(BinaryInfo {
                 symbols,
-                bss_addr,
-                bss_size,
-                pyruntime_size,
-                pyruntime_addr,
+                bss_sections,
                 addr,
                 size,
             })
