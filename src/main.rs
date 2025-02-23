@@ -28,6 +28,7 @@ mod timer;
 mod utils;
 mod version;
 
+use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -89,6 +90,13 @@ fn sample_console(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
 pub trait Recorder {
     fn increment(&mut self, trace: &StackTrace) -> Result<(), Error>;
     fn write<W: Write>(&self, w: &mut W) -> Result<(), Error>;
+    fn overwrite(&self, w: &mut File) -> Result<(), Error> {
+        w.set_len(0)?;
+        w.seek(SeekFrom::Start(0))?;
+        self.write(w)?;
+        w.flush()?;
+        Ok(())
+    }
     fn ext() -> &'static str;
 }
 
@@ -321,9 +329,7 @@ fn record_samples<R: Recorder>(
 
         if let Some(save_period) = config.save_period {
             if (i_sample + 1) % save_period as usize == 0 {
-                out_file.set_len(0)?;
-                out_file.seek(SeekFrom::Start(0))?;
-                output.write(&mut out_file)?;
+                output.overwrite(&mut out_file)?;
             }
         }
         progress.inc(1);
@@ -334,9 +340,7 @@ fn record_samples<R: Recorder>(
         println!("\n{}{}", lede, exit_message);
     }
 
-    out_file.set_len(0)?;
-    out_file.seek(SeekFrom::Start(0))?;
-    output.write(&mut out_file)?;
+    output.overwrite(&mut out_file)?;
 
     match config.format.as_ref().unwrap() {
         FileFormat::flamegraph => {
