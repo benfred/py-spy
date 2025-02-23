@@ -28,7 +28,7 @@ mod timer;
 mod utils;
 mod version;
 
-use std::io::{Read, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -88,15 +88,19 @@ fn sample_console(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
 
 pub trait Recorder {
     fn increment(&mut self, trace: &StackTrace) -> Result<(), Error>;
-    fn write(&self, w: &mut dyn Write) -> Result<(), Error>;
+    fn write<W: Write>(&self, w: &mut W) -> Result<(), Error>;
+    fn ext() -> &'static str;
 }
 
 impl Recorder for speedscope::Stats {
     fn increment(&mut self, trace: &StackTrace) -> Result<(), Error> {
         Ok(self.record(trace)?)
     }
-    fn write(&self, w: &mut dyn Write) -> Result<(), Error> {
+    fn write<W: Write>(&self, w: &mut W) -> Result<(), Error> {
         self.write(w)
+    }
+    fn ext() -> &'static str {
+        "json"
     }
 }
 
@@ -104,8 +108,11 @@ impl Recorder for flamegraph::Flamegraph {
     fn increment(&mut self, trace: &StackTrace) -> Result<(), Error> {
         Ok(self.increment(trace)?)
     }
-    fn write(&self, w: &mut dyn Write) -> Result<(), Error> {
+    fn write<W: Write>(&self, w: &mut W) -> Result<(), Error> {
         self.write(w)
+    }
+    fn ext() -> &'static str {
+        "svg"
     }
 }
 
@@ -113,8 +120,11 @@ impl Recorder for chrometrace::Chrometrace {
     fn increment(&mut self, trace: &StackTrace) -> Result<(), Error> {
         Ok(self.increment(trace)?)
     }
-    fn write(&self, w: &mut dyn Write) -> Result<(), Error> {
+    fn write<W: Write>(&self, w: &mut W) -> Result<(), Error> {
         self.write(w)
+    }
+    fn ext() -> &'static str {
+        "json"
     }
 }
 
@@ -125,36 +135,24 @@ impl Recorder for RawFlamegraph {
         Ok(self.0.increment(trace)?)
     }
 
-    fn write(&self, w: &mut dyn Write) -> Result<(), Error> {
+    fn write<W: Write>(&self, w: &mut W) -> Result<(), Error> {
         self.0.write_raw(w)
+    }
+
+    fn ext() -> &'static str {
+        "txt"
     }
 }
 
-fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error> {
-    let mut output: Box<dyn Recorder> = match config.format {
-        Some(FileFormat::flamegraph) => {
-            Box::new(flamegraph::Flamegraph::new(config.show_line_numbers))
-        }
-        Some(FileFormat::speedscope) => Box::new(speedscope::Stats::new(config)),
-        Some(FileFormat::raw) => Box::new(RawFlamegraph(flamegraph::Flamegraph::new(
-            config.show_line_numbers,
-        ))),
-        Some(FileFormat::chrometrace) => {
-            Box::new(chrometrace::Chrometrace::new(config.show_line_numbers))
-        }
-        None => return Err(format_err!("A file format is required to record samples")),
-    };
-
+fn record_samples<R: Recorder>(
+    pid: remoteprocess::Pid,
+    config: &Config,
+    mut output: R,
+) -> Result<(), Error> {
     let filename = match config.filename.clone() {
         Some(filename) => filename,
         None => {
-            let ext = match config.format.as_ref() {
-                Some(FileFormat::flamegraph) => "svg",
-                Some(FileFormat::speedscope) => "json",
-                Some(FileFormat::raw) => "txt",
-                Some(FileFormat::chrometrace) => "json",
-                None => return Err(format_err!("A file format is required to record samples")),
-            };
+            let ext = R::ext();
             let local_time = Local::now().to_rfc3339_opts(SecondsFormat::Secs, true);
             let name = match config.python_program.as_ref() {
                 Some(prog) => prog[0].to_string(),
@@ -229,7 +227,9 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
     let mut exit_message = "Stopped sampling because process exited";
     let mut last_late_message = std::time::Instant::now();
 
-    for mut sample in sampler {
+    let mut out_file = std::fs::File::create(&filename)?;
+
+    for (i_sample, mut sample) in sampler.into_iter().enumerate() {
         if let Some(delay) = sample.late {
             if delay > Duration::from_secs(1) {
                 if config.hide_progress {
@@ -318,6 +318,14 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
             };
             progress.set_message(msg);
         }
+
+        if let Some(save_period) = config.save_period {
+            if (i_sample + 1) % save_period as usize == 0 {
+                out_file.set_len(0)?;
+                out_file.seek(SeekFrom::Start(0))?;
+                output.write(&mut out_file)?;
+            }
+        }
         progress.inc(1);
     }
     progress.finish();
@@ -326,10 +334,9 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
         println!("\n{}{}", lede, exit_message);
     }
 
-    {
-        let mut out_file = std::fs::File::create(&filename)?;
-        output.write(&mut out_file)?;
-    }
+    out_file.set_len(0)?;
+    out_file.seek(SeekFrom::Start(0))?;
+    output.write(&mut out_file)?;
 
     match config.format.as_ref().unwrap() {
         FileFormat::flamegraph => {
@@ -374,9 +381,33 @@ fn run_spy_command(pid: remoteprocess::Pid, config: &config::Config) -> Result<(
         "dump" => {
             dump::print_traces(pid, config, None)?;
         }
-        "record" => {
-            record_samples(pid, config)?;
-        }
+        "record" => match config.format {
+            Some(FileFormat::flamegraph) => {
+                record_samples(
+                    pid,
+                    config,
+                    flamegraph::Flamegraph::new(config.show_line_numbers),
+                )?;
+            }
+            Some(FileFormat::speedscope) => {
+                record_samples(pid, config, speedscope::Stats::new(config))?;
+            }
+            Some(FileFormat::raw) => {
+                record_samples(
+                    pid,
+                    config,
+                    RawFlamegraph(flamegraph::Flamegraph::new(config.show_line_numbers)),
+                )?;
+            }
+            Some(FileFormat::chrometrace) => {
+                record_samples(
+                    pid,
+                    config,
+                    chrometrace::Chrometrace::new(config.show_line_numbers),
+                )?;
+            }
+            None => return Err(format_err!("A file format is required to record samples")),
+        },
         "top" => {
             sample_console(pid, config)?;
         }

@@ -253,7 +253,7 @@ impl Stats {
         Ok(())
     }
 
-    pub fn write(&self, w: &mut dyn Write) -> Result<(), Error> {
+    pub fn write<T: Write + ?Sized>(&self, w: &mut T) -> Result<(), Error> {
         let json = serde_json::to_string(&SpeedscopeFile::new(
             &self.samples,
             &self.frames,
