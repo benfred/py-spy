@@ -11,6 +11,7 @@ use crate::binary_parser::BinaryInfo;
 use crate::cython;
 use crate::stack_trace::Frame;
 use crate::utils::resolve_filename;
+use crate::version::Version;
 
 pub struct NativeStack {
     should_reload: bool,
@@ -53,6 +54,7 @@ impl NativeStack {
         &mut self,
         frames: &Vec<Frame>,
         thread: &remoteprocess::Thread,
+        version: &Version,
     ) -> Result<Vec<Frame>, Error> {
         if self.should_reload {
             self.symbolicator.reload()?;
@@ -63,12 +65,13 @@ impl NativeStack {
         let native_stack = self.get_thread(thread)?;
 
         // TODO: merging the two stack together could happen outside of thread lock
-        self.merge_native_stack(frames, native_stack)
+        self.merge_native_stack(frames, native_stack, version)
     }
     pub fn merge_native_stack(
         &mut self,
         frames: &Vec<Frame>,
         native_stack: Vec<u64>,
+        version: &Version,
     ) -> Result<Vec<Frame>, Error> {
         let mut python_frame_index = 0;
         let mut merged = Vec::new();
@@ -98,7 +101,19 @@ impl NativeStack {
                         while python_frame_index < frames.len() {
                             merged.push(frames[python_frame_index].clone());
 
-                            if frames[python_frame_index].is_entry {
+                            if match version {
+                                Version {
+                                    major: 3,
+                                    minor: 11,
+                                    ..
+                                } => frames[python_frame_index].is_entry,
+                                Version {
+                                    major: 3,
+                                    minor: 12..=14,
+                                    ..
+                                } => frames[python_frame_index].last_was_shim,
+                                _ => true,
+                            } {
                                 break;
                             }
 
@@ -150,6 +165,7 @@ impl NativeStack {
                         module: None,
                         locals: None,
                         is_entry: true,
+                        last_was_shim: true,
                     });
                 });
 
@@ -291,6 +307,7 @@ impl NativeStack {
                     module: Some(frame.module.clone()),
                     locals: None,
                     is_entry: true,
+                    last_was_shim: true,
                 })
             }
             None => Some(Frame {
@@ -301,6 +318,7 @@ impl NativeStack {
                 short_filename: None,
                 module: Some(frame.module.clone()),
                 is_entry: true,
+                last_was_shim: true,
             }),
         }
     }

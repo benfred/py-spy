@@ -303,7 +303,8 @@ impl PythonSpy {
                             .os_thread_id
                             .ok_or_else(|| format_err!("failed to get os threadid"))?;
                         let os_thread = remoteprocess::Thread::new(thread_id as Tid)?;
-                        trace.frames = native.merge_native_thread(&trace.frames, &os_thread)?
+                        trace.frames =
+                            native.merge_native_thread(&trace.frames, &os_thread, &self.version)?
                     }
                 }
             }

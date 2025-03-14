@@ -47,8 +47,10 @@ pub struct Frame {
     pub line: i32,
     /// Local Variables associated with the frame
     pub locals: Option<Vec<LocalVariable>>,
-    /// If this is an entry frame. Each entry frame corresponds to one native frame.
+    /// If this is an entry frame. Each entry frame corresponds to one native frame (Python 3.11)
     pub is_entry: bool,
+    /// If the last frame was a shim. This is used in Python 3.12+ to detect entry frames.
+    pub last_was_shim: bool,
 }
 
 #[derive(Debug, Hash, Eq, PartialEq, Ord, PartialOrd, Clone, Serialize)]
@@ -128,6 +130,7 @@ where
     }
 
     let mut frame_ptr = thread.frame(frame_address);
+    let mut last_was_shim = true;
     while !frame_ptr.is_null() {
         let frame = process
             .copy_pointer(frame_ptr)
@@ -149,6 +152,7 @@ where
         // is merged )
         if filename.is_err() || name.is_err() {
             frame_ptr = frame.back();
+            last_was_shim = false;
             continue;
         }
         let filename = filename?;
@@ -157,6 +161,7 @@ where
         // skip <shim> entries in python 3.12+
         if filename == "<shim>" {
             frame_ptr = frame.back();
+            last_was_shim = true;
             continue;
         }
 
@@ -195,12 +200,14 @@ where
             module: None,
             locals,
             is_entry,
+            last_was_shim,
         });
         if frames.len() > 4096 {
             return Err(format_err!("Max frame recursion depth reached"));
         }
 
         frame_ptr = frame.back();
+        last_was_shim = false;
     }
 
     Ok(StackTrace {
@@ -309,6 +316,7 @@ impl ProcessInfo {
             line: 0,
             locals: None,
             is_entry: true,
+            last_was_shim: true,
         }
     }
 }
