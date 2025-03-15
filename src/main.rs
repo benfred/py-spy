@@ -285,7 +285,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
                     line: 0,
                     locals: None,
                     is_entry: true,
-                    last_was_shim: true,
+                    is_shim_entry: true,
                 });
             }
 
