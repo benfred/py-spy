@@ -6,6 +6,7 @@ compiler with rustfmt-nightly.
 Also requires a git repo of cpython to be checked out somewhere. As a hack, this can
 also build different versions of cpython for testing out
 """
+import pathlib
 import argparse
 import os
 import sys
@@ -162,6 +163,36 @@ def extract_bindings(cpython_path, version, configure=False):
         o.write("#![allow(clippy::too_many_arguments)]\n\n")
 
         o.write(open(os.path.join(cpython_path, "bindgen_output.rs")).read())
+
+def generate_numpy_bindings():
+    import numpy as np
+
+    scalars_glob = list(pathlib.Path(np.get_include()).glob('**/arrayscalars.h'))
+    if not scalars_glob:
+        raise ValueError("Couldn't find numpy scalars.")
+
+    scalars = scalars_glob[0]
+    with open("numpy_bindgen_input.h", 'w') as f:
+        f.write('#include "Python.h"')
+        f.write('#include "arrayscalars.h"')
+
+
+    os.makedirs(os.path.join("src", "numpy_bindings"), exist_ok=True)
+    with open(os.path.join("src", "numpy_bindings", np.__version__.replace(".", "_") + ".rs"), "w") as o:
+        o.write(f"// Generated bindings for numpy {version}")
+        o.write("#![allow(dead_code)]\n")
+        o.write("#![allow(non_upper_case_globals)]\n")
+        o.write("#![allow(non_camel_case_types)]\n")
+        o.write("#![allow(non_snake_case)]\n")
+        o.write("#![allow(clippy::useless_transmute)]\n")
+        o.write("#![allow(clippy::default_trait_access)]\n")
+        o.write("#![allow(clippy::cast_lossless)]\n")
+        o.write("#![allow(clippy::trivially_copy_pass_by_ref)]\n")
+        o.write("#![allow(clippy::upper_case_acronyms)]\n")
+        o.write("#![allow(clippy::too_many_arguments)]\n\n")
+
+        # o.write(open(os.path.join(cpython_path, "bindgen_output.rs")).read())
+
 
 
 if __name__ == "__main__":
