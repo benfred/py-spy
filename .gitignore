@@ -23,3 +23,6 @@ var/
 .vscode/
 **/.vagrant
 *.log
+
+numpy_bindgen_input.h
+numpy_bindgen_output.rs
