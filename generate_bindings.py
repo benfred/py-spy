@@ -8,9 +8,7 @@ also build different versions of cpython for testing out
 """
 import argparse
 import os
-import platform
 import sys
-import sysconfig
 import tempfile
 
 
@@ -87,11 +85,11 @@ def calculate_pyruntime_offsets(cpython_path, version, configure=False):
         if sys.platform.startswith("win"):
             # this requires a 'x64 Native Tools Command Prompt' to work out properly for 64 bit installs
             # also expects that you have run something like 'PCBuild\build.bat' first
-            ret = os.system(rf"cl {source_filename} /I {cpython_path} /I {cpython_path}\PC /I {cpython_path}\Include")
+            ret = os.system(f"cl {source_filename} /I {cpython_path} /I {cpython_path}\PC /I {cpython_path}\Include")
         elif sys.platform.startswith("freebsd"):
-            ret = os.system(rf"""cc {source_filename} -I {cpython_path} -I {cpython_path}/Include -o {exe}""")
+            ret = os.system(f"""cc {source_filename} -I {cpython_path} -I {cpython_path}/Include -o {exe}""")
         else:
-            ret = os.system(rf"""gcc {source_filename} -I {cpython_path} -I {cpython_path}/Include -o {exe}""")
+            ret = os.system(f"""gcc {source_filename} -I {cpython_path} -I {cpython_path}/Include -o {exe}""")
         if ret:
             print("Failed to compile")
             return ret
@@ -165,58 +163,6 @@ def extract_bindings(cpython_path, version, configure=False):
 
         o.write(open(os.path.join(cpython_path, "bindgen_output.rs")).read())
 
-def generate_numpy_bindings():
-    import numpy as np
-
-    np_include = np.get_include()
-    arrayscalars = os.path.join(np_include, "numpy", "arrayscalars.h")
-
-    np_version = np.__version__.replace(".", "_")
-    cpython_version = "_".join(platform.python_version_tuple())
-
-    with open("numpy_bindgen_input.h", 'w') as f:
-        f.writelines(
-            [
-                '#include "Python.h"\n',
-                '#include "numpy/npy_common.h"\n',
-                '#include "numpy/ndarraytypes.h"\n',
-                '#include "numpy/arrayscalars.h"\n',
-            ]
-        )
-
-    ret = os.system(f"""
-    bindgen numpy_bindgen_input.h -o numpy_bindgen_output.rs \
-        --allowlist-file {arrayscalars} \
-        -- -I {sysconfig.get_path('include')} -I {np_include}
-    """)
-    if ret:
-        raise ValueError("Error running bindgen.")
-
-
-    os.makedirs(os.path.join("src", "numpy_bindings"), exist_ok=True)
-    numpy_bindings = os.path.join(
-        "src", "numpy_bindings", f"np{np_version}_py{cpython_version}" + ".rs"
-    )
-    with open(numpy_bindings, "w") as o:
-        o.writelines(
-            [
-                f"// Generated bindings for numpy {version}\n",
-                "#![allow(dead_code)]\n",
-                "#![allow(non_upper_case_globals)]\n",
-                "#![allow(non_camel_case_types)]\n",
-                "#![allow(non_snake_case)]\n",
-                "#![allow(clippy::useless_transmute)]\n",
-                "#![allow(clippy::default_trait_access)]\n",
-                "#![allow(clippy::cast_lossless)]\n",
-                "#![allow(clippy::trivially_copy_pass_by_ref)]\n",
-                "#![allow(clippy::upper_case_acronyms)]\n",
-                "#![allow(clippy::too_many_arguments)]\n",
-            ]
-        )
-
-        o.write(open('numpy_bindgen_output.rs').read())
-
-
 
 if __name__ == "__main__":
     if sys.platform.startswith("win"):
@@ -243,11 +189,15 @@ if __name__ == "__main__":
     parser.add_argument("--pyruntime", help="generate offsets for pyruntime", action="store_true")
     parser.add_argument("--build", help="Build python for this version", action="store_true")
     parser.add_argument("--all", help="Build all versions", action="store_true")
-    parser.add_argument("--numpy", help="Generate numpy bindings", action="store_true")
 
     parser.add_argument("versions", type=str, nargs="*", help="versions to extract")
 
     args = parser.parse_args()
+
+    if not os.path.isdir(args.cpython):
+        print(f"Directory '{args.cpython}' doesn't exist!")
+        print("Pass a valid cpython path in with --cpython <pathname>")
+        sys.exit(1)
 
     if args.all:
         versions = [
@@ -262,14 +212,9 @@ if __name__ == "__main__":
         ]
     else:
         versions = args.versions
-        if not args.versions:
-            version = f"v{platform.python_version()}"
-            args.cpython = None
-            print(
-                "No python version specified, so we will use the currently running "
-                f"version: {version}. The path to the cpython source will be ignored."
-            )
-            versions = [version]
+        if not versions:
+            print("You must specify versions of cpython to generate bindings for, or --all\n")
+            parser.print_help()
 
     for version in versions:
         if args.build:
@@ -278,8 +223,7 @@ if __name__ == "__main__":
                 print("Failed to build python")
         elif args.pyruntime:
             calculate_pyruntime_offsets(args.cpython, version, configure=args.configure)
-        elif args.numpy:
-            generate_numpy_bindings()
+
         else:
             if extract_bindings(args.cpython, version, configure=args.configure):
                 print("Failed to generate bindings")

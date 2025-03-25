@@ -16,7 +16,6 @@ mod flamegraph;
 #[cfg(feature = "unwind")]
 mod native_stack_trace;
 mod python_bindings;
-mod numpy_bindings;
 mod python_data_access;
 mod python_interpreters;
 mod python_process_info;

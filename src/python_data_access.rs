@@ -2,7 +2,6 @@
 use anyhow::Error;
 
 use crate::python_bindings::v3_13_0;
-use crate::numpy_bindings::np2_2_4_py3_13_2;
 use crate::python_interpreters::{
     BytesObject, InterpreterState, ListObject, Object, StringObject, TupleObject, TypeObject,
 };
@@ -481,18 +480,21 @@ where
         // }
         //
         // Where `obval` can be of different sizes depending on the scalar type.
-        // We match the size to the value_type_name for this purpose.
+        // We match the size to the value_type_name for this purpose, avoiding the
+        // need to build bindings for the numpy C API.
         match value_type_name {
-            "numpy.bool" => format!("{}", process.copy_pointer(addr as *const np2_2_4_py3_13_2::PyBoolScalarObject)?.obval),
-            "numpy.uint8" => format!("{}", get_int_obval::<u8, P>(addr, process)?),
-            "numpy.uint16" => format!("{}", get_int_obval::<u16, P>(addr, process)?),
-            "numpy.uint32" => format!("{}", get_int_obval::<u32, P>(addr, process)?),
-            "numpy.uint64" => format!("{}", get_int_obval::<u64, P>(addr, process)?),
-            "numpy.int8" => format!("{}", get_int_obval::<i8, P>(addr, process)?),
-            "numpy.int16" => format!("{}", get_int_obval::<i16, P>(addr, process)?),
-            "numpy.int32" => format!("{}", get_int_obval::<i32, P>(addr, process)?),
-            "numpy.int64" => format!("{}", get_int_obval::<i64, P>(addr, process)?),
-            _ => format!("Variable type: {}", value_type_name),
+            "numpy.bool" => format_obval::<bool, P>(addr, process)?,
+            "numpy.uint8" => format_obval::<u8, P>(addr, process)?,
+            "numpy.uint16" => format_obval::<u16, P>(addr, process)?,
+            "numpy.uint32" => format_obval::<u32, P>(addr, process)?,
+            "numpy.uint64" => format_obval::<u64, P>(addr, process)?,
+            "numpy.int8" => format_obval::<i8, P>(addr, process)?,
+            "numpy.int16" => format_obval::<i16, P>(addr, process)?,
+            "numpy.int32" => format_obval::<i32, P>(addr, process)?,
+            "numpy.int64" => format_obval::<i64, P>(addr, process)?,
+            "numpy.float32" => format_obval::<f32, P>(addr, process)?,
+            "numpy.float64" => format_obval::<f64, P>(addr, process)?,
+            _ => format!("{}", value_type_name),
         }
     } else {
         format!("<{} at 0x{:x}>", value_type_name, addr)
@@ -501,7 +503,7 @@ where
     Ok(formatted)
 }
 
-fn get_int_obval<T, P>(addr: usize, process: &P) -> Result<T, Error>
+fn format_obval<T, P>(addr: usize, process: &P) -> Result<String, Error>
 where
     T: std::fmt::Display,
     P: ProcessMemory,
@@ -511,7 +513,7 @@ where
     let result = unsafe {
         process.copy_pointer(base_addr.byte_offset(offset) as *const T)?
     };
-    Ok(result)
+    Ok(format!("{}", result))
 }
 
 #[cfg(test)]
