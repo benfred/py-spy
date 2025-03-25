@@ -2,6 +2,7 @@
 use anyhow::Error;
 
 use crate::python_bindings::v3_13_0;
+use crate::numpy_bindings::np2_2_4_py3_13_2;
 use crate::python_interpreters::{
     BytesObject, InterpreterState, ListObject, Object, StringObject, TupleObject, TypeObject,
 };
@@ -472,11 +473,45 @@ where
         format!("{}", value.ob_fval)
     } else if value_type_name == "NoneType" {
         "None".to_owned()
+    } else if value_type_name.starts_with("numpy.") {
+        // All numpy scalars have shape:
+        // {
+        //     pub ob_base: PyObject,
+        //     pub obval: <value>,
+        // }
+        //
+        // Where `obval` can be of different sizes depending on the scalar type.
+        // We match the size to the value_type_name for this purpose.
+        match value_type_name {
+            "numpy.bool" => format!("{}", process.copy_pointer(addr as *const np2_2_4_py3_13_2::PyBoolScalarObject)?.obval),
+            "numpy.uint8" => format!("{}", get_int_obval::<u8, P>(addr, process)?),
+            "numpy.uint16" => format!("{}", get_int_obval::<u16, P>(addr, process)?),
+            "numpy.uint32" => format!("{}", get_int_obval::<u32, P>(addr, process)?),
+            "numpy.uint64" => format!("{}", get_int_obval::<u64, P>(addr, process)?),
+            "numpy.int8" => format!("{}", get_int_obval::<i8, P>(addr, process)?),
+            "numpy.int16" => format!("{}", get_int_obval::<i16, P>(addr, process)?),
+            "numpy.int32" => format!("{}", get_int_obval::<i32, P>(addr, process)?),
+            "numpy.int64" => format!("{}", get_int_obval::<i64, P>(addr, process)?),
+            _ => format!("Variable type: {}", value_type_name),
+        }
     } else {
         format!("<{} at 0x{:x}>", value_type_name, addr)
     };
 
     Ok(formatted)
+}
+
+fn get_int_obval<T, P>(addr: usize, process: &P) -> Result<T, Error>
+where
+    T: std::fmt::Display,
+    P: ProcessMemory,
+{
+    let base_addr = addr as *mut u32;
+    let offset = std::mem::size_of::<crate::python_bindings::v3_7_0::PyObject>() as isize;
+    let result = unsafe {
+        process.copy_pointer(base_addr.byte_offset(offset) as *const T)?
+    };
+    Ok(result)
 }
 
 #[cfg(test)]

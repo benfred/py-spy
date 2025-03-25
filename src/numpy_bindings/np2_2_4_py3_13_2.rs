@@ -1449,24 +1449,24 @@ const _: () = {
     ["Offset of field: PyCDoubleScalarObject::obval"]
         [::std::mem::offset_of!(PyCDoubleScalarObject, obval) - 16usize];
 };
-#[repr(C)]
-#[repr(align(16))]
-#[derive(Copy, Clone)]
-pub struct PyCLongDoubleScalarObject {
-    pub ob_base: PyObject,
-    pub obval: npy_clongdouble,
-}
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of PyCLongDoubleScalarObject"]
-        [::std::mem::size_of::<PyCLongDoubleScalarObject>() - 48usize];
-    ["Alignment of PyCLongDoubleScalarObject"]
-        [::std::mem::align_of::<PyCLongDoubleScalarObject>() - 16usize];
-    ["Offset of field: PyCLongDoubleScalarObject::ob_base"]
-        [::std::mem::offset_of!(PyCLongDoubleScalarObject, ob_base) - 0usize];
-    ["Offset of field: PyCLongDoubleScalarObject::obval"]
-        [::std::mem::offset_of!(PyCLongDoubleScalarObject, obval) - 16usize];
-};
+// #[repr(C)]
+// #[repr(align(16))]
+// #[derive(Copy, Clone)]
+// pub struct PyCLongDoubleScalarObject {
+//     pub ob_base: PyObject,
+//     pub obval: npy_clongdouble,
+// }
+// #[allow(clippy::unnecessary_operation, clippy::identity_op)]
+// const _: () = {
+//     ["Size of PyCLongDoubleScalarObject"]
+//         [::std::mem::size_of::<PyCLongDoubleScalarObject>() - 48usize];
+//     ["Alignment of PyCLongDoubleScalarObject"]
+//         [::std::mem::align_of::<PyCLongDoubleScalarObject>() - 16usize];
+//     ["Offset of field: PyCLongDoubleScalarObject::ob_base"]
+//         [::std::mem::offset_of!(PyCLongDoubleScalarObject, ob_base) - 0usize];
+//     ["Offset of field: PyCLongDoubleScalarObject::obval"]
+//         [::std::mem::offset_of!(PyCLongDoubleScalarObject, obval) - 16usize];
+// };
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct PyObjectScalarObject {
