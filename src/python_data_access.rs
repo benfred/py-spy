@@ -473,15 +473,6 @@ where
     } else if value_type_name == "NoneType" {
         "None".to_owned()
     } else if value_type_name.starts_with("numpy.") {
-        // All numpy scalars have shape:
-        // {
-        //     pub ob_base: PyObject,
-        //     pub obval: <value>,
-        // }
-        //
-        // Where `obval` can be of different sizes depending on the scalar type.
-        // We match the size to the value_type_name for this purpose, avoiding the
-        // need to build bindings for the numpy C API.
         match value_type_name {
             "numpy.bool" => format_obval::<bool, P>(addr, process)?,
             "numpy.uint8" => format_obval::<u8, P>(addr, process)?,
@@ -494,7 +485,7 @@ where
             "numpy.int64" => format_obval::<i64, P>(addr, process)?,
             "numpy.float32" => format_obval::<f32, P>(addr, process)?,
             "numpy.float64" => format_obval::<f64, P>(addr, process)?,
-            _ => format!("{}", value_type_name),
+            _ => format!("<{} at 0x{:x}>", value_type_name, addr),
         }
     } else {
         format!("<{} at 0x{:x}>", value_type_name, addr)
@@ -503,6 +494,20 @@ where
     Ok(formatted)
 }
 
+/// Format the numpy scalar to a string.
+///
+/// All numpy scalars have shape:
+/// {
+///     ob_base: PyObject,
+///     obval: <value>,
+/// }
+///
+/// Where `obval` can be of different sizes depending on the scalar type.
+/// We match the size to the value_type_name for this purpose, avoiding the
+/// need to build bindings for the numpy C API.
+///
+/// * `addr`: Address of the numpy scalar
+/// * `process`: Process memory in which the object resides
 fn format_obval<T, P>(addr: usize, process: &P) -> Result<String, Error>
 where
     T: std::fmt::Display,
