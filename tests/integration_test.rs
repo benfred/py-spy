@@ -280,7 +280,7 @@ fn test_local_vars() {
     let frame = &trace.frames[0];
     let locals = frame.locals.as_ref().unwrap();
 
-    assert_eq!(locals.len(), 9);
+    assert_eq!(locals.len(), 27);
 
     let arg1 = &locals[0];
     assert_eq!(arg1.name, "arg1");
@@ -325,6 +325,79 @@ fn test_local_vars() {
     let local6 = &locals[8];
     assert_eq!(local6.name, "local6");
     assert!(!local6.arg);
+
+    // Numpy scalars
+    let local7 = &locals[9];
+    assert_eq!(local7.name, "local7");
+    assert_eq!(local7.repr, Some("true".to_string()));
+
+    let local8 = &locals[10];
+    assert_eq!(local8.name, "local8");
+    assert_eq!(local8.repr, Some("2".to_string()));
+
+    let local9 = &locals[11];
+    assert_eq!(local9.name, "local9");
+    assert_eq!(local9.repr, Some("3".to_string()));
+
+    let local10 = &locals[12];
+    assert_eq!(local10.name, "local10");
+    assert_eq!(local10.repr, Some("42".to_string()));
+
+    let local11 = &locals[13];
+    assert_eq!(local11.name, "local11");
+    assert_eq!(local11.repr, Some("43".to_string()));
+
+    let local12 = &locals[14];
+    assert_eq!(local12.name, "local12");
+    assert_eq!(local12.repr, Some("44".to_string()));
+
+    let local13 = &locals[15];
+    assert_eq!(local13.name, "local13");
+    assert_eq!(local13.repr, Some("45".to_string()));
+
+    let local14 = &locals[16];
+    assert_eq!(local14.name, "local14");
+    assert_eq!(local14.repr, Some("46".to_string()));
+
+    let local15 = &locals[17];
+    assert_eq!(local15.name, "local15");
+    assert_eq!(local15.repr, Some("7".to_string()));
+
+    let local16 = &locals[18];
+    assert_eq!(local16.name, "local16");
+    assert_eq!(local16.repr, Some("8".to_string()));
+
+    let local17 = &locals[19];
+    assert_eq!(local17.name, "local17");
+    assert!(local17.repr.clone().map(|result| result.starts_with("<numpy.ulonglong at")).unwrap_or(false));
+
+    let local18 = &locals[20];
+    assert_eq!(local18.name, "local18");
+    assert!(local18.repr.clone().map(|result| result.starts_with("<numpy.float16 at")).unwrap_or(false));
+
+    let local19 = &locals[21];
+    assert_eq!(local19.name, "local19");
+    assert_eq!(local19.repr, Some("0.5".to_string()));
+
+    let local20 = &locals[22];
+    assert_eq!(local20.name, "local20");
+    assert_eq!(local20.repr, Some("0.7".to_string()));
+
+    let local21 = &locals[23];
+    assert_eq!(local21.name, "local21");
+    assert!(local21.repr.clone().map(|result| result.starts_with("<numpy.longdouble at")).unwrap_or(false));
+
+    let local22 = &locals[24];
+    assert_eq!(local22.name, "local22");
+    assert!(local22.repr.clone().map(|result| result.starts_with("<numpy.complex64 at")).unwrap_or(false));
+
+    let local23 = &locals[25];
+    assert_eq!(local23.name, "local23");
+    assert!(local23.repr.clone().map(|result| result.starts_with("<numpy.complex128 at")).unwrap_or(false));
+
+    let local24 = &locals[26];
+    assert_eq!(local24.name, "local24");
+    assert!(local24.repr.clone().map(|result| result.starts_with("<numpy.clongdouble at")).unwrap_or(false));
 
     // we only support dictionary lookup on python 3.6+ right now
     if runner.spy.version.major == 3 && runner.spy.version.minor >= 6 {
