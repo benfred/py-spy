@@ -254,11 +254,11 @@ impl Config {
             .arg(rate.clone())
             .arg(
                 Arg::new("save_period")
-                .long("save_period")
-                .value_name("save_period")
-                .value_parser(value_parser!(u64))
-                .help("The number of intervals between saving the profile to disk")
-                .takes_value(true)
+                    .long("save_period")
+                    .value_name("save_period")
+                    .value_parser(value_parser!(u64))
+                    .help("The number of intervals between saving the profile to disk")
+                    .takes_value(true),
             )
             .arg(subprocesses.clone())
             .arg(Arg::new("function").short('F').long("function").help(
