@@ -1,5 +1,6 @@
 [features]
-unwind = []
+default = ["unwind"]
+unwind = ["remoteprocess/unwind"]
 
 [package]
 name = "py-spy"
@@ -39,7 +40,7 @@ serde_derive = "1.0"
 serde_json = "1.0"
 rand = "0.8"
 rand_distr = "0.4"
-remoteprocess = {version="0.5.0", features=["unwind"]}
+remoteprocess = {version="0.5.0"}
 chrono = "0.4.26"
 
 [dev-dependencies]
