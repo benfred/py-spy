@@ -185,6 +185,10 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
             }
 
             for sym in elf.syms.iter() {
+                // Skip undefined symbols.
+                if sym.st_shndx == goblin::elf::section_header::SHN_UNDEF as usize {
+                    continue;
+                }
                 // Skip imported symbols
                 if sym.is_import()
                     || (bss_end != 0
@@ -203,6 +207,10 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
                 }
             }
             for dynsym in elf.dynsyms.iter() {
+                // Skip undefined symbols.
+                if dynsym.st_shndx == goblin::elf::section_header::SHN_UNDEF as usize {
+                    continue;
+                }
                 // Skip imported symbols
                 if dynsym.is_import()
                     || (bss_end != 0
