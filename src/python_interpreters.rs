@@ -281,8 +281,8 @@ impl<'a> ByteStream<'a> {
             Some(byte) => {
                 if byte & 0b10000000 == 0 {
                     Err(Error::msg(format!(
-                        "Expected header bit at cursor {} in {:?}",
-                        self.cursor, self.buffer
+                        "Expected header bit at index {} in {:?}",
+                        self.cursor - 1, self.buffer
                     )))
                 } else {
                     Ok(Some(byte))
@@ -294,10 +294,10 @@ impl<'a> ByteStream<'a> {
 
     fn read_body(&mut self) -> Result<u8, Error> {
         let byte = self.read()?;
-        if byte & 0b10000000 == 1 {
+        if byte & 0b10000000 != 0 {
             Err(Error::msg(format!(
-                "Expected non-header bit at cursor {} in {:?}",
-                self.cursor, self.buffer
+                "Expected non-header bit at index {} in {:?}",
+                self.cursor - 1, self.buffer
             )))
         } else {
             Ok(byte)
@@ -889,5 +889,29 @@ mod tests {
             22, 208, 4, 22,
         ];
         assert_eq!(code.get_line_number(214, &table).unwrap(), 5);
+    }
+
+    #[test]
+    fn test_py3_12_line_numbers_truncated() {
+        use crate::python_bindings::v3_12_0::PyCodeObject;
+        let code = PyCodeObject {
+            co_firstlineno: 4,
+            ..Default::default()
+        };
+
+        let table = [128_u8];
+        assert!(code.get_line_number(214, &table).is_err());
+    }
+
+    #[test]
+    fn test_py3_12_line_numbers_invalid() {
+        use crate::python_bindings::v3_12_0::PyCodeObject;
+        let code = PyCodeObject {
+            co_firstlineno: 4,
+            ..Default::default()
+        };
+
+        let table = [0];
+        assert!(code.get_line_number(214, &table).is_err());
     }
 }
