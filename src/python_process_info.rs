@@ -143,24 +143,27 @@ impl PythonProcessInfo {
 
         // likewise handle libpython for python versions compiled with --enabled-shared
         let libpython_binary = {
-            let libmap = maps.iter().find(|m| {
-                if let Some(pathname) = m.filename() {
-                    if let Some(pathname) = pathname.to_str() {
-                        #[cfg(not(windows))]
-                        {
-                            return is_python_lib(pathname) && m.is_exec();
-                        }
-                        #[cfg(windows)]
-                        {
-                            return is_python_lib(pathname);
+            let libmaps: Vec<_> = maps
+                .iter()
+                .filter(|m| {
+                    if let Some(pathname) = m.filename() {
+                        if let Some(pathname) = pathname.to_str() {
+                            #[cfg(not(windows))]
+                            {
+                                return is_python_lib(pathname) && m.is_exec();
+                            }
+                            #[cfg(windows)]
+                            {
+                                return is_python_lib(pathname);
+                            }
                         }
                     }
-                }
-                false
-            });
+                    false
+                })
+                .collect();
 
             let mut libpython_binary: Option<BinaryInfo> = None;
-            if let Some(libpython) = libmap {
+            if let Some(libpython) = libmaps.iter().min_by_key(|m| m.offset) {
                 if let Some(filename) = &libpython.filename() {
                     info!("Found libpython binary @ {}", filename.display());
 
