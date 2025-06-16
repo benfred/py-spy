@@ -163,7 +163,16 @@ impl PythonProcessInfo {
                 .collect();
 
             let mut libpython_binary: Option<BinaryInfo> = None;
-            if let Some(libpython) = libmaps.iter().min_by_key(|m| m.offset) {
+            #[cfg(windows)]
+            let libpython_option = if !libmaps.is_empty() {
+                Some(&libmaps[0])
+            } else {
+                None
+            };
+            #[cfg(not(windows))]
+            let libpython_option = libmaps.iter().min_by_key(|m| m.offset);
+
+            if let Some(libpython) = libpython_option {
                 if let Some(filename) = &libpython.filename() {
                     info!("Found libpython binary @ {}", filename.display());
 
