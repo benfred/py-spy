@@ -198,7 +198,12 @@ impl PythonSpy {
         } else {
             for thread in self.process.threads()?.iter() {
                 let threadid: Tid = thread.id()?;
-                thread_activity.insert(threadid, thread.active()?);
+                let Ok(active) = thread.active() else {
+                    // Do not fail all sampling if a single thread died between entering the loop
+                    // and reading its status.
+                    continue;
+                };
+                thread_activity.insert(threadid, active);
             }
         }
 
