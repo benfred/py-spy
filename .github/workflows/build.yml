@@ -234,8 +234,6 @@ jobs:
             python-version: 3.11.10
           - os: macos-13
             python-version: 3.12.0
-          - os: windows-latest
-            python-version: 3.12.0
           - os: macos-13
             python-version: 3.12.1
           - os: windows-latest

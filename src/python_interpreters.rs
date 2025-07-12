@@ -22,8 +22,9 @@ pub trait InterpreterState {
     type StringObject: StringObject;
     type ListObject: ListObject;
     type TupleObject: TupleObject;
+    const HAS_GIL_RUNTIME_STATE: bool = false;
+
     fn head(&self) -> *mut Self::ThreadState;
-    fn gil_locked(&self) -> Option<bool>;
     fn modules(&self) -> *mut Self::Object;
 }
 
@@ -116,9 +117,6 @@ macro_rules! PythonCommonImpl {
 
             fn head(&self) -> *mut Self::ThreadState {
                 self.tstate_head
-            }
-            fn gil_locked(&self) -> Option<bool> {
-                None
             }
             fn modules(&self) -> *mut Self::Object {
                 self.modules
@@ -416,11 +414,10 @@ impl InterpreterState for v3_13_0::PyInterpreterState {
     type StringObject = v3_13_0::PyUnicodeObject;
     type ListObject = v3_13_0::PyListObject;
     type TupleObject = v3_13_0::PyTupleObject;
+    const HAS_GIL_RUNTIME_STATE: bool = true;
+
     fn head(&self) -> *mut Self::ThreadState {
         self.threads.head
-    }
-    fn gil_locked(&self) -> Option<bool> {
-        Some(self._gil.locked != 0)
     }
     fn modules(&self) -> *mut Self::Object {
         self.imports.modules
@@ -500,14 +497,11 @@ impl InterpreterState for v3_12_0::PyInterpreterState {
     type StringObject = v3_12_0::PyUnicodeObject;
     type ListObject = v3_12_0::PyListObject;
     type TupleObject = v3_12_0::PyTupleObject;
+    const HAS_GIL_RUNTIME_STATE: bool = true;
 
     fn head(&self) -> *mut Self::ThreadState {
         self.threads.head
     }
-    fn gil_locked(&self) -> Option<bool> {
-        Some(self._gil.locked._value != 0)
-    }
-
     fn modules(&self) -> *mut Self::Object {
         self.imports.modules
     }
@@ -593,11 +587,9 @@ impl InterpreterState for v3_11_0::PyInterpreterState {
     type StringObject = v3_11_0::PyUnicodeObject;
     type ListObject = v3_11_0::PyListObject;
     type TupleObject = v3_11_0::PyTupleObject;
+
     fn head(&self) -> *mut Self::ThreadState {
         self.threads.head
-    }
-    fn gil_locked(&self) -> Option<bool> {
-        None
     }
     fn modules(&self) -> *mut Self::Object {
         self.modules
