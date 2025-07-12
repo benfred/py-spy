@@ -191,11 +191,11 @@ jobs:
             3.8.0,
             3.8.18,
             3.9.0,
-            3.9.20,
+            3.9.23,
             3.10.0,
-            3.10.15,
+            3.10.18,
             3.11.0,
-            3.11.10,
+            3.11.13,
             3.12.0,
             3.12.1,
             3.12.2,
@@ -204,25 +204,46 @@ jobs:
             3.12.5,
             3.12.6,
             3.12.7,
+            3.12.8,
+            3.12.9,
+            3.12.10,
+            3.12.11,
             3.13.0,
+            3.13.1,
+            3.13.2,
+            3.13.3,
+            3.13.4,
+            3.13.5,
           ]
         os: [ubuntu-22.04, macos-13, windows-latest]
         # some versions of python can't be tested on GHA with osx because of SIP:
         exclude:
+          - os: ubuntu-22.04
+            python-version: 3.6.7
           - os: windows-latest
             python-version: 3.6.15
+          - os: ubuntu-22.04
+            python-version: 3.6.15
+          - os: ubuntu-22.04
+            python-version: 3.7.1
           - os: windows-latest
             python-version: 3.7.17
+          - os: ubuntu-22.04
+            python-version: 3.8.0
           - os: windows-latest
             python-version: 3.8.18
+          - os: ubuntu-22.04
+            python-version: 3.9.0
           - os: windows-latest
-            python-version: 3.9.20
+            python-version: 3.9.23
+          - os: ubuntu-22.04
+            python-version: 3.10.0
           - os: windows-latest
-            python-version: 3.10.15
+            python-version: 3.10.18
           - os: macos-13
-            python-version: 3.11.10
+            python-version: 3.11.13
           - os: windows-latest
-            python-version: 3.11.10
+            python-version: 3.11.13
           - os: macos-13
             python-version: 3.12.0
           - os: macos-13
@@ -239,6 +260,16 @@ jobs:
             python-version: 3.12.6
           - os: macos-13
             python-version: 3.12.7
+          - os: macos-13
+            python-version: 3.12.8
+          - os: macos-13
+            python-version: 3.12.9
+          - os: macos-13
+            python-version: 3.12.10
+          - os: macos-13
+            python-version: 3.12.11
+          - os: windows-latest
+            python-version: 3.12.11
 
     steps:
       - uses: actions/checkout@v2
