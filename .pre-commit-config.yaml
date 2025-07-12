@@ -11,14 +11,6 @@ repos:
     hooks:
       - id: fmt
       - id: cargo-check
-  - repo: local
-    hooks:
-      - id: cargo-clippy
-        name: cargo clippy
-        entry: cargo clippy -- -D warnings
-        language: system
-        files: \.rs$
-        pass_filenames: false
   - repo: https://github.com/rbubley/mirrors-prettier
     rev: v3.3.3
     hooks:

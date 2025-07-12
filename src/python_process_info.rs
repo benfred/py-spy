@@ -289,7 +289,10 @@ where
     P: ProcessMemory,
 {
     // If possible, grab the sys.version string from the processes memory (mac osx).
-    if let Some(&addr) = python_info.get_symbol("Py_GetVersion.version") {
+    if let Some(&addr) = python_info
+        .get_symbol("Py_GetVersion.version")
+        .or_else(|| python_info.get_symbol("version"))
+    {
         info!("Getting version from symbol address");
         let res: Result<Option<Version>, Error> = (|| {
             let bytes = process.copy(addr as usize, 128)?;
@@ -640,30 +643,32 @@ where
         .unwrap()
 }
 
-pub fn get_threadstate_address(
+pub fn get_threadstate_address<P>(
     interpreter_address: usize,
     python_info: &PythonProcessInfo,
+    process: &P,
     version: &Version,
     config: &Config,
-) -> Result<usize, Error> {
+) -> Result<usize, Error>
+where
+    P: ProcessMemory,
+{
     let threadstate_address = match version {
         Version {
             major: 3,
             minor: 13,
             ..
         } => {
-            let interp: v3_13_0::_is = Default::default();
-            let offset = crate::utils::offset_of(&interp, &interp._gil.last_holder);
-            interpreter_address + offset
+            let interp: v3_13_0::_is = process.copy_struct(interpreter_address)?;
+            interp.ceval.gil as usize
         }
         Version {
             major: 3,
             minor: 12,
             ..
         } => {
-            let interp: v3_12_0::_is = Default::default();
-            let offset = crate::utils::offset_of(&interp, &interp._gil.last_holder._value);
-            interpreter_address + offset
+            let interp: v3_12_0::_is = process.copy_struct(interpreter_address)?;
+            interp.ceval.gil as usize
         }
         Version {
             major: 3,
