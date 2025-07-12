@@ -76,12 +76,18 @@ jobs:
         run: |
           python3 -c "import shutil; import glob; wheels = glob.glob('dist/*.whl'); [shutil.move(wheel, wheel.replace('py3', 'py2.py3')) for wheel in wheels if 'py2' not in wheel]"
         if: runner.os != 'Linux'
-      - name: Upload wheels
-        uses: actions/upload-artifact@v3
+      - name: Upload Windows Wheels
+        uses: actions/upload-artifact@v4
         with:
-          name: wheels
+          name: wheels-windows
           path: dist
-        if: runner.os != 'Linux'
+        if: runner.os == 'Windows'
+      - name: Upload Macos Wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-macos
+          path: dist
+        if: runner.os == 'macOS'
 
   build-linux-cross:
     runs-on: ubuntu-latest
@@ -120,9 +126,9 @@ jobs:
         run: |
           python3 -c "import shutil; import glob; wheels = glob.glob('dist/*.whl'); [shutil.move(wheel, wheel.replace('py3', 'py2.py3')) for wheel in wheels if 'py2' not in wheel]"
       - name: Upload wheels
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: wheels
+          name: wheels-linux
           path: dist
 
   build-freebsd:
@@ -177,7 +183,7 @@ jobs:
           tar xf build-artifacts.tar target/release/py-spy
           mv target/release/py-spy py-spy-x86_64-unknown-freebsd
       - name: Upload Binaries
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: py-spy-x86_64-unknown-freebsd
           path: py-spy-x86_64-unknown-freebsd
@@ -265,9 +271,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
-          name: wheels
+          pattern: wheels-*
+          merge-multiple: true
       - uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
@@ -309,9 +316,10 @@ jobs:
     if: "startsWith(github.ref, 'refs/tags/')"
     needs: [test-wheels]
     steps:
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
-          name: wheels
+          pattern: wheels-*
+          merge-multiple: true
       - name: Create GitHub Release
         uses: fnkr/github-action-ghr@v1.3
         env:
