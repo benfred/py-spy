@@ -9,6 +9,8 @@ def local_variable_lookup(arg1="foo", arg2=None, arg3=True):
     local5 = {"a": False, "b": (1, 2, 3)}
     # https://github.com/benfred/py-spy/issues/224
     local6 = ("-" * 115, {"key": {"key": {"key": "value"}}})
+    #  https://github.com/benfred/py-spy/issues/766
+    local7 = "测试1" * 500
     time.sleep(100000)
 
 
