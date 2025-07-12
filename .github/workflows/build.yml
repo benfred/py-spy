@@ -128,7 +128,7 @@ jobs:
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
-          name: wheels-linux
+          name: wheels-${{ matrix.target }}
           path: dist
 
   build-freebsd:
@@ -141,20 +141,6 @@ jobs:
           - freebsd-14
     steps:
       - uses: actions/checkout@v3
-      - name: Cache Vagrant box
-        uses: actions/cache@v3.0.4
-        with:
-          path: .vagrant.d
-          key: ${{ matrix.box }}-vagrant-boxes-20231115-${{ hashFiles('ci/Vagrantfile') }}
-          restore-keys: |
-            ${{ matrix.box }}-vagrant-boxes-20231115-
-      - name: Cache Cargo and build artifacts
-        uses: actions/cache@v3.0.4
-        with:
-          path: build-artifacts.tar
-          key: ${{ matrix.box }}-cargo-20231115-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ matrix.box }}-cargo-20231115-
       - name: Display CPU info
         run: lscpu
       - name: Install VM tools
