@@ -154,7 +154,7 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
             // to get real offset for symbol addresses in the file.
             let aligned_vaddr =
                 program_header.p_vaddr - (program_header.p_vaddr % page_size::get() as u64);
-            let offset = offset - aligned_vaddr;
+            let offset = offset.saturating_sub(aligned_vaddr);
 
             let mut bss_addr = 0;
             let mut bss_size = 0;
