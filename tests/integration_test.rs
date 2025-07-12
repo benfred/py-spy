@@ -369,11 +369,19 @@ fn test_local_vars() {
 
     let local17 = &locals[19];
     assert_eq!(local17.name, "local17");
-    assert!(local17.repr.clone().map(|result| result.starts_with("<numpy.ulonglong at")).unwrap_or(false));
+    assert!(local17
+        .repr
+        .clone()
+        .map(|result| result.starts_with("<numpy.ulonglong at"))
+        .unwrap_or(false));
 
     let local18 = &locals[20];
     assert_eq!(local18.name, "local18");
-    assert!(local18.repr.clone().map(|result| result.starts_with("<numpy.float16 at")).unwrap_or(false));
+    assert!(local18
+        .repr
+        .clone()
+        .map(|result| result.starts_with("<numpy.float16 at"))
+        .unwrap_or(false));
 
     let local19 = &locals[21];
     assert_eq!(local19.name, "local19");
@@ -385,19 +393,35 @@ fn test_local_vars() {
 
     let local21 = &locals[23];
     assert_eq!(local21.name, "local21");
-    assert!(local21.repr.clone().map(|result| result.starts_with("<numpy.longdouble at")).unwrap_or(false));
+    assert!(local21
+        .repr
+        .clone()
+        .map(|result| result.starts_with("<numpy.longdouble at"))
+        .unwrap_or(false));
 
     let local22 = &locals[24];
     assert_eq!(local22.name, "local22");
-    assert!(local22.repr.clone().map(|result| result.starts_with("<numpy.complex64 at")).unwrap_or(false));
+    assert!(local22
+        .repr
+        .clone()
+        .map(|result| result.starts_with("<numpy.complex64 at"))
+        .unwrap_or(false));
 
     let local23 = &locals[25];
     assert_eq!(local23.name, "local23");
-    assert!(local23.repr.clone().map(|result| result.starts_with("<numpy.complex128 at")).unwrap_or(false));
+    assert!(local23
+        .repr
+        .clone()
+        .map(|result| result.starts_with("<numpy.complex128 at"))
+        .unwrap_or(false));
 
     let local24 = &locals[26];
     assert_eq!(local24.name, "local24");
-    assert!(local24.repr.clone().map(|result| result.starts_with("<numpy.clongdouble at")).unwrap_or(false));
+    assert!(local24
+        .repr
+        .clone()
+        .map(|result| result.starts_with("<numpy.clongdouble at"))
+        .unwrap_or(false));
 
     // we only support dictionary lookup on python 3.6+ right now
     if runner.spy.version.major == 3 && runner.spy.version.minor >= 6 {

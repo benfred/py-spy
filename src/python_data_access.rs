@@ -515,9 +515,7 @@ where
 {
     let base_addr = addr as *mut u32;
     let offset = std::mem::size_of::<crate::python_bindings::v3_7_0::PyObject>() as isize;
-    let result = unsafe {
-        process.copy_pointer(base_addr.byte_offset(offset) as *const T)?
-    };
+    let result = unsafe { process.copy_pointer(base_addr.byte_offset(offset) as *const T)? };
     Ok(format!("{}", result))
 }
 
