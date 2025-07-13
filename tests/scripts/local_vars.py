@@ -37,7 +37,7 @@ def local_variable_lookup(arg1="foo", arg2=None, arg3=True):
     # Complex
     local22 = np.complex64(0.3+5j)
     local23 = np.complex128(0.3+5j)
-    local24 = np.complex256(0.3+5j)
+    local24 = np.clongdouble(0.3+5j)
 
 
     time.sleep(100000)
