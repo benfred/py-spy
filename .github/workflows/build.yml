@@ -217,28 +217,42 @@ jobs:
             3.13.4,
             3.13.5,
           ]
-        os: [ubuntu-22.04, macos-13, windows-latest]
+        os: [ubuntu-22.04, macos-13, windows-latest, ubuntu-22.04-arm]
         # some versions of python can't be tested on GHA with osx because of SIP:
         exclude:
           - os: ubuntu-22.04
+            python-version: 3.6.7
+          - os: ubuntu-22.04-arm
             python-version: 3.6.7
           - os: windows-latest
             python-version: 3.6.15
           - os: ubuntu-22.04
             python-version: 3.6.15
+          - os: ubuntu-22.04-arm
+            python-version: 3.6.15
           - os: ubuntu-22.04
+            python-version: 3.7.1
+          - os: ubuntu-22.04-arm
             python-version: 3.7.1
           - os: windows-latest
             python-version: 3.7.17
+          - os: ubuntu-22.04-arm
+            python-version: 3.7.17
           - os: ubuntu-22.04
+            python-version: 3.8.0
+          - os: ubuntu-22.04-arm
             python-version: 3.8.0
           - os: windows-latest
             python-version: 3.8.18
           - os: ubuntu-22.04
             python-version: 3.9.0
+          - os: ubuntu-22.04-arm
+            python-version: 3.9.0
           - os: windows-latest
             python-version: 3.9.23
           - os: ubuntu-22.04
+            python-version: 3.10.0
+          - os: ubuntu-22.04-arm
             python-version: 3.10.0
           - os: windows-latest
             python-version: 3.10.18

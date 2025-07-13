@@ -109,6 +109,10 @@ def update_python_test_versions():
             exclusions.append("          - os: ubuntu-22.04\n")
             exclusions.append(f"            python-version: {v}\n")
 
+        if ("linux", "arm64") not in platforms[v]:
+            exclusions.append("          - os: ubuntu-22.04-arm\n")
+            exclusions.append(f"            python-version: {v}\n")
+
     first_exclude_line = lines.index("        exclude:\n", first_line)
     last_exclude_line = lines.index("\n", first_exclude_line)
     lines = lines[: first_exclude_line + 1] + exclusions + lines[last_exclude_line:]
