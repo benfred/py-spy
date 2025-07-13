@@ -32,7 +32,7 @@ def local_variable_lookup(arg1="foo", arg2=None, arg3=True):
     local18 = np.float16(0.3)
     local19 = np.float32(0.5)
     local20 = np.float64(0.7)
-    local21 = np.float128(0.9)
+    local21 = np.longdouble(0.9)
 
     # Complex
     local22 = np.complex64(0.3+5j)
