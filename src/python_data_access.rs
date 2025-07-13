@@ -472,11 +472,51 @@ where
         format!("{}", value.ob_fval)
     } else if value_type_name == "NoneType" {
         "None".to_owned()
+    } else if value_type_name.starts_with("numpy.") {
+        match value_type_name {
+            "numpy.bool" => format_obval::<bool, P>(addr, process)?,
+            "numpy.uint8" => format_obval::<u8, P>(addr, process)?,
+            "numpy.uint16" => format_obval::<u16, P>(addr, process)?,
+            "numpy.uint32" => format_obval::<u32, P>(addr, process)?,
+            "numpy.uint64" => format_obval::<u64, P>(addr, process)?,
+            "numpy.int8" => format_obval::<i8, P>(addr, process)?,
+            "numpy.int16" => format_obval::<i16, P>(addr, process)?,
+            "numpy.int32" => format_obval::<i32, P>(addr, process)?,
+            "numpy.int64" => format_obval::<i64, P>(addr, process)?,
+            "numpy.float32" => format_obval::<f32, P>(addr, process)?,
+            "numpy.float64" => format_obval::<f64, P>(addr, process)?,
+            _ => format!("<{} at 0x{:x}>", value_type_name, addr),
+        }
     } else {
         format!("<{} at 0x{:x}>", value_type_name, addr)
     };
 
     Ok(formatted)
+}
+
+/// Format the numpy scalar to a string.
+///
+/// All numpy scalars have shape:
+/// {
+///     ob_base: PyObject,
+///     obval: <value>,
+/// }
+///
+/// Where `obval` can be of different sizes depending on the scalar type.
+/// We match the size to the value_type_name for this purpose, avoiding the
+/// need to build bindings for the numpy C API.
+///
+/// * `addr`: Address of the numpy scalar
+/// * `process`: Process memory in which the object resides
+fn format_obval<T, P>(addr: usize, process: &P) -> Result<String, Error>
+where
+    T: std::fmt::Display,
+    P: ProcessMemory,
+{
+    let base_addr = addr as *mut u32;
+    let offset = std::mem::size_of::<crate::python_bindings::v3_7_0::PyObject>() as isize;
+    let result = unsafe { process.copy_pointer(base_addr.byte_offset(offset) as *const T)? };
+    Ok(format!("{}", result))
 }
 
 #[cfg(test)]
