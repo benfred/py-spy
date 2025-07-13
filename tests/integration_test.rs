@@ -383,6 +383,8 @@ fn test_local_vars() {
 
     let local17 = &locals[19];
     assert_eq!(local17.name, "local17");
+
+    #[cfg(not(windows))]
     test_repr_prefix(local17, "<numpy.ulonglong at");
 
     let local18 = &locals[20];
