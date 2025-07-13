@@ -43,6 +43,8 @@ jobs:
       - uses: actions/setup-python@v4
         with:
           python-version: 3.9
+      - name: Install optional numpy dependency
+        run: pip install numpy>=2
       - name: Test
         id: test
         continue-on-error: true
