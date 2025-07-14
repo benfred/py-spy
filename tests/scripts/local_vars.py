@@ -39,6 +39,8 @@ def local_variable_lookup(arg1="foo", arg2=None, arg3=True):
     local23 = np.complex128(0.3+5j)
     local24 = np.clongdouble(0.3+5j)
 
+    # https://github.com/benfred/py-spy/issues/766
+    local25 = "测试1" * 500
 
     time.sleep(100000)
 

@@ -280,7 +280,7 @@ fn test_local_vars() {
     let frame = &trace.frames[0];
     let locals = frame.locals.as_ref().unwrap();
 
-    assert_eq!(locals.len(), 27);
+    assert_eq!(locals.len(), 28);
 
     let arg1 = &locals[0];
     assert_eq!(arg1.name, "arg1");
@@ -414,6 +414,13 @@ fn test_local_vars() {
     let local24 = &locals[26];
     assert_eq!(local24.name, "local24");
     test_repr_prefix(local24, "<numpy.clongdouble at");
+
+    // https://github.com/benfred/py-spy/issues/766
+    let local25 = &locals[27];
+    assert_eq!(local25.name, "local25");
+    let unicode_val = local25.repr.as_ref().unwrap();
+    let end = unicode_val.char_indices().map(|(i, _)| i).nth(4).unwrap();
+    assert_eq!(unicode_val[0..end], *"\"测试1");
 
     // we only support dictionary lookup on python 3.6+ right now
     if runner.spy.version.major == 3 && runner.spy.version.minor >= 6 {

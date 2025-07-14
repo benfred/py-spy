@@ -409,8 +409,8 @@ where
         let value = copy_string(addr as *const I::StringObject, process)?
             .replace('\'', "\\\"")
             .replace('\n', "\\n");
-        if value.len() as isize >= max_length - 5 {
-            format!("\"{}...\"", &value[..(max_length - 5) as usize])
+        if let Some((offset, _)) = value.char_indices().nth((max_length - 5) as usize) {
+            format!("\"{}...\"", &value[..offset])
         } else {
             format!("\"{}\"", value)
         }
