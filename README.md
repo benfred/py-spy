@@ -234,7 +234,7 @@ py-spy needs `SYS_PTRACE` to be able to read process memory. Kubernetes drops th
 ```
 Permission Denied: Try running again with elevated permissions by going 'sudo env "PATH=$PATH" !!'
 ```
-The recommended way to deal with this is to edit the spec and add that capability. For a deployment, this is done by adding this to `Deployment.spec.template.spec.containers`
+The recommended way to deal with this is to edit the spec and add that capability. For a Deployment, this is done by adding this to `Deployment.spec.template.spec.containers`
 ```
 securityContext:
   capabilities:
@@ -242,7 +242,19 @@ securityContext:
     - SYS_PTRACE
 ```
 More details on this here: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-capabilities-for-a-container
-Note that this will remove the existing pods and create those again.
+Note that if you modify the Deployment resource, this will remove the existing Pods and create those again.
+
+You can also create an **ephemeral container** to attach to a running Pod, targeting a specific **container** where your application is running.
+Make sure to use a `profile` that grants the `SYS_PTRACE` permission, for example:
+
+```sh
+kubectl debug --profile=general \
+    -n your-namespace \
+    --target=app-container-name \
+    pod-name \
+    --image=python:3.12-slim \
+    -it -- bash
+```
 
 ### How do I install py-spy on Alpine Linux?
 

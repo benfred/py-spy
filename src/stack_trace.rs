@@ -47,8 +47,10 @@ pub struct Frame {
     pub line: i32,
     /// Local Variables associated with the frame
     pub locals: Option<Vec<LocalVariable>>,
-    /// If this is an entry frame. Each entry frame corresponds to one native frame.
+    /// If this is an entry frame. Each entry frame corresponds to one native frame (Python 3.11)
     pub is_entry: bool,
+    /// If the last frame was a shim. This is used in Python 3.12+ to detect entry frames.
+    pub is_shim_entry: bool,
 }
 
 #[derive(Debug, Hash, Eq, PartialEq, Ord, PartialOrd, Clone, Serialize)]
@@ -77,11 +79,7 @@ where
     I: InterpreterState,
     P: ProcessMemory,
 {
-    let gil_thread_id = if interpreter.gil_locked().unwrap_or(true) {
-        get_gil_threadid::<I, P>(threadstate_address, process)?
-    } else {
-        0
-    };
+    let gil_thread_id = get_gil_threadid::<I, P>(threadstate_address, process)?;
 
     let mut ret = Vec::new();
     let mut threads = interpreter.head();
@@ -128,6 +126,16 @@ where
     }
 
     let mut frame_ptr = thread.frame(frame_address);
+
+    // We are iterating in reverse, i.e. from last call to first call.
+    // Since Python 3.12, there are shim frames inserted before a block
+    // of Python frames. When we encounter one, update the last frame.
+    let set_last_frame_as_shim_entry = &mut |frames: &mut Vec<Frame>| {
+        if let Some(frame) = frames.last_mut() {
+            frame.is_shim_entry = true;
+        }
+    };
+
     while !frame_ptr.is_null() {
         let frame = process
             .copy_pointer(frame_ptr)
@@ -147,8 +155,10 @@ where
         // would also have to figure out what the address of PyCode_Type is (which will be
         // easier if something like https://github.com/python/cpython/issues/100987#issuecomment-1487227139
         // is merged )
+        // Unset file/function name in py3.13 means this is a shim.
         if filename.is_err() || name.is_err() {
             frame_ptr = frame.back();
+            set_last_frame_as_shim_entry(&mut frames);
             continue;
         }
         let filename = filename?;
@@ -157,6 +167,7 @@ where
         // skip <shim> entries in python 3.12+
         if filename == "<shim>" {
             frame_ptr = frame.back();
+            set_last_frame_as_shim_entry(&mut frames);
             continue;
         }
 
@@ -195,6 +206,7 @@ where
             module: None,
             locals,
             is_entry,
+            is_shim_entry: false,
         });
         if frames.len() > 4096 {
             return Err(format_err!("Max frame recursion depth reached"));
@@ -202,6 +214,9 @@ where
 
         frame_ptr = frame.back();
     }
+
+    // First frame is always a shim
+    set_last_frame_as_shim_entry(&mut frames);
 
     Ok(StackTrace {
         pid: 0,
@@ -286,17 +301,34 @@ pub fn get_gil_threadid<I: InterpreterState, P: ProcessMemory>(
     threadstate_address: usize,
     process: &P,
 ) -> Result<u64, Error> {
-    // figure out what thread has the GIL by inspecting _PyThreadState_Current
-    if threadstate_address > 0 {
-        let addr: usize = process.copy_struct(threadstate_address)?;
-
-        // if the addr is 0, no thread is currently holding the GIL
-        if addr != 0 {
-            let threadstate: I::ThreadState = process.copy_struct(addr)?;
-            return Ok(threadstate.thread_id());
-        }
+    // happens during initialization when checking to see if we have a valid interpreter (before we've figured out the threadstate_address)
+    if threadstate_address == 0 {
+        return Ok(0);
     }
-    Ok(0)
+
+    let addr = if I::HAS_GIL_RUNTIME_STATE {
+        // get the gilruntimestate - note that this struct is identical between 3.12/3.13
+        let gil_state: crate::python_bindings::v3_13_0::_gil_runtime_state =
+            process.copy_struct(threadstate_address)?;
+        // check to see if the GIL is locked already
+        if gil_state.locked != 0 {
+            gil_state.last_holder as usize
+        } else {
+            0
+        }
+    } else {
+        process.copy_struct::<usize>(threadstate_address)?
+    };
+
+    // if the addr is 0, no thread is currently holding the GIL
+    let threadid = if addr != 0 {
+        let threadstate: I::ThreadState = process.copy_struct(addr)?;
+        threadstate.thread_id()
+    } else {
+        0
+    };
+
+    Ok(threadid)
 }
 
 impl ProcessInfo {
@@ -309,6 +341,7 @@ impl ProcessInfo {
             line: 0,
             locals: None,
             is_entry: true,
+            is_shim_entry: true,
         }
     }
 }

@@ -289,6 +289,7 @@ mod tests {
             line: 0,
             locals: None,
             is_entry: true,
+            is_shim_entry: false,
         };
 
         let trace = stack_trace::StackTrace {
