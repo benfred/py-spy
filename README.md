@@ -132,11 +132,18 @@ and check if the layout of that address is what we expect.
 ### Can py-spy profile native extensions?
 
 Yes! py-spy supports profiling native python extensions written in languages like C/C++ or Cython,
-on x86_64 Linux and Windows. You can enable this mode by passing ```--native``` on the
+on some plaforms (see table below). You can enable this mode by passing ```--native``` on the
 command line. For best results, you should compile your Python extension with symbols. Also worth
 noting for Cython programs is that py-spy needs the generated C or C++ file in order to return line
 numbers of the original .pyx file.  Read the [blog post](https://www.benfrederickson.com/profiling-native-python-extensions-with-py-spy/)
 for more information.
+
+|         | Linux | Windows | OSX | FreeBSD |
+|---------|-------|---------|-----|---------|
+| i686    |       |         |     |         |
+| x86-64  | yes   | yes     |     |         |
+| ARM     | yes   |         |     |         |
+| Aarch64 |       |         |     |         |
 
 ### How can I profile subprocesses?
 
