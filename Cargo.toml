@@ -1,5 +1,6 @@
 [features]
 unwind = ["remoteprocess/unwind"]
+otlp = ["opentelemetry-proto", "prost", "tonic", "tokio"]
 
 [package]
 name = "py-spy"
@@ -41,6 +42,10 @@ rand = "0.8"
 rand_distr = "0.4"
 remoteprocess = "0.5.0"
 chrono = "0.4.26"
+opentelemetry-proto = { version = "0.30.0", optional = true, features = ["tonic", "profiles", "with-serde", "gen-tonic-messages", "gen-tonic"], default-features = false }
+prost = { version = "0.13", optional = true}
+tonic = { version = "0.13", optional = true }
+tokio = { version = "1.36", features = ["rt", "rt-multi-thread"], optional = true }
 
 [dev-dependencies]
 py-spy-testdata = "0.1.0"
@@ -50,3 +55,6 @@ termios = "0.3.3"
 
 [target.'cfg(windows)'.dependencies]
 winapi = {version = "0.3", features = ["errhandlingapi", "winbase", "consoleapi", "wincon", "handleapi", "timeapi", "processenv" ]}
+
+[patch.crates-io]
+opentelemetry-proto  = { git = "https://github.com/korniltsev/opentelemetry-rust", rev = "26cf0ac6" }
