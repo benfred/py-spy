@@ -163,13 +163,14 @@ impl PythonProcessInfo {
                 .collect();
 
             let mut libpython_binary: Option<BinaryInfo> = None;
-            #[cfg(windows)]
+
+            #[cfg(not(target_os = "linux"))]
             let libpython_option = if !libmaps.is_empty() {
                 Some(&libmaps[0])
             } else {
                 None
             };
-            #[cfg(not(windows))]
+            #[cfg(target_os = "linux")]
             let libpython_option = libmaps.iter().min_by_key(|m| m.offset);
 
             if let Some(libpython) = libpython_option {

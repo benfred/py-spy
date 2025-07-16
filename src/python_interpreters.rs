@@ -708,7 +708,7 @@ impl CodeObject for v3_10_0::PyCodeObject {
         let mut bytecode_address: i32 = 0;
         while (i + 1) < size {
             let delta: u8 = table[i];
-            let line_delta: i8 = unsafe { std::mem::transmute(table[i + 1]) };
+            let line_delta: i8 = u8::cast_signed(table[i + 1]);
             i += 2;
 
             if line_delta == -128 {
