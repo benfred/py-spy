@@ -247,7 +247,8 @@ pub mod pyruntime {
         any(
             target_arch = "powerpc64",
             target_arch = "powerpc",
-            target_arch = "mips"
+            target_arch = "mips",
+            target_arch = "s390x"
         )
     ))]
     pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
