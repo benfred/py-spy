@@ -62,8 +62,13 @@ impl PythonSpy {
         info!("Found interpreter at 0x{:016x}", interpreter_address);
 
         // lets us figure out which thread has the GIL
-        let threadstate_address =
-            get_threadstate_address(interpreter_address, &python_info, &version, config)?;
+        let threadstate_address = get_threadstate_address(
+            interpreter_address,
+            &python_info,
+            &process,
+            &version,
+            config,
+        )?;
 
         #[cfg(feature = "unwind")]
         let native = if config.native {
@@ -198,7 +203,12 @@ impl PythonSpy {
         } else {
             for thread in self.process.threads()?.iter() {
                 let threadid: Tid = thread.id()?;
-                thread_activity.insert(threadid, thread.active()?);
+                let Ok(active) = thread.active() else {
+                    // Do not fail all sampling if a single thread died between entering the loop
+                    // and reading its status.
+                    continue;
+                };
+                thread_activity.insert(threadid, active);
             }
         }
 
@@ -219,11 +229,8 @@ impl PythonSpy {
             .context("Failed to copy PyInterpreterState from process")?;
 
         // get the threadid of the gil if appropriate
-        let gil_thread_id = if interp.gil_locked().unwrap_or(true) {
-            get_gil_threadid::<I, Process>(self.threadstate_address, &self.process)?
-        } else {
-            0
-        };
+        let gil_thread_id = get_gil_threadid::<I, Process>(self.threadstate_address, &self.process)
+            .context("failed to get gil_thread_id")?;
 
         let mut traces = Vec::new();
         let mut threads = interp.head();

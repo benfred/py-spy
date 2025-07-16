@@ -19,7 +19,13 @@ def get_github_python_versions():
     # get a map of version: platform/arch so we can exclude here
     platforms = {}
     for v in versions_json:
-        platforms[v["version"]] = set((f["platform"], f["arch"]) for f in v["files"])
+        version_platforms = set()
+        for f in v["files"]:
+            platform, arch = f["platform"], f["arch"]
+            if platform == "linux" and f.get("platform_version") != "22.04":
+                continue
+            version_platforms.add((platform, arch))
+        platforms[v["version"]] = version_platforms
 
     raw_versions = [v["version"] for v in versions_json]
     minor_versions = defaultdict(list)
@@ -63,7 +69,7 @@ def update_python_test_versions():
         pathlib.Path(__file__).parent.parent / ".github" / "workflows" / "build.yml"
     )
 
-    build_yml = yaml.safe_load(open(".github/workflows/build.yml"))
+    build_yml = yaml.safe_load(open(build_yml_path))
     test_matrix = build_yml["jobs"]["test-wheels"]["strategy"]["matrix"]
     existing_python_versions = test_matrix["python-version"]
     if versions == existing_python_versions:
@@ -95,8 +101,16 @@ def update_python_test_versions():
             exclusions.append("          - os: macos-13\n")
             exclusions.append(f"            python-version: {v}\n")
 
-        if ("win32", "x64") not in platforms[v] or v.startswith("3.12"):
+        if ("win32", "x64") not in platforms[v]:
             exclusions.append("          - os: windows-latest\n")
+            exclusions.append(f"            python-version: {v}\n")
+
+        if ("linux", "x64") not in platforms[v]:
+            exclusions.append("          - os: ubuntu-22.04\n")
+            exclusions.append(f"            python-version: {v}\n")
+
+        if ("linux", "arm64") not in platforms[v]:
+            exclusions.append("          - os: ubuntu-22.04-arm\n")
             exclusions.append(f"            python-version: {v}\n")
 
     first_exclude_line = lines.index("        exclude:\n", first_line)
