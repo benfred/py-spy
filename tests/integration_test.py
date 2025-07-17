@@ -1,13 +1,16 @@
 from __future__ import print_function
 
+import concurrent.futures
 import json
 import os
+import re
 import subprocess
 import sys
-import re
 import tempfile
+import time
 import unittest
 from collections import defaultdict, namedtuple
+from pathlib import Path
 from shutil import which
 
 Frame = namedtuple("Frame", ["file", "name", "line", "col"])
@@ -118,6 +121,51 @@ class TestPyspy(unittest.TestCase):
     def test_shell_completions(self):
         cmdline = [PYSPY, "completions", "bash"]
         subprocess.check_output(cmdline)
+
+    def test_watch(self):
+        with tempfile.NamedTemporaryFile() as profile_file:
+            filename = profile_file.name
+            cmdline = [
+                PYSPY,
+                "record",
+                "--save_period",
+                "1",
+                "--duration",
+                "1",
+                "--format",
+                "chrometrace",
+                "-o",
+                filename,
+                "--",
+                "python",
+                _get_script("busyloop.py"),
+            ]
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(self.__watch_change, filename, 1.01)
+                subprocess.check_output(cmdline)
+                records = [
+                    len(record) for _, record in future.result()
+                ]
+                # assert we have a few records
+                assert len(records) > 50
+                # assert that the number of samples is increasing
+                assert all(records[i] <= records[i + 1] for i in range(len(records) - 1))
+
+    @staticmethod
+    def __watch_change(filename: str, duration: float):
+        """Poor man's fswatch"""
+        records = []
+
+        file = Path(filename)
+        start = time.time()
+
+        while time.time() <= start + duration:
+            if file.rename(filename).exists() and (content:=file.read_text()).endswith("]\n"):
+                last_modify = file.stat().st_mtime
+                if (not records) or (records[-1][0] != last_modify):
+                    records.append((last_modify, json.loads(content)))
+
+        return records
 
 
 def _get_script(name):
