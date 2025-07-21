@@ -3,11 +3,11 @@ name: Build
 on:
   workflow_dispatch:
   push:
-    branches: [ master ]
+    branches: [master]
     tags:
       - v*
   pull_request:
-    branches: [ master ]
+    branches: [master]
 
 env:
   CARGO_TERM_COLOR: always
@@ -16,23 +16,11 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
-      - uses: pre-commit/action@v3.0.0
-
-  build-linux-armv7:
-    runs-on: [self-hosted, linux, arm]
-    needs: [lint]
-    steps:
-    - name: Setup python
-      run: |
-        pyenv global system
-        python --version
-    - uses: actions/checkout@v3
-    - name: Build
-      run: cargo build --verbose
-    - name: Run tests
-      run: cargo test
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
+      - uses: pre-commit/action@v3.0.1
 
   build:
     runs-on: ${{ matrix.os }}
@@ -42,52 +30,66 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
-    - uses: actions/checkout@v3
-    - name: Install Dependencies
-      run: sudo apt install libunwind-dev
-      if: runner.os == 'Linux'
-    - name: Build
-      run: cargo build --release --verbose --examples
-    - name: Test
-      id: test
-      continue-on-error: true
-      run: cargo test --release
-    - name: Test (retry#1)
-      id: test1
-      run: cargo test --release
-      if: steps.test.outcome=='failure'
-      continue-on-error: true
-    - name: Test (retry#2)
-      run: cargo test --release
-      if: steps.test1.outcome=='failure'
-    - uses: actions/setup-python@v4
-      with:
-        python-version: 3.9
-    - name: Build Wheel
-      run: |
-        pip install --upgrade maturin
-        maturin build --release -o dist
-      if: runner.os != 'Linux'
-    - name: Build Wheel - universal2
-      env:
-        DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
-        SDKROOT: /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
-        MACOSX_DEPLOYMENT_TARGET: 10.9
-      run: |
-        rustup target add aarch64-apple-darwin
-        pip install --upgrade maturin
-        maturin build --release -o dist --target universal2-apple-darwin
-      if: matrix.os == 'macos-latest'
-    - name: Rename Wheels
-      run: |
-        python3 -c "import shutil; import glob; wheels = glob.glob('dist/*.whl'); [shutil.move(wheel, wheel.replace('py3', 'py2.py3')) for wheel in wheels if 'py2' not in wheel]"
-      if: runner.os != 'Linux'
-    - name: Upload wheels
-      uses: actions/upload-artifact@v3
-      with:
-        name: wheels
-        path: dist
-      if: runner.os != 'Linux'
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Dependencies
+        run: sudo apt install libunwind-dev
+        if: runner.os == 'Linux'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.9
+      - name: Build
+        run: cargo build --release --verbose --examples
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.9
+      - name: Install optional numpy dependency
+        run: pip install numpy>=2
+      - name: Test
+        id: test
+        continue-on-error: true
+        run: cargo test --release
+      - name: Test (retry#1)
+        id: test1
+        run: cargo test --release
+        if: steps.test.outcome=='failure'
+        continue-on-error: true
+      - name: Test (retry#2)
+        run: cargo test --release
+        if: steps.test1.outcome=='failure'
+      - name: Build Wheel
+        run: |
+          pip install --upgrade maturin
+          maturin build --release -o dist --all-features
+        if: runner.os == 'Windows'
+      - name: Build Wheel - universal2
+        env:
+          DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+          SDKROOT: /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
+          MACOSX_DEPLOYMENT_TARGET: 10.9
+        run: |
+          rustup target add aarch64-apple-darwin
+          rustup target add x86_64-apple-darwin
+          pip install --upgrade maturin
+          maturin build --release -o dist
+          maturin build --release -o dist --target universal2-apple-darwin
+        if: matrix.os == 'macos-latest'
+      - name: Rename Wheels
+        run: |
+          python3 -c "import shutil; import glob; wheels = glob.glob('dist/*.whl'); [shutil.move(wheel, wheel.replace('py3', 'py2.py3')) for wheel in wheels if 'py2' not in wheel]"
+        if: runner.os != 'Linux'
+      - name: Upload Windows Wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-windows
+          path: dist
+        if: runner.os == 'Windows'
+      - name: Upload Macos Wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-macos
+          path: dist
+        if: runner.os == 'macOS'
 
   build-linux-cross:
     runs-on: ubuntu-latest
@@ -95,27 +97,41 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [i686-musl, armv7-musleabihf, aarch64-musl, x86_64-musl]
+        target:
+          [
+            i686-unknown-linux-musl,
+            armv7-unknown-linux-musleabihf,
+            aarch64-unknown-linux-musl,
+            x86_64-unknown-linux-musl,
+          ]
     container:
-      image: docker://benfred/rust-musl-cross:${{ matrix.target }}
+      image: ghcr.io/benfred/rust-musl-cross:${{ matrix.target }}
       env:
         RUSTUP_HOME: /root/.rustup
         CARGO_HOME: /root/.cargo
     steps:
-    - uses: actions/checkout@v3
-    - name: Build
-      run: |
-        python3 -m pip install --upgrade maturin
-        maturin build --release -o dist --target $RUST_MUSL_CROSS_TARGET
-        maturin sdist -o dist
-    - name: Rename Wheels
-      run: |
-        python3 -c "import shutil; import glob; wheels = glob.glob('dist/*.whl'); [shutil.move(wheel, wheel.replace('py3', 'py2.py3')) for wheel in wheels if 'py2' not in wheel]"
-    - name: Upload wheels
-      uses: actions/upload-artifact@v3
-      with:
-        name: wheels
-        path: dist
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: |
+          python3 -m pip install --upgrade maturin
+          maturin build --release -o dist --target ${{ matrix.target }} --features unwind
+          maturin sdist -o dist
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+      - name: Build
+        run: |
+          python3 -m pip install --upgrade maturin
+          maturin build --release -o dist --target ${{ matrix.target }}
+          maturin sdist -o dist
+        if: matrix.target != 'x86_64-unknown-linux-musl'
+      - name: Rename Wheels
+        run: |
+          python3 -c "import shutil; import glob; wheels = glob.glob('dist/*.whl'); [shutil.move(wheel, wheel.replace('py3', 'py2.py3')) for wheel in wheels if 'py2' not in wheel]"
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.target }}
+          path: dist
 
   build-freebsd:
     runs-on: ubuntu-22.04
@@ -126,21 +142,7 @@ jobs:
         box:
           - freebsd-14
     steps:
-      - uses: actions/checkout@v3
-      - name: Cache Vagrant box
-        uses: actions/cache@v3.0.4
-        with:
-          path: .vagrant.d
-          key: ${{ matrix.box }}-vagrant-boxes-20231115-${{ hashFiles('ci/Vagrantfile') }}
-          restore-keys: |
-            ${{ matrix.box }}-vagrant-boxes-20231115-
-      - name: Cache Cargo and build artifacts
-        uses: actions/cache@v3.0.4
-        with:
-          path: build-artifacts.tar
-          key: ${{ matrix.box }}-cargo-20231115-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ matrix.box }}-cargo-20231115-
+      - uses: actions/checkout@v4
       - name: Display CPU info
         run: lscpu
       - name: Install VM tools
@@ -169,7 +171,7 @@ jobs:
           tar xf build-artifacts.tar target/release/py-spy
           mv target/release/py-spy py-spy-x86_64-unknown-freebsd
       - name: Upload Binaries
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: py-spy-x86_64-unknown-freebsd
           path: py-spy-x86_64-unknown-freebsd
@@ -180,31 +182,118 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
+      # automatically generated by ci/update_python_test_versions.py
       matrix:
-        python-version: [3.5.4, 3.5.9, 3.5.10, 3.6.7, 3.6.8, 3.6.9, 3.6.10, 3.6.11, 3.6.12, 3.6.13, 3.6.14, 3.6.15, 3.7.1, 3.7.2, 3.7.3, 3.7.4, 3.7.5, 3.7.6, 3.7.7, 3.7.8, 3.7.9, 3.7.10, 3.7.11, 3.7.12, 3.7.13, 3.7.14, 3.7.15, 3.7.16, 3.7.17, 3.8.0, 3.8.1, 3.8.2, 3.8.3, 3.8.4, 3.8.5, 3.8.6, 3.8.7, 3.8.8, 3.8.9, 3.8.10, 3.8.11, 3.8.12, 3.8.13, 3.8.14, 3.8.15, 3.8.16, 3.8.17, 3.8.18, 3.9.0, 3.9.1, 3.9.2, 3.9.3, 3.9.4, 3.9.5, 3.9.6, 3.9.7, 3.9.8, 3.9.9, 3.9.10, 3.9.11, 3.9.12, 3.9.13, 3.9.14, 3.9.15, 3.9.16, 3.9.17, 3.9.18, 3.10.0, 3.10.1, 3.10.2, 3.10.3, 3.10.4, 3.10.5, 3.10.6, 3.10.7, 3.10.8, 3.10.9, 3.10.10, 3.10.11, 3.10.12, 3.10.13, 3.11.0, 3.11.1, 3.11.2, 3.11.3, 3.11.4, 3.11.5]
-        # TODO: also test windows
-        os: [ubuntu-20.04, macos-latest]
+        python-version:
+          [
+            3.6.7,
+            3.6.15,
+            3.7.1,
+            3.7.17,
+            3.8.0,
+            3.8.18,
+            3.9.0,
+            3.9.23,
+            3.10.0,
+            3.10.18,
+            3.11.0,
+            3.11.13,
+            3.12.0,
+            3.12.1,
+            3.12.2,
+            3.12.3,
+            3.12.4,
+            3.12.5,
+            3.12.6,
+            3.12.7,
+            3.12.8,
+            3.12.9,
+            3.12.10,
+            3.12.11,
+            3.13.0,
+            3.13.1,
+            3.13.2,
+            3.13.3,
+            3.13.4,
+            3.13.5,
+          ]
+        os: [ubuntu-22.04, macos-13, windows-latest, ubuntu-22.04-arm]
         # some versions of python can't be tested on GHA with osx because of SIP:
         exclude:
-          - os: macos-latest
-            python-version: 3.11.0
-          - os: macos-latest
-            python-version: 3.11.1
-          - os: macos-latest
-            python-version: 3.11.2
-          - os: macos-latest
-            python-version: 3.11.3
-          - os: macos-latest
-            python-version: 3.11.4
-          - os: macos-latest
-            python-version: 3.11.5
+          - os: ubuntu-22.04
+            python-version: 3.6.7
+          - os: ubuntu-22.04-arm
+            python-version: 3.6.7
+          - os: windows-latest
+            python-version: 3.6.15
+          - os: ubuntu-22.04
+            python-version: 3.6.15
+          - os: ubuntu-22.04-arm
+            python-version: 3.6.15
+          - os: ubuntu-22.04
+            python-version: 3.7.1
+          - os: ubuntu-22.04-arm
+            python-version: 3.7.1
+          - os: windows-latest
+            python-version: 3.7.17
+          - os: ubuntu-22.04-arm
+            python-version: 3.7.17
+          - os: ubuntu-22.04
+            python-version: 3.8.0
+          - os: ubuntu-22.04-arm
+            python-version: 3.8.0
+          - os: windows-latest
+            python-version: 3.8.18
+          - os: ubuntu-22.04
+            python-version: 3.9.0
+          - os: ubuntu-22.04-arm
+            python-version: 3.9.0
+          - os: windows-latest
+            python-version: 3.9.23
+          - os: ubuntu-22.04
+            python-version: 3.10.0
+          - os: ubuntu-22.04-arm
+            python-version: 3.10.0
+          - os: windows-latest
+            python-version: 3.10.18
+          - os: macos-13
+            python-version: 3.11.13
+          - os: windows-latest
+            python-version: 3.11.13
+          - os: macos-13
+            python-version: 3.12.0
+          - os: macos-13
+            python-version: 3.12.1
+          - os: macos-13
+            python-version: 3.12.2
+          - os: macos-13
+            python-version: 3.12.3
+          - os: macos-13
+            python-version: 3.12.4
+          - os: macos-13
+            python-version: 3.12.5
+          - os: macos-13
+            python-version: 3.12.6
+          - os: macos-13
+            python-version: 3.12.7
+          - os: macos-13
+            python-version: 3.12.8
+          - os: macos-13
+            python-version: 3.12.9
+          - os: macos-13
+            python-version: 3.12.10
+          - os: macos-13
+            python-version: 3.12.11
+          - os: windows-latest
+            python-version: 3.12.11
 
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/download-artifact@v3
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
         with:
-          name: wheels
-      - uses: actions/setup-python@v4
+          pattern: wheels-*
+          merge-multiple: true
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install wheel
@@ -239,42 +328,16 @@ jobs:
         run: sudo "PATH=$PATH" python tests/integration_test.py
         if: steps.osx_test1.outcome=='failure'
 
-  test-wheel-linux-armv7:
-    name: Test ARMv7 Wheel
-    needs: [build-linux-cross]
-    runs-on: [self-hosted, linux, arm]
-    strategy:
-      matrix:
-        # we're installing the manylinux2014 wheel, so can
-        # only test out relatively recent versions of python
-        pyenv-python-version: [3.7.10, 3.8.9, 3.9.4]
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/download-artifact@v3
-        with:
-          name: wheels
-      - name: Setup pyenv
-        run: |
-          # build the version of python if not installed already
-          # (note this relies on pyenv being setup already)
-          pyenv install -s ${{ matrix.pyenv-python-version }}
-          pyenv global ${{ matrix.pyenv-python-version }}
-          python --version
-      - name: Install wheel
-        run: |
-          pip install --force-reinstall --no-index --find-links . py-spy
-      - name: Test Wheel
-        run: python tests/integration_test.py
-
   release:
     name: Release
     runs-on: ubuntu-latest
     if: "startsWith(github.ref, 'refs/tags/')"
-    needs: [test-wheels, test-wheel-linux-armv7]
+    needs: [test-wheels]
     steps:
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
-          name: wheels
+          pattern: wheels-*
+          merge-multiple: true
       - name: Create GitHub Release
         uses: fnkr/github-action-ghr@v1.3
         env:
@@ -283,7 +346,7 @@ jobs:
       - name: Install Dependencies
         run: sudo apt install libunwind-dev
         if: runner.os == 'Linux'
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: 3.9
       - name: Push to PyPi
@@ -294,7 +357,7 @@ jobs:
           pip install --upgrade wheel pip setuptools twine
           twine upload *
           rm *
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Push to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

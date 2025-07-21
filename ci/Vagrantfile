@@ -21,7 +21,7 @@ Vagrant.configure("2") do |config|
     chsh -s /usr/local/bin/bash vagrant
     pw groupmod wheel -m vagrant
     su -l vagrant <<'EOF'
-    curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal --default-toolchain 1.73.0
+    curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal --default-toolchain 1.80.1
     EOF
   SHELL
 end

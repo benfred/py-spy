@@ -9,11 +9,11 @@ mod config;
 mod console_viewer;
 #[cfg(target_os = "linux")]
 mod coredump;
-#[cfg(unwind)]
+#[cfg(feature = "unwind")]
 mod cython;
 mod dump;
 mod flamegraph;
-#[cfg(unwind)]
+#[cfg(feature = "unwind")]
 mod native_stack_trace;
 mod python_bindings;
 mod python_data_access;
@@ -285,6 +285,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
                     line: 0,
                     locals: None,
                     is_entry: true,
+                    is_shim_entry: true,
                 });
             }
 

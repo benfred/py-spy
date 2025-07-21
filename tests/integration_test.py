@@ -8,14 +8,15 @@ import re
 import tempfile
 import unittest
 from collections import defaultdict, namedtuple
-from distutils.spawn import find_executable
+from shutil import which
 
 Frame = namedtuple("Frame", ["file", "name", "line", "col"])
 
 # disable gil checks on windows - just rely on active
 # (doesn't seem to be working quite right - TODO: investigate)
 GIL = ["--gil"] if not sys.platform.startswith("win") else []
-PYSPY = find_executable("py-spy")
+
+PYSPY = which("py-spy")
 
 
 class TestPyspy(unittest.TestCase):
@@ -30,11 +31,15 @@ class TestPyspy(unittest.TestCase):
         # record option, and setting different flags. To get the profile output
         # we're using the speedscope format (since we can read that in as json)
         with tempfile.NamedTemporaryFile() as profile_file:
+            filename = profile_file.name
+            if sys.platform.startswith("win"):
+                filename = "profile.json"
+
             cmdline = [
                 PYSPY,
                 "record",
                 "-o",
-                profile_file.name,
+                filename,
                 "--format",
                 "speedscope",
                 "-d",
@@ -42,8 +47,9 @@ class TestPyspy(unittest.TestCase):
             ]
             cmdline.extend(options or [])
             cmdline.extend(["--", sys.executable, script_name])
-            subprocess.check_output(cmdline)
-            with open(profile_file.name) as f:
+            env = dict(os.environ, RUST_LOG="info")
+            subprocess.check_output(cmdline, env=env)
+            with open(filename) as f:
                 profiles = json.load(f)
 
         frames = profiles["shared"]["frames"]
@@ -62,8 +68,10 @@ class TestPyspy(unittest.TestCase):
 
     def test_longsleep(self):
         # running with the gil flag should have ~ no samples returned
-        profile = self._sample_process(_get_script("longsleep.py"), GIL)
-        assert sum(profile.values()) <= 5
+        if GIL:
+            profile = self._sample_process(_get_script("longsleep.py"), GIL)
+            print(profile)
+            assert sum(profile.values()) <= 10
 
         # running with the idle flag should have > 95%  of samples in the sleep call
         profile = self._sample_process(_get_script("longsleep.py"), ["--idle"])

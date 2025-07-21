@@ -164,8 +164,7 @@ impl Config {
             .help("PID of a running python program to spy on")
             .takes_value(true);
 
-        #[cfg(unwind)]
-        let native = Arg::new("native")
+        let mut native = Arg::new("native")
             .short('n')
             .long("native")
             .help("Collect stack traces from native extensions written in Cython, C or C++");
@@ -337,12 +336,8 @@ impl Config {
                     .help("Shell type"),
             );
 
-        // add native unwinding if appropriate
-        #[cfg(unwind)]
         let record = record.arg(native.clone());
-        #[cfg(unwind)]
         let top = top.arg(native.clone());
-        #[cfg(unwind)]
         let dump = dump.arg(native.clone());
 
         #[cfg(unwind)]
@@ -377,6 +372,14 @@ impl Config {
         let mut config = Config::default();
 
         let (subcommand, matches) = matches.subcommand().unwrap();
+
+        // Check if `--native` was used on an unsupported platform
+        if !cfg!(feature = "unwind") && matches.contains_id("native") {
+            eprintln!(
+                "Collecting stack traces from native extensions (`--native`) is not supported on your platform."
+            );
+            std::process::exit(1);
+        }
 
         match subcommand {
             "record" => {

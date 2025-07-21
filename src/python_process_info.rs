@@ -10,12 +10,15 @@ use std::slice;
 use anyhow::{Context, Error, Result};
 use lazy_static::lazy_static;
 use proc_maps::{get_process_maps, MapRange};
-use remoteprocess::{Pid, ProcessMemory};
+#[cfg(not(target_os = "macos"))]
+use remoteprocess::Pid;
+use remoteprocess::ProcessMemory;
 
 use crate::binary_parser::{parse_binary, BinaryInfo};
 use crate::config::Config;
 use crate::python_bindings::{
-    pyruntime, v2_7_15, v3_10_0, v3_11_0, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0, v3_9_5,
+    pyruntime, v2_7_15, v3_10_0, v3_11_0, v3_12_0, v3_13_0, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0,
+    v3_9_5,
 };
 use crate::python_interpreters::{InterpreterState, ThreadState};
 use crate::stack_trace::get_stack_traces;
@@ -72,7 +75,14 @@ impl PythonProcessInfo {
             let map = maps.iter().find(|m| {
                 if let Some(pathname) = m.filename() {
                     if let Some(pathname) = pathname.to_str() {
-                        return is_python_bin(pathname) && m.is_exec();
+                        #[cfg(not(windows))]
+                        {
+                            return is_python_bin(pathname) && m.is_exec();
+                        }
+                        #[cfg(windows)]
+                        {
+                            return is_python_bin(pathname);
+                        }
                     }
                 }
                 false
@@ -136,7 +146,14 @@ impl PythonProcessInfo {
             let libmap = maps.iter().find(|m| {
                 if let Some(pathname) = m.filename() {
                     if let Some(pathname) = pathname.to_str() {
-                        return is_python_lib(pathname) && m.is_exec();
+                        #[cfg(not(windows))]
+                        {
+                            return is_python_lib(pathname) && m.is_exec();
+                        }
+                        #[cfg(windows)]
+                        {
+                            return is_python_lib(pathname);
+                        }
                     }
                 }
                 false
@@ -269,7 +286,10 @@ where
     P: ProcessMemory,
 {
     // If possible, grab the sys.version string from the processes memory (mac osx).
-    if let Some(&addr) = python_info.get_symbol("Py_GetVersion.version") {
+    if let Some(&addr) = python_info
+        .get_symbol("Py_GetVersion.version")
+        .or_else(|| python_info.get_symbol("version"))
+    {
         info!("Getting version from symbol address");
         if let Ok(bytes) = process.copy(addr as usize, 128) {
             if let Ok(version) = Version::scan_bytes(&bytes) {
@@ -343,7 +363,32 @@ where
     match version {
         Version {
             major: 3,
-            minor: 7..=11,
+            minor: 13,
+            ..
+        } => {
+            if let Some(&addr) = python_info.get_symbol("_PyRuntime") {
+                // figure out the interpreters_head location using the debug_offsets
+                let debug_offsets: v3_13_0::_Py_DebugOffsets =
+                    process.copy_struct(addr as usize)?;
+                let addr = process.copy_struct(
+                    addr as usize + debug_offsets.runtime_state.interpreters_head as usize,
+                )?;
+
+                // Make sure the interpreter addr is valid before returning
+                match check_interpreter_addresses(&[addr], &*python_info.maps, process, version) {
+                    Ok(addr) => return Ok(addr),
+                    Err(_) => {
+                        warn!(
+                            "Interpreter address from _PyRuntime symbol is invalid {:016x}",
+                            addr
+                        );
+                    }
+                };
+            }
+        }
+        Version {
+            major: 3,
+            minor: 7..=12,
             ..
         } => {
             if let Some(&addr) = python_info.get_symbol("_PyRuntime") {
@@ -377,7 +422,7 @@ where
             }
         }
     };
-    info!("Failed to get interp_head from symbols, scanning BSS section from main binary");
+    info!("Failed to find runtime address from symbols, scanning BSS section from main binary");
 
     // try scanning the BSS section of the binary for things that might be the interpreterstate
     let err = if let Some(ref pb) = python_info.python_binary {
@@ -409,6 +454,21 @@ fn get_interpreter_address_from_binary<P>(
 where
     P: ProcessMemory,
 {
+    // First check the pyruntime section it was found
+    if binary.pyruntime_addr != 0 {
+        let bss = process.copy(
+            binary.pyruntime_addr as usize,
+            binary.pyruntime_size as usize,
+        )?;
+        #[allow(clippy::cast_ptr_alignment)]
+        let addrs = unsafe {
+            slice::from_raw_parts(bss.as_ptr() as *const usize, bss.len() / size_of::<usize>())
+        };
+        if let Ok(addr) = check_interpreter_addresses(addrs, maps, process, version) {
+            return Ok(addr);
+        }
+    }
+
     // We're going to scan the BSS/data section for things, and try to narrowly scan things that
     // look like pointers to PyinterpreterState
     let bss = process.copy(binary.bss_addr as usize, binary.bss_size as usize)?;
@@ -517,16 +577,47 @@ where
             minor: 11,
             ..
         } => check::<v3_11_0::_is, P>(addrs, maps, process),
+        Version {
+            major: 3,
+            minor: 12,
+            ..
+        } => check::<v3_12_0::_is, P>(addrs, maps, process),
+        Version {
+            major: 3,
+            minor: 13,
+            ..
+        } => check::<v3_13_0::_is, P>(addrs, maps, process),
         _ => Err(format_err!("Unsupported version of Python: {}", version)),
     }
 }
 
-pub fn get_threadstate_address(
+pub fn get_threadstate_address<P>(
+    interpreter_address: usize,
     python_info: &PythonProcessInfo,
+    process: &P,
     version: &Version,
     config: &Config,
-) -> Result<usize, Error> {
+) -> Result<usize, Error>
+where
+    P: ProcessMemory,
+{
     let threadstate_address = match version {
+        Version {
+            major: 3,
+            minor: 13,
+            ..
+        } => {
+            let interp: v3_13_0::_is = process.copy_struct(interpreter_address)?;
+            interp.ceval.gil as usize
+        }
+        Version {
+            major: 3,
+            minor: 12,
+            ..
+        } => {
+            let interp: v3_12_0::_is = process.copy_struct(interpreter_address)?;
+            interp.ceval.gil as usize
+        }
         Version {
             major: 3,
             minor: 7..=11,
@@ -603,7 +694,7 @@ pub trait ContainsAddr {
 
 impl ContainsAddr for Vec<MapRange> {
     #[cfg(windows)]
-    fn contains_addr(&self, addr: usize) -> bool {
+    fn contains_addr(&self, _addr: usize) -> bool {
         // On windows, we can't just check if a pointer is valid by looking to see if it points
         // to something in the virtual memory map. Brute-force it instead
         true

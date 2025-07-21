@@ -94,11 +94,14 @@ impl NativeStack {
                         // merge it into the stack. (if we're out of bounds a later
                         // check will pick up - and report overall totals mismatch)
 
-                        // Merge all python frames until we hit one with `is_entry`.
+                        // Merge all python frames until we hit one with `is_entry` (py 3.11)
+                        // or `is_entry_shim` (py 3.12+)
                         while python_frame_index < frames.len() {
                             merged.push(frames[python_frame_index].clone());
 
-                            if frames[python_frame_index].is_entry {
+                            if frames[python_frame_index].is_entry
+                                || frames[python_frame_index].is_shim_entry
+                            {
                                 break;
                             }
 
@@ -150,6 +153,7 @@ impl NativeStack {
                         module: None,
                         locals: None,
                         is_entry: true,
+                        is_shim_entry: true,
                     });
                 });
 
@@ -329,6 +333,7 @@ impl NativeStack {
                     module: Some(frame.module.clone()),
                     locals: None,
                     is_entry: true,
+                    is_shim_entry: true,
                 })
             }
             None => Some(Frame {
@@ -339,6 +344,7 @@ impl NativeStack {
                 short_filename: None,
                 module: Some(frame.module.clone()),
                 is_entry: true,
+                is_shim_entry: true,
             }),
         }
     }
