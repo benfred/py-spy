@@ -99,15 +99,12 @@ impl NativeStack {
                         while python_frame_index < frames.len() {
                             merged.push(frames[python_frame_index].clone());
 
+                            python_frame_index += 1;
                             if frames[python_frame_index].is_entry
-                                || frames[python_frame_index].is_shim_entry
-                            {
+                                || frames[python_frame_index].is_shim_entry {
                                 break;
                             }
-
-                            python_frame_index += 1;
                         }
-                        python_frame_index += 1;
                     }
                 }
             };
