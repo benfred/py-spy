@@ -435,10 +435,9 @@ impl Config {
         // options that can be shared between subcommands
         config.pid = matches.value_of("pid").map(|p| {
             // allow pid to be specified as a hexadecimal value
-            if p.to_lowercase().starts_with("0x") {
-                Pid::from_str_radix(&p[2..], 16).expect("invalid pid")
-            } else {
-                p.parse().expect("invalid pid")
+            match p.to_lowercase().strip_prefix("0x") {
+                Some(prefix) => Pid::from_str_radix(prefix, 16).expect("invalid pid"),
+                None => p.parse().expect("invalid pid"),
             }
         });
 
