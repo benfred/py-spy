@@ -23,12 +23,14 @@ mod python_spy;
 mod python_threading;
 mod sampler;
 mod speedscope;
+#[cfg(feature = "otlp")]
+mod otlp;
 mod stack_trace;
 mod timer;
 mod utils;
 mod version;
 
-use std::io::{Read, Write};
+use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -40,7 +42,7 @@ use config::{Config, FileFormat, RecordDuration};
 use console_viewer::ConsoleViewer;
 use stack_trace::{Frame, StackTrace};
 
-use chrono::{Local, SecondsFormat};
+use chrono::Local;
 
 #[cfg(unix)]
 fn permission_denied(err: &Error) -> bool {
@@ -88,15 +90,19 @@ fn sample_console(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
 
 pub trait Recorder {
     fn increment(&mut self, trace: &StackTrace) -> Result<(), Error>;
-    fn write(&self, w: &mut dyn Write) -> Result<(), Error>;
+    fn output(&mut self) -> Result<(), Error>;
 }
 
 impl Recorder for speedscope::Stats {
     fn increment(&mut self, trace: &StackTrace) -> Result<(), Error> {
         Ok(self.record(trace)?)
     }
-    fn write(&self, w: &mut dyn Write) -> Result<(), Error> {
-        self.write(w)
+    fn output(&mut self) -> Result<(), Error> {
+        // Generate filename based on current time and format
+        let local_time = chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let filename = format!("profile-{}.json", local_time);
+        let mut out_file = std::fs::File::create(&filename)?;
+        self.write(&mut out_file)
     }
 }
 
@@ -104,8 +110,12 @@ impl Recorder for flamegraph::Flamegraph {
     fn increment(&mut self, trace: &StackTrace) -> Result<(), Error> {
         Ok(self.increment(trace)?)
     }
-    fn write(&self, w: &mut dyn Write) -> Result<(), Error> {
-        self.write(w)
+    fn output(&mut self) -> Result<(), Error> {
+        // Generate filename based on current time and format
+        let local_time = chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let filename = format!("profile-{}.svg", local_time);
+        let mut out_file = std::fs::File::create(&filename)?;
+        self.write(&mut out_file)
     }
 }
 
@@ -113,8 +123,12 @@ impl Recorder for chrometrace::Chrometrace {
     fn increment(&mut self, trace: &StackTrace) -> Result<(), Error> {
         Ok(self.increment(trace)?)
     }
-    fn write(&self, w: &mut dyn Write) -> Result<(), Error> {
-        self.write(w)
+    fn output(&mut self) -> Result<(), Error> {
+        // Generate filename based on current time and format
+        let local_time = chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let filename = format!("profile-{}.json", local_time);
+        let mut out_file = std::fs::File::create(&filename)?;
+        self.write(&mut out_file)
     }
 }
 
@@ -125,47 +139,49 @@ impl Recorder for RawFlamegraph {
         Ok(self.0.increment(trace)?)
     }
 
-    fn write(&self, w: &mut dyn Write) -> Result<(), Error> {
-        self.0.write_raw(w)
+    fn output(&mut self) -> Result<(), Error> {
+        // Generate filename based on current time and format
+        let local_time = chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let filename = format!("profile-{}.txt", local_time);
+        let mut out_file = std::fs::File::create(&filename)?;
+        self.0.write_raw(&mut out_file)
+    }
+}
+
+#[cfg(feature = "otlp")]
+impl Recorder for otlp::OTLP {
+    fn increment(&mut self, trace: &StackTrace) -> Result<(), Error> {
+        Ok(self.record(trace)?)
+    }
+
+    fn output(&mut self) -> Result<(), Error> {
+        self.export();
+        Ok(())
+    }
+}
+
+
+fn create_recorder(config: &Config) -> Result<Box<dyn Recorder>, Error> {
+    match config.format {
+        Some(FileFormat::flamegraph) => {
+            Ok(Box::new(flamegraph::Flamegraph::new(config.show_line_numbers)))
+        }
+        Some(FileFormat::speedscope) => Ok(Box::new(speedscope::Stats::new(config))),
+        Some(FileFormat::raw) => Ok(Box::new(RawFlamegraph(flamegraph::Flamegraph::new(
+            config.show_line_numbers,
+        )))),
+        Some(FileFormat::chrometrace) => {
+            Ok(Box::new(chrometrace::Chrometrace::new(config.show_line_numbers)))
+        }
+        #[cfg(feature = "otlp")]
+        Some(FileFormat::otlp) => Ok(Box::new(otlp::OTLP::new("127.0.0.1:4040".to_string())?)),
+        None => Err(format_err!("A file format is required to record samples")),
     }
 }
 
 fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error> {
-    let mut output: Box<dyn Recorder> = match config.format {
-        Some(FileFormat::flamegraph) => {
-            Box::new(flamegraph::Flamegraph::new(config.show_line_numbers))
-        }
-        Some(FileFormat::speedscope) => Box::new(speedscope::Stats::new(config)),
-        Some(FileFormat::raw) => Box::new(RawFlamegraph(flamegraph::Flamegraph::new(
-            config.show_line_numbers,
-        ))),
-        Some(FileFormat::chrometrace) => {
-            Box::new(chrometrace::Chrometrace::new(config.show_line_numbers))
-        }
-        None => return Err(format_err!("A file format is required to record samples")),
-    };
+    let mut output = create_recorder(config)?;
 
-    let filename = match config.filename.clone() {
-        Some(filename) => filename,
-        None => {
-            let ext = match config.format.as_ref() {
-                Some(FileFormat::flamegraph) => "svg",
-                Some(FileFormat::speedscope) => "json",
-                Some(FileFormat::raw) => "txt",
-                Some(FileFormat::chrometrace) => "json",
-                None => return Err(format_err!("A file format is required to record samples")),
-            };
-            let local_time = Local::now().to_rfc3339_opts(SecondsFormat::Secs, true);
-            let name = match config.python_program.as_ref() {
-                Some(prog) => prog[0].to_string(),
-                None => match config.pid.as_ref() {
-                    Some(pid) => pid.to_string(),
-                    None => String::from("unknown"),
-                },
-            };
-            format!("{}-{}.{}", name, local_time, ext)
-        }
-    };
 
     let sampler = sampler::Sampler::new(pid, config)?;
 
@@ -187,10 +203,17 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
             None
         }
         RecordDuration::Seconds(sec) => {
-            println!(
-                "{}Sampling process {} times a second for {} seconds. Press Control-C to exit.",
-                lede, config.sampling_rate, sec
-            );
+            if config.continuous {
+                println!(
+                    "{}Continuously sampling process {} times a second, dumping profiles every {} seconds. Press Control-C to exit.",
+                    lede, config.sampling_rate, sec
+                );
+            } else {
+                println!(
+                    "{}Sampling process {} times a second for {} seconds. Press Control-C to exit.",
+                    lede, config.sampling_rate, sec
+                );
+            }
             Some(sec * config.sampling_rate)
         }
     };
@@ -256,8 +279,17 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
         intervals += 1;
         if let Some(max_intervals) = max_intervals {
             if intervals >= max_intervals {
-                exit_message = "";
-                break;
+                if config.continuous {
+                    output.output()?;
+                    //todo allow resetting the recorder - reusing otlp grpc client
+                    output = create_recorder(config)?;
+                    intervals = 0;
+                    samples = 0;
+                    errors = 0;
+                } else {
+                    exit_message = "";
+                    break;
+                }
             }
         }
 
@@ -327,43 +359,42 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
         println!("\n{}{}", lede, exit_message);
     }
 
-    {
-        let mut out_file = std::fs::File::create(&filename)?;
-        output.write(&mut out_file)?;
-    }
+    output.output()?; //todo the file name did change, make sure the generated filenames are the same.
 
     match config.format.as_ref().unwrap() {
         FileFormat::flamegraph => {
             println!(
-                "{}Wrote flamegraph data to '{}'. Samples: {} Errors: {}",
-                lede, filename, samples, errors
+                "{}Wrote flamegraph data to file. Samples: {} Errors: {}",
+                lede, samples, errors
             );
-            // open generated flame graph in the browser on OSX (theory being that on linux
-            // you might be SSH'ed into a server somewhere and this isn't desired, but on
-            // that is pretty unlikely for osx) (note to self: xdg-open will open on linux)
-            #[cfg(target_os = "macos")]
-            std::process::Command::new("open").arg(&filename).spawn()?;
         }
         FileFormat::speedscope => {
             println!(
-                "{}Wrote speedscope file to '{}'. Samples: {} Errors: {}",
-                lede, filename, samples, errors
+                "{}Wrote speedscope file. Samples: {} Errors: {}",
+                lede, samples, errors
             );
             println!("{}Visit https://www.speedscope.app/ to view", lede);
         }
         FileFormat::raw => {
             println!(
-                "{}Wrote raw flamegraph data to '{}'. Samples: {} Errors: {}",
-                lede, filename, samples, errors
+                "{}Wrote raw flamegraph data to file. Samples: {} Errors: {}",
+                lede, samples, errors
             );
             println!("{}You can use the flamegraph.pl script from https://github.com/brendangregg/flamegraph to generate a SVG", lede);
         }
         FileFormat::chrometrace => {
             println!(
-                "{}Wrote chrome trace to '{}'. Samples: {} Errors: {}",
-                lede, filename, samples, errors
+                "{}Wrote chrome trace to file. Samples: {} Errors: {}",
+                lede, samples, errors
             );
             println!("{}Visit chrome://tracing to view", lede);
+        }
+        #[cfg(feature = "otlp")]
+        FileFormat::otlp => {
+            println!(
+                "{}Sent profile data to OTLP endpoint. Samples: {} Errors: {}",
+                lede, samples, errors
+            );
         }
     };
 
