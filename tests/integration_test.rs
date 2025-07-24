@@ -280,7 +280,7 @@ fn test_local_vars() {
     let frame = &trace.frames[0];
     let locals = frame.locals.as_ref().unwrap();
 
-    assert_eq!(locals.len(), 28);
+    assert_eq!(locals.len(), 29);
 
     let arg1 = &locals[0];
     assert_eq!(arg1.name, "arg1");
@@ -421,6 +421,11 @@ fn test_local_vars() {
     let unicode_val = local25.repr.as_ref().unwrap();
     let end = unicode_val.char_indices().map(|(i, _)| i).nth(4).unwrap();
     assert_eq!(unicode_val[0..end], *"\"测试1");
+
+    // Empty string
+    let local26 = &locals[28];
+    assert_eq!(local26.name, "local26");
+    assert_eq!(local26.repr, Some("\"\"".to_string()));
 
     // we only support dictionary lookup on python 3.6+ right now
     if runner.spy.version.major == 3 && runner.spy.version.minor >= 6 {
