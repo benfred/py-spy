@@ -15,6 +15,9 @@ pub fn copy_string<T: StringObject, P: ProcessMemory>(
     process: &P,
 ) -> Result<String, Error> {
     let obj = process.copy_pointer(ptr)?;
+    if obj.size() == 0 {
+        return Ok(String::new());
+    }
     if obj.size() >= 4096 {
         return Err(format_err!(
             "Refusing to copy {} chars of a string",
