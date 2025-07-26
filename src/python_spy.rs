@@ -222,18 +222,19 @@ impl PythonSpy {
             None
         };
 
-        // Get the python interpreter, and loop over all the python threads
-        let interp: I = self
+        // Find PyThreadState, and loop over all the python threads
+        let threadstate_ptr_ptr = I::threadstate_ptr_ptr(self.interpreter_address);
+        let threads_head = self
             .process
-            .copy_struct(self.interpreter_address)
-            .context("Failed to copy PyInterpreterState from process")?;
+            .copy_pointer(threadstate_ptr_ptr)
+            .context("Failed to copy PyThreadState head pointer")?;
 
         // get the threadid of the gil if appropriate
         let gil_thread_id = get_gil_threadid::<I, Process>(self.threadstate_address, &self.process)
             .context("failed to get gil_thread_id")?;
 
         let mut traces = Vec::new();
-        let mut threads = interp.head();
+        let mut threads = threads_head;
         while !threads.is_null() {
             // Get the stack trace of the python thread
             let thread = self
@@ -262,7 +263,8 @@ impl PythonSpy {
             // for older versions of python, try using OS specific code to get the native
             // thread id (doesn't work on freebsd, or on arm/i686 processors on linux)
             if trace.os_thread_id.is_none() {
-                let mut os_thread_id = self._get_os_thread_id(python_thread_id, &interp)?;
+                let mut os_thread_id =
+                    self._get_os_thread_id::<I>(python_thread_id, threads_head)?;
 
                 // linux can see issues where pthread_ids get recycled for new OS threads,
                 // which totally breaks the caching we were doing here. Detect this and retry
@@ -271,7 +273,8 @@ impl PythonSpy {
                         info!("clearing away thread id caches, thread {} has exited", tid);
                         self.python_thread_ids.clear();
                         self.python_thread_names.clear();
-                        os_thread_id = self._get_os_thread_id(python_thread_id, &interp)?;
+                        os_thread_id =
+                            self._get_os_thread_id::<I>(python_thread_id, threads_head)?;
                     }
                 }
 
@@ -371,7 +374,7 @@ impl PythonSpy {
     fn _get_os_thread_id<I: InterpreterState>(
         &mut self,
         python_thread_id: u64,
-        _interp: &I,
+        _interp_head: *const I::ThreadState,
     ) -> Result<Option<Tid>, Error> {
         Ok(Some(python_thread_id as Tid))
     }
@@ -380,7 +383,7 @@ impl PythonSpy {
     fn _get_os_thread_id<I: InterpreterState>(
         &mut self,
         python_thread_id: u64,
-        _interp: &I,
+        _interp_head: *const I::ThreadState,
     ) -> Result<Option<Tid>, Error> {
         // If we've already know this threadid, we're good
         if let Some(thread_id) = self.python_thread_ids.get(&python_thread_id) {
@@ -404,7 +407,7 @@ impl PythonSpy {
     fn _get_os_thread_id<I: InterpreterState>(
         &mut self,
         _python_thread_id: u64,
-        _interp: &I,
+        _interp_head: *const I::ThreadState,
     ) -> Result<Option<Tid>, Error> {
         Ok(None)
     }
@@ -413,7 +416,7 @@ impl PythonSpy {
     fn _get_os_thread_id<I: InterpreterState>(
         &mut self,
         python_thread_id: u64,
-        interp: &I,
+        interp_head: *const I::ThreadState,
     ) -> Result<Option<Tid>, Error> {
         // in nonblocking mode, we can't get the threadid reliably (method here requires reading the RBX
         // register which requires a ptrace attach). fallback to heuristic thread activity here
@@ -433,7 +436,7 @@ impl PythonSpy {
 
         // Get a list of all the python thread ids
         let mut all_python_threads = HashSet::new();
-        let mut threads = interp.head();
+        let mut threads = interp_head;
         while !threads.is_null() {
             let thread = self
                 .process
@@ -522,7 +525,7 @@ impl PythonSpy {
     fn _get_os_thread_id<I: InterpreterState>(
         &mut self,
         _python_thread_id: u64,
-        _interp: &I,
+        _interp_head: *const I::ThreadState,
     ) -> Result<Option<Tid>, Error> {
         Ok(None)
     }

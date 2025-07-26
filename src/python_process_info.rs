@@ -499,16 +499,18 @@ where
     {
         for &addr in addrs {
             if maps.contains_addr(addr) {
-                // this address points to valid memory. try loading it up as a PyInterpreterState
-                // to further check
-                let interp: I = match process.copy_struct(addr) {
-                    Ok(interp) => interp,
+                // get the pythreadstate pointer from the interpreter object, and if it is also
+                // a valid pointer then load it up.
+                let threadstate_ptr_ptr = I::threadstate_ptr_ptr(addr);
+                let maybe_threads = process
+                    .copy_struct(threadstate_ptr_ptr as usize)
+                    .context("Failed to copy PyThreadState head pointer");
+
+                let threads: *const I::ThreadState = match maybe_threads {
+                    Ok(threads) => threads,
                     Err(_) => continue,
                 };
 
-                // get the pythreadstate pointer from the interpreter object, and if it is also
-                // a valid pointer then load it up.
-                let threads = interp.head();
                 if maps.contains_addr(threads as usize) {
                     // If the threadstate points back to the interpreter like we expect, then
                     // this is almost certainly the address of the intrepreter
@@ -519,7 +521,7 @@ where
 
                     // as a final sanity check, try getting the stack_traces, and only return if this works
                     if thread.interp() as usize == addr
-                        && get_stack_traces(&interp, process, 0, None).is_ok()
+                        && get_stack_traces::<I, P>(addr, process, 0, None).is_ok()
                     {
                         return Ok(addr);
                     }
@@ -607,16 +609,18 @@ where
             minor: 13,
             ..
         } => {
-            let interp: v3_13_0::_is = process.copy_struct(interpreter_address)?;
-            interp.ceval.gil as usize
+            let gil_ptr = interpreter_address + std::mem::offset_of!(v3_13_0::_is, ceval.gil);
+            let gil = process.copy_struct::<usize>(gil_ptr)?;
+            gil
         }
         Version {
             major: 3,
             minor: 12,
             ..
         } => {
-            let interp: v3_12_0::_is = process.copy_struct(interpreter_address)?;
-            interp.ceval.gil as usize
+            let gil_ptr = interpreter_address + std::mem::offset_of!(v3_12_0::_is, ceval.gil);
+            let gil: usize = process.copy_struct(gil_ptr)?;
+            gil
         }
         Version {
             major: 3,

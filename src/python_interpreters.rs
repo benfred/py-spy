@@ -24,8 +24,10 @@ pub trait InterpreterState {
     type TupleObject: TupleObject;
     const HAS_GIL_RUNTIME_STATE: bool = false;
 
-    fn head(&self) -> *mut Self::ThreadState;
-    fn modules(&self) -> *mut Self::Object;
+    /// Get a remote pointer to a pointer to PyThreadState.
+    fn threadstate_ptr_ptr(interpreter_address: usize) -> *const *const Self::ThreadState;
+    /// Get a remote pointer to a pointer to PyObject being the modules dict.
+    fn modules_ptr_ptr(interpreter_address: usize) -> *const *const Self::Object;
 }
 
 pub trait ThreadState {
@@ -115,11 +117,13 @@ macro_rules! PythonCommonImpl {
             type ListObject = $py::PyListObject;
             type TupleObject = $py::PyTupleObject;
 
-            fn head(&self) -> *mut Self::ThreadState {
-                self.tstate_head
+            fn threadstate_ptr_ptr(interpreter_address: usize) -> *const *const Self::ThreadState {
+                (interpreter_address + std::mem::offset_of!(Self, tstate_head))
+                    as *const *const Self::ThreadState
             }
-            fn modules(&self) -> *mut Self::Object {
-                self.modules
+            fn modules_ptr_ptr(interpreter_address: usize) -> *const *const Self::Object {
+                (interpreter_address + std::mem::offset_of!(Self, modules))
+                    as *const *const Self::Object
             }
         }
 
@@ -416,11 +420,13 @@ impl InterpreterState for v3_13_0::PyInterpreterState {
     type TupleObject = v3_13_0::PyTupleObject;
     const HAS_GIL_RUNTIME_STATE: bool = true;
 
-    fn head(&self) -> *mut Self::ThreadState {
-        self.threads.head
+    fn threadstate_ptr_ptr(interpreter_address: usize) -> *const *const Self::ThreadState {
+        (interpreter_address + std::mem::offset_of!(Self, threads.head))
+            as *const *const Self::ThreadState
     }
-    fn modules(&self) -> *mut Self::Object {
-        self.imports.modules
+    fn modules_ptr_ptr(interpreter_address: usize) -> *const *const Self::Object {
+        (interpreter_address + std::mem::offset_of!(Self, imports.modules))
+            as *const *const Self::Object
     }
 }
 
@@ -499,11 +505,13 @@ impl InterpreterState for v3_12_0::PyInterpreterState {
     type TupleObject = v3_12_0::PyTupleObject;
     const HAS_GIL_RUNTIME_STATE: bool = true;
 
-    fn head(&self) -> *mut Self::ThreadState {
-        self.threads.head
+    fn threadstate_ptr_ptr(interpreter_address: usize) -> *const *const Self::ThreadState {
+        (interpreter_address + std::mem::offset_of!(Self, threads.head))
+            as *const *const Self::ThreadState
     }
-    fn modules(&self) -> *mut Self::Object {
-        self.imports.modules
+    fn modules_ptr_ptr(interpreter_address: usize) -> *const *const Self::Object {
+        (interpreter_address + std::mem::offset_of!(Self, imports.modules))
+            as *const *const Self::Object
     }
 }
 
@@ -588,11 +596,12 @@ impl InterpreterState for v3_11_0::PyInterpreterState {
     type ListObject = v3_11_0::PyListObject;
     type TupleObject = v3_11_0::PyTupleObject;
 
-    fn head(&self) -> *mut Self::ThreadState {
-        self.threads.head
+    fn threadstate_ptr_ptr(interpreter_address: usize) -> *const *const Self::ThreadState {
+        (interpreter_address + std::mem::offset_of!(Self, threads.head))
+            as *const *const Self::ThreadState
     }
-    fn modules(&self) -> *mut Self::Object {
-        self.modules
+    fn modules_ptr_ptr(interpreter_address: usize) -> *const *const Self::Object {
+        (interpreter_address + std::mem::offset_of!(Self, modules)) as *const *const Self::Object
     }
 }
 
