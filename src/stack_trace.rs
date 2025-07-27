@@ -155,7 +155,6 @@ where
         // would also have to figure out what the address of PyCode_Type is (which will be
         // easier if something like https://github.com/python/cpython/issues/100987#issuecomment-1487227139
         // is merged )
-        // Unset file/function name in py3.13 means this is a shim.
         if filename.is_err() || name.is_err() {
             frame_ptr = frame.back();
             set_last_frame_as_shim_entry(&mut frames);
@@ -165,7 +164,8 @@ where
         let name = name?;
 
         // skip <shim> entries in python 3.12+
-        if filename == "<shim>" {
+        // Unset file/function name in py3.13 means this is a shim.
+        if filename.is_empty() || filename == "<shim>" {
             frame_ptr = frame.back();
             set_last_frame_as_shim_entry(&mut frames);
             continue;

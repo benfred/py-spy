@@ -42,6 +42,9 @@ def local_variable_lookup(arg1="foo", arg2=None, arg3=True):
     # https://github.com/benfred/py-spy/issues/766
     local25 = "测试1" * 500
 
+    # Empty strings should not be ignored
+    local26 = ""
+
     time.sleep(100000)
 
 
