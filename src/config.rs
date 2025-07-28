@@ -59,6 +59,8 @@ pub struct Config {
     pub refresh_seconds: f64,
     #[doc(hidden)]
     pub core_filename: Option<String>,
+    #[doc(hidden)]
+    pub continuous: bool,
 }
 
 #[allow(non_camel_case_types)]
@@ -68,6 +70,8 @@ pub enum FileFormat {
     raw,
     speedscope,
     chrometrace,
+    #[cfg(feature = "otlp")]
+    otlp,
 }
 
 impl FileFormat {
@@ -139,6 +143,7 @@ impl Default for Config {
             lineno: LineNo::LastInstruction,
             refresh_seconds: 1.0,
             core_filename: None,
+            continuous: false,
         }
     }
 }
@@ -277,6 +282,11 @@ impl Config {
                     .long("hideprogress")
                     .hide(true)
                     .help("Hides progress bar (useful for showing error output on record)"),
+            )
+            .arg(
+                Arg::new("continuous")
+                    .long("continuous")
+                    .help("Continuously profile and dump profiles every duration seconds. Requires duration to be specified and not unlimited."),
             );
 
         let top = Command::new("top")
@@ -395,6 +405,12 @@ impl Config {
                     std::process::exit(1);
                 }
                 config.hide_progress = matches.occurrences_of("hideprogress") > 0;
+                config.continuous = matches.occurrences_of("continuous") > 0;
+
+                if config.continuous && config.duration == RecordDuration::Unlimited {
+                    eprintln!("--continuous requires --duration to be specified and not unlimited");
+                    std::process::exit(1);
+                }
             }
             "top" => {
                 config.sampling_rate = matches.value_of_t("rate")?;

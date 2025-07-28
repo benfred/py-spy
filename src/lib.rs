@@ -44,6 +44,8 @@ mod python_interpreters;
 pub mod python_process_info;
 pub mod python_spy;
 mod python_threading;
+#[cfg(feature = "otlp")]
+mod otlp;
 pub mod sampler;
 pub mod stack_trace;
 pub mod timer;
