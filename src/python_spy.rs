@@ -508,11 +508,11 @@ impl PythonSpy {
             // the pthread_id is usually a register (rbx on x86-64, r5 on ARM) in the top-level
             // frame of the thread, but on some configs can be 2nd level. Handle this by taking the
             // top-most value that is one of the pthread_ids we're looking for
-            #[cfg(target_arch="x86_64")]
+            #[cfg(target_arch = "x86_64")]
             let possible_threadid = cursor.bx();
-            #[cfg(target_arch="arm")]
+            #[cfg(target_arch = "arm")]
             let possible_threadid = cursor.r5();
-            #[cfg(target_arch="aarch64")]
+            #[cfg(target_arch = "aarch64")]
             let possible_threadid = unsafe { cursor.register(19) };
             if let Ok(reg) = possible_threadid {
                 if reg != 0 && threadids.contains(&reg) {
