@@ -515,6 +515,8 @@ impl PythonSpy {
             let possible_threadid = cursor.bx();
             #[cfg(target_arch = "arm")]
             let possible_threadid = cursor.r5();
+            #[cfg(target_arch = "aarch64")]
+            let possible_threadid = unsafe { cursor.register(19) };
             if let Ok(reg) = possible_threadid {
                 if reg != 0 && threadids.contains(&reg) {
                     pthread_id = reg;
