@@ -16,11 +16,11 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: 3.11
-      - uses: pre-commit/action@v3.0.0
+      - uses: pre-commit/action@v3.0.1
 
   build:
     runs-on: ${{ matrix.os }}
@@ -30,19 +30,21 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
       - name: Install Dependencies
         run: sudo apt install libunwind-dev
         if: runner.os == 'Linux'
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: 3.9
       - name: Build
         run: cargo build --release --verbose --examples
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: 3.9
+      - name: Install optional numpy dependency
+        run: pip install numpy>=2
       - name: Test
         id: test
         continue-on-error: true
@@ -108,7 +110,7 @@ jobs:
         RUSTUP_HOME: /root/.rustup
         CARGO_HOME: /root/.cargo
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
       - name: Build
         run: |
@@ -140,7 +142,7 @@ jobs:
         box:
           - freebsd-14
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Display CPU info
         run: lscpu
       - name: Install VM tools
@@ -215,28 +217,42 @@ jobs:
             3.13.4,
             3.13.5,
           ]
-        os: [ubuntu-22.04, macos-13, windows-latest]
+        os: [ubuntu-22.04, macos-13, windows-latest, ubuntu-22.04-arm]
         # some versions of python can't be tested on GHA with osx because of SIP:
         exclude:
           - os: ubuntu-22.04
+            python-version: 3.6.7
+          - os: ubuntu-22.04-arm
             python-version: 3.6.7
           - os: windows-latest
             python-version: 3.6.15
           - os: ubuntu-22.04
             python-version: 3.6.15
+          - os: ubuntu-22.04-arm
+            python-version: 3.6.15
           - os: ubuntu-22.04
+            python-version: 3.7.1
+          - os: ubuntu-22.04-arm
             python-version: 3.7.1
           - os: windows-latest
             python-version: 3.7.17
+          - os: ubuntu-22.04-arm
+            python-version: 3.7.17
           - os: ubuntu-22.04
+            python-version: 3.8.0
+          - os: ubuntu-22.04-arm
             python-version: 3.8.0
           - os: windows-latest
             python-version: 3.8.18
           - os: ubuntu-22.04
             python-version: 3.9.0
+          - os: ubuntu-22.04-arm
+            python-version: 3.9.0
           - os: windows-latest
             python-version: 3.9.23
           - os: ubuntu-22.04
+            python-version: 3.10.0
+          - os: ubuntu-22.04-arm
             python-version: 3.10.0
           - os: windows-latest
             python-version: 3.10.18
@@ -272,12 +288,12 @@ jobs:
             python-version: 3.12.11
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           pattern: wheels-*
           merge-multiple: true
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install wheel
@@ -330,7 +346,7 @@ jobs:
       - name: Install Dependencies
         run: sudo apt install libunwind-dev
         if: runner.os == 'Linux'
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: 3.9
       - name: Push to PyPi
@@ -341,7 +357,7 @@ jobs:
           pip install --upgrade wheel pip setuptools twine
           twine upload *
           rm *
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Push to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

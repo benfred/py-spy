@@ -15,6 +15,9 @@ classifiers = [
 ]
 dynamic = ["version"]
 
+[project.optional-dependencies]
+test = ["numpy"]
+
 [tool.maturin]
 bindings = "bin"
 

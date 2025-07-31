@@ -47,8 +47,10 @@ pub struct Frame {
     pub line: i32,
     /// Local Variables associated with the frame
     pub locals: Option<Vec<LocalVariable>>,
-    /// If this is an entry frame. Each entry frame corresponds to one native frame.
+    /// If this is an entry frame. Each entry frame corresponds to one native frame (Python 3.11)
     pub is_entry: bool,
+    /// If the last frame was a shim. This is used in Python 3.12+ to detect entry frames.
+    pub is_shim_entry: bool,
 }
 
 #[derive(Debug, Hash, Eq, PartialEq, Ord, PartialOrd, Clone, Serialize)]
@@ -124,6 +126,16 @@ where
     }
 
     let mut frame_ptr = thread.frame(frame_address);
+
+    // We are iterating in reverse, i.e. from last call to first call.
+    // Since Python 3.12, there are shim frames inserted before a block
+    // of Python frames. When we encounter one, update the last frame.
+    let set_last_frame_as_shim_entry = &mut |frames: &mut Vec<Frame>| {
+        if let Some(frame) = frames.last_mut() {
+            frame.is_shim_entry = true;
+        }
+    };
+
     while !frame_ptr.is_null() {
         let frame = process
             .copy_pointer(frame_ptr)
@@ -145,14 +157,17 @@ where
         // is merged )
         if filename.is_err() || name.is_err() {
             frame_ptr = frame.back();
+            set_last_frame_as_shim_entry(&mut frames);
             continue;
         }
         let filename = filename?;
         let name = name?;
 
         // skip <shim> entries in python 3.12+
-        if filename == "<shim>" {
+        // Unset file/function name in py3.13 means this is a shim.
+        if filename.is_empty() || filename == "<shim>" {
             frame_ptr = frame.back();
+            set_last_frame_as_shim_entry(&mut frames);
             continue;
         }
 
@@ -191,6 +206,7 @@ where
             module: None,
             locals,
             is_entry,
+            is_shim_entry: false,
         });
         if frames.len() > 4096 {
             return Err(format_err!("Max frame recursion depth reached"));
@@ -198,6 +214,9 @@ where
 
         frame_ptr = frame.back();
     }
+
+    // First frame is always a shim
+    set_last_frame_as_shim_entry(&mut frames);
 
     Ok(StackTrace {
         pid: 0,
@@ -322,6 +341,7 @@ impl ProcessInfo {
             line: 0,
             locals: None,
             is_entry: true,
+            is_shim_entry: true,
         }
     }
 }
