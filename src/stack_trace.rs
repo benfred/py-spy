@@ -265,7 +265,7 @@ fn get_line_number<C: CodeObject, P: ProcessMemory>(
 ) -> Result<i32, Error> {
     let table =
         copy_bytes(code.line_table(), process).context("Failed to copy line number table")?;
-    Ok(code.get_line_number(lasti, &table))
+    code.get_line_number(lasti, &table)
 }
 
 fn get_locals<C: CodeObject, F: FrameObject, P: ProcessMemory>(
