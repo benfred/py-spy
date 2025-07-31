@@ -157,7 +157,7 @@ impl Config {
             .short('p')
             .long("pid")
             .value_name("pid")
-            .help("PID of a running python program to spy on")
+            .help("PID of a running python program to spy on, in decimal or hex")
             .takes_value(true);
 
         let mut native = Arg::new("native")
@@ -433,9 +433,14 @@ impl Config {
         config.command = subcommand.to_owned();
 
         // options that can be shared between subcommands
-        config.pid = matches
-            .value_of("pid")
-            .map(|p| p.parse().expect("invalid pid"));
+        config.pid = matches.value_of("pid").map(|p| {
+            // allow pid to be specified as a hexadecimal value
+            match p.to_lowercase().strip_prefix("0x") {
+                Some(prefix) => Pid::from_str_radix(prefix, 16).expect("invalid pid"),
+                None => p.parse().expect("invalid pid"),
+            }
+        });
+
         config.full_filenames = matches.occurrences_of("full_filenames") > 0;
         if cfg!(feature = "unwind") {
             config.native = matches.occurrences_of("native") > 0;
