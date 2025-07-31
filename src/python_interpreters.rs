@@ -16,7 +16,7 @@ use crate::python_bindings::{
 };
 use crate::utils::offset_of;
 
-pub trait InterpreterState {
+pub trait InterpreterState: Copy {
     type ThreadState: ThreadState;
     type Object: Object;
     type StringObject: StringObject;
@@ -28,7 +28,7 @@ pub trait InterpreterState {
     fn modules(&self) -> *mut Self::Object;
 }
 
-pub trait ThreadState {
+pub trait ThreadState: Copy {
     type FrameObject: FrameObject;
     type InterpreterState: InterpreterState;
 
@@ -44,7 +44,7 @@ pub trait ThreadState {
     fn next(&self) -> *mut Self;
 }
 
-pub trait FrameObject {
+pub trait FrameObject: Copy {
     type CodeObject: CodeObject;
 
     fn code(&self) -> *mut Self::CodeObject;
@@ -53,7 +53,7 @@ pub trait FrameObject {
     fn is_entry(&self) -> bool;
 }
 
-pub trait CodeObject {
+pub trait CodeObject: Copy {
     type StringObject: StringObject;
     type BytesObject: BytesObject;
     type TupleObject: TupleObject;
@@ -69,35 +69,35 @@ pub trait CodeObject {
     fn get_line_number(&self, lasti: i32, table: &[u8]) -> i32;
 }
 
-pub trait BytesObject {
+pub trait BytesObject: Copy {
     fn size(&self) -> usize;
     fn address(&self, base: usize) -> usize;
 }
 
-pub trait StringObject {
+pub trait StringObject: Copy {
     fn ascii(&self) -> bool;
     fn kind(&self) -> u32;
     fn size(&self) -> usize;
     fn address(&self, base: usize) -> usize;
 }
 
-pub trait TupleObject {
+pub trait TupleObject: Copy {
     fn size(&self) -> usize;
     fn address(&self, base: usize, index: usize) -> usize;
 }
 
-pub trait ListObject {
+pub trait ListObject: Copy {
     type Object: Object;
     fn size(&self) -> usize;
     fn item(&self) -> *mut *mut Self::Object;
 }
 
-pub trait Object {
+pub trait Object: Copy {
     type TypeObject: TypeObject;
     fn ob_type(&self) -> *mut Self::TypeObject;
 }
 
-pub trait TypeObject {
+pub trait TypeObject: Copy {
     fn name(&self) -> *const ::std::os::raw::c_char;
     fn dictoffset(&self) -> isize;
     fn flags(&self) -> usize;
