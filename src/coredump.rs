@@ -326,11 +326,18 @@ impl PythonCoreDump {
     }
 
     fn _get_stack<I: InterpreterState>(&self, config: &Config) -> Result<Vec<StackTrace>, Error> {
-        let interp: I = self.core.copy_struct(self.interpreter_address)?;
-
-        let mut traces =
-            get_stack_traces(&interp, &self.core, self.threadstate_address, Some(config))?;
-        let thread_names = thread_names_from_interpreter(&interp, &self.core, &self.version).ok();
+        let mut traces = get_stack_traces::<I, CoreDump>(
+            self.interpreter_address,
+            &self.core,
+            self.threadstate_address,
+            Some(config),
+        )?;
+        let thread_names = thread_names_from_interpreter::<I, CoreDump>(
+            self.interpreter_address,
+            &self.core,
+            &self.version,
+        )
+        .ok();
 
         for trace in &mut traces {
             if let Some(ref thread_names) = thread_names {
