@@ -248,7 +248,10 @@ macro_rules! PythonCodeObjectImpl {
     };
 }
 
-fn read_varint(index: &mut usize, table: &[u8]) -> usize {
+fn read_varint(index: &mut usize, table: &[u8]) -> Option<usize> {
+    if *index >= table.len() {
+        return None;
+    }
     let mut ret: usize;
     let mut byte = table[*index];
     let mut shift = 0;
@@ -256,20 +259,23 @@ fn read_varint(index: &mut usize, table: &[u8]) -> usize {
     ret = (byte & 63) as usize;
 
     while byte & 64 != 0 {
+        if *index >= table.len() {
+            return None;
+        }
         byte = table[*index];
         *index += 1;
         shift += 6;
         ret += ((byte & 63) as usize) << shift;
     }
-    ret
+    Some(ret)
 }
 
-fn read_signed_varint(index: &mut usize, table: &[u8]) -> isize {
-    let unsigned_val = read_varint(index, table);
+fn read_signed_varint(index: &mut usize, table: &[u8]) -> Option<isize> {
+    let unsigned_val = read_varint(index, table)?;
     if unsigned_val & 1 != 0 {
-        -((unsigned_val >> 1) as isize)
+        Some(-((unsigned_val >> 1) as isize))
     } else {
-        (unsigned_val >> 1) as isize
+        Some((unsigned_val >> 1) as isize)
     }
 }
 
@@ -324,13 +330,13 @@ macro_rules! CompactCodeObjectImpl {
                     let line_delta = match code {
                         15 => 0,
                         14 => {
-                            let delta = read_signed_varint(&mut index, table);
+                            let delta = read_signed_varint(&mut index, table).unwrap_or(0);
                             read_varint(&mut index, table); // end line
                             read_varint(&mut index, table); // start column
                             read_varint(&mut index, table); // end column
                             delta
                         }
-                        13 => read_signed_varint(&mut index, table),
+                        13 => read_signed_varint(&mut index, table).unwrap_or(0),
                         10..=12 => {
                             index += 2; // start column / end column
                             (code - 10).into()
