@@ -16,7 +16,7 @@ use crate::python_bindings::{
 };
 use crate::utils::offset_of;
 
-pub trait InterpreterState {
+pub trait InterpreterState: Copy {
     type ThreadState: ThreadState;
     type Object: Object;
     type StringObject: StringObject;
@@ -24,11 +24,13 @@ pub trait InterpreterState {
     type TupleObject: TupleObject;
     const HAS_GIL_RUNTIME_STATE: bool = false;
 
-    fn head(&self) -> *mut Self::ThreadState;
-    fn modules(&self) -> *mut Self::Object;
+    /// Get a remote pointer to a pointer to PyThreadState.
+    fn threadstate_ptr_ptr(interpreter_address: usize) -> *const *const Self::ThreadState;
+    /// Get a remote pointer to a pointer to PyObject being the modules dict.
+    fn modules_ptr_ptr(interpreter_address: usize) -> *const *const Self::Object;
 }
 
-pub trait ThreadState {
+pub trait ThreadState: Copy {
     type FrameObject: FrameObject;
     type InterpreterState: InterpreterState;
 
@@ -44,7 +46,7 @@ pub trait ThreadState {
     fn next(&self) -> *mut Self;
 }
 
-pub trait FrameObject {
+pub trait FrameObject: Copy {
     type CodeObject: CodeObject;
 
     fn code(&self) -> *mut Self::CodeObject;
@@ -53,7 +55,7 @@ pub trait FrameObject {
     fn is_entry(&self) -> bool;
 }
 
-pub trait CodeObject {
+pub trait CodeObject: Copy {
     type StringObject: StringObject;
     type BytesObject: BytesObject;
     type TupleObject: TupleObject;
@@ -69,35 +71,35 @@ pub trait CodeObject {
     fn get_line_number(&self, lasti: i32, table: &[u8]) -> i32;
 }
 
-pub trait BytesObject {
+pub trait BytesObject: Copy {
     fn size(&self) -> usize;
     fn address(&self, base: usize) -> usize;
 }
 
-pub trait StringObject {
+pub trait StringObject: Copy {
     fn ascii(&self) -> bool;
     fn kind(&self) -> u32;
     fn size(&self) -> usize;
     fn address(&self, base: usize) -> usize;
 }
 
-pub trait TupleObject {
+pub trait TupleObject: Copy {
     fn size(&self) -> usize;
     fn address(&self, base: usize, index: usize) -> usize;
 }
 
-pub trait ListObject {
+pub trait ListObject: Copy {
     type Object: Object;
     fn size(&self) -> usize;
     fn item(&self) -> *mut *mut Self::Object;
 }
 
-pub trait Object {
+pub trait Object: Copy {
     type TypeObject: TypeObject;
     fn ob_type(&self) -> *mut Self::TypeObject;
 }
 
-pub trait TypeObject {
+pub trait TypeObject: Copy {
     fn name(&self) -> *const ::std::os::raw::c_char;
     fn dictoffset(&self) -> isize;
     fn flags(&self) -> usize;
@@ -115,11 +117,13 @@ macro_rules! PythonCommonImpl {
             type ListObject = $py::PyListObject;
             type TupleObject = $py::PyTupleObject;
 
-            fn head(&self) -> *mut Self::ThreadState {
-                self.tstate_head
+            fn threadstate_ptr_ptr(interpreter_address: usize) -> *const *const Self::ThreadState {
+                (interpreter_address + std::mem::offset_of!(Self, tstate_head))
+                    as *const *const Self::ThreadState
             }
-            fn modules(&self) -> *mut Self::Object {
-                self.modules
+            fn modules_ptr_ptr(interpreter_address: usize) -> *const *const Self::Object {
+                (interpreter_address + std::mem::offset_of!(Self, modules))
+                    as *const *const Self::Object
             }
         }
 
@@ -422,11 +426,13 @@ impl InterpreterState for v3_13_0::PyInterpreterState {
     type TupleObject = v3_13_0::PyTupleObject;
     const HAS_GIL_RUNTIME_STATE: bool = true;
 
-    fn head(&self) -> *mut Self::ThreadState {
-        self.threads.head
+    fn threadstate_ptr_ptr(interpreter_address: usize) -> *const *const Self::ThreadState {
+        (interpreter_address + std::mem::offset_of!(Self, threads.head))
+            as *const *const Self::ThreadState
     }
-    fn modules(&self) -> *mut Self::Object {
-        self.imports.modules
+    fn modules_ptr_ptr(interpreter_address: usize) -> *const *const Self::Object {
+        (interpreter_address + std::mem::offset_of!(Self, imports.modules))
+            as *const *const Self::Object
     }
 }
 
@@ -505,11 +511,13 @@ impl InterpreterState for v3_12_0::PyInterpreterState {
     type TupleObject = v3_12_0::PyTupleObject;
     const HAS_GIL_RUNTIME_STATE: bool = true;
 
-    fn head(&self) -> *mut Self::ThreadState {
-        self.threads.head
+    fn threadstate_ptr_ptr(interpreter_address: usize) -> *const *const Self::ThreadState {
+        (interpreter_address + std::mem::offset_of!(Self, threads.head))
+            as *const *const Self::ThreadState
     }
-    fn modules(&self) -> *mut Self::Object {
-        self.imports.modules
+    fn modules_ptr_ptr(interpreter_address: usize) -> *const *const Self::Object {
+        (interpreter_address + std::mem::offset_of!(Self, imports.modules))
+            as *const *const Self::Object
     }
 }
 
@@ -594,11 +602,12 @@ impl InterpreterState for v3_11_0::PyInterpreterState {
     type ListObject = v3_11_0::PyListObject;
     type TupleObject = v3_11_0::PyTupleObject;
 
-    fn head(&self) -> *mut Self::ThreadState {
-        self.threads.head
+    fn threadstate_ptr_ptr(interpreter_address: usize) -> *const *const Self::ThreadState {
+        (interpreter_address + std::mem::offset_of!(Self, threads.head))
+            as *const *const Self::ThreadState
     }
-    fn modules(&self) -> *mut Self::Object {
-        self.modules
+    fn modules_ptr_ptr(interpreter_address: usize) -> *const *const Self::Object {
+        (interpreter_address + std::mem::offset_of!(Self, modules)) as *const *const Self::Object
     }
 }
 

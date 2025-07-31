@@ -70,7 +70,7 @@ pub struct ProcessInfo {
 
 /// Given an InterpreterState, this function returns a vector of stack traces for each thread
 pub fn get_stack_traces<I, P>(
-    interpreter: &I,
+    interpreter_address: usize,
     process: &P,
     threadstate_address: usize,
     config: Option<&Config>,
@@ -81,8 +81,12 @@ where
 {
     let gil_thread_id = get_gil_threadid::<I, P>(threadstate_address, process)?;
 
+    let threadstate_ptr_ptr = I::threadstate_ptr_ptr(interpreter_address);
+    let mut threads: *const I::ThreadState = process
+        .copy_struct(threadstate_ptr_ptr as usize)
+        .context("Failed to copy PyThreadState head pointer")?;
+
     let mut ret = Vec::new();
-    let mut threads = interpreter.head();
 
     let lineno = config.map(|c| c.lineno).unwrap_or(LineNo::NoLine);
     let dump_locals = config.map(|c| c.dump_locals).unwrap_or(0);
