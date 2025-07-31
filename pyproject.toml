@@ -20,7 +20,6 @@ test = ["numpy"]
 
 [tool.maturin]
 bindings = "bin"
-features = ["unwind"]
 
 [tool.codespell]
 ignore-words-list = "crate"
