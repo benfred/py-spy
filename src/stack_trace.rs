@@ -1,12 +1,15 @@
-use std;
 use std::sync::Arc;
 
-use failure::{Error, ResultExt};
+use anyhow::{Context, Error, Result};
 
-use remoteprocess::{ProcessMemory, Pid, Process};
+use remoteprocess::{Pid, ProcessMemory};
+use serde_derive::Serialize;
 
-use crate::python_interpreters::{InterpreterState, ThreadState, FrameObject, CodeObject, TupleObject};
-use crate::python_data_access::{copy_string, copy_bytes};
+use crate::config::{Config, LineNo};
+use crate::python_data_access::{copy_bytes, copy_string};
+use crate::python_interpreters::{
+    CodeObject, FrameObject, InterpreterState, ThreadState, TupleObject,
+};
 
 /// Call stack for a single python thread
 #[derive(Debug, Clone, Serialize)]
@@ -26,7 +29,7 @@ pub struct StackTrace {
     /// The frames
     pub frames: Vec<Frame>,
     /// process commandline / parent process info
-    pub process_info: Option<Arc<ProcessInfo>>
+    pub process_info: Option<Arc<ProcessInfo>>,
 }
 
 /// Information about a single function call in a stack trace
@@ -44,6 +47,10 @@ pub struct Frame {
     pub line: i32,
     /// Local Variables associated with the frame
     pub locals: Option<Vec<LocalVariable>>,
+    /// If this is an entry frame. Each entry frame corresponds to one native frame (Python 3.11)
+    pub is_entry: bool,
+    /// If the last frame was a shim. This is used in Python 3.12+ to detect entry frames.
+    pub is_shim_entry: bool,
 }
 
 #[derive(Debug, Hash, Eq, PartialEq, Ord, PartialOrd, Clone, Serialize)]
@@ -56,21 +63,40 @@ pub struct LocalVariable {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ProcessInfo {
-    pub pid:  Pid,
+    pub pid: Pid,
     pub command_line: String,
-    pub parent: Option<Box<ProcessInfo>>
+    pub parent: Option<Box<ProcessInfo>>,
 }
 
 /// Given an InterpreterState, this function returns a vector of stack traces for each thread
-pub fn get_stack_traces<I>(interpreter: &I, process: &Process) -> Result<Vec<StackTrace>, Error>
-        where I: InterpreterState {
-    // TODO: deprecate this method
+pub fn get_stack_traces<I, P>(
+    interpreter: &I,
+    process: &P,
+    threadstate_address: usize,
+    config: Option<&Config>,
+) -> Result<Vec<StackTrace>, Error>
+where
+    I: InterpreterState,
+    P: ProcessMemory,
+{
+    let gil_thread_id = get_gil_threadid::<I, P>(threadstate_address, process)?;
+
     let mut ret = Vec::new();
     let mut threads = interpreter.head();
+
+    let lineno = config.map(|c| c.lineno).unwrap_or(LineNo::NoLine);
+    let dump_locals = config.map(|c| c.dump_locals).unwrap_or(0);
+
     while !threads.is_null() {
-        let thread = process.copy_pointer(threads).context("Failed to copy PyThreadState")?;
-        ret.push(get_stack_trace(&thread, process, false)?);
-        // This seems to happen occasionally when scanning BSS addresses for valid interpeters
+        let thread = process
+            .copy_pointer(threads)
+            .context("Failed to copy PyThreadState")?;
+
+        let mut trace = get_stack_trace(&thread, process, dump_locals > 0, lineno)?;
+        trace.owns_gil = trace.thread_id == gil_thread_id;
+
+        ret.push(trace);
+        // This seems to happen occasionally when scanning BSS addresses for valid interpreters
         if ret.len() > 4096 {
             return Err(format_err!("Max thread recursion depth reached"));
         }
@@ -80,28 +106,88 @@ pub fn get_stack_traces<I>(interpreter: &I, process: &Process) -> Result<Vec<Sta
 }
 
 /// Gets a stack trace for an individual thread
-pub fn get_stack_trace<T>(thread: &T, process: &Process, copy_locals: bool) -> Result<StackTrace, Error>
-        where T: ThreadState {
+pub fn get_stack_trace<T, P>(
+    thread: &T,
+    process: &P,
+    copy_locals: bool,
+    lineno: LineNo,
+) -> Result<StackTrace, Error>
+where
+    T: ThreadState,
+    P: ProcessMemory,
+{
     // TODO: just return frames here? everything else probably should be returned out of scope
     let mut frames = Vec::new();
-    let mut frame_ptr = thread.frame();
+
+    // python 3.11+ has an extra level of indirection to get the Frame from the threadstate
+    let mut frame_address = thread.frame_address();
+    if let Some(addr) = frame_address {
+        frame_address = Some(process.copy_struct(addr)?);
+    }
+
+    let mut frame_ptr = thread.frame(frame_address);
+
+    // We are iterating in reverse, i.e. from last call to first call.
+    // Since Python 3.12, there are shim frames inserted before a block
+    // of Python frames. When we encounter one, update the last frame.
+    let set_last_frame_as_shim_entry = &mut |frames: &mut Vec<Frame>| {
+        if let Some(frame) = frames.last_mut() {
+            frame.is_shim_entry = true;
+        }
+    };
+
     while !frame_ptr.is_null() {
-        let frame = process.copy_pointer(frame_ptr).context("Failed to copy PyFrameObject")?;
-        let code = process.copy_pointer(frame.code()).context("Failed to copy PyCodeObject")?;
+        let frame = process
+            .copy_pointer(frame_ptr)
+            .context("Failed to copy PyFrameObject")?;
 
-        let filename = copy_string(code.filename(), process).context("Failed to copy filename")?;
-        let name = copy_string(code.name(), process).context("Failed to copy function name")?;
+        let code = process
+            .copy_pointer(frame.code())
+            .context("Failed to copy PyCodeObject")?;
 
-        let line = match get_line_number(&code, frame.lasti(), process) {
-            Ok(line) => line,
-            Err(e) => {
-                // Failling to get the line number really shouldn't be fatal here, but
-                // can happen in extreme cases (https://github.com/benfred/py-spy/issues/164)
-                // Rather than fail set the linenumber to 0. This is used by the native extensions
-                // to indicate that we can't load a line number and it should be handled gracefully
-                warn!("Failed to get line number from {}.{}: {}", filename, name, e);
-                0
-            }
+        let filename = copy_string(code.filename(), process).context("Failed to copy filename");
+        let name = copy_string(code.name(), process).context("Failed to copy function name");
+
+        // just skip processing the current frame if we can't load the filename or function name.
+        // this can happen in python 3.13+ since the f_executable isn't guaranteed to be
+        // a PyCodeObject. We could check the type (and mimic the logic of PyCode_Check here)
+        // but that would require extra overhead of reading the ob_type per frame - and we
+        // would also have to figure out what the address of PyCode_Type is (which will be
+        // easier if something like https://github.com/python/cpython/issues/100987#issuecomment-1487227139
+        // is merged )
+        if filename.is_err() || name.is_err() {
+            frame_ptr = frame.back();
+            set_last_frame_as_shim_entry(&mut frames);
+            continue;
+        }
+        let filename = filename?;
+        let name = name?;
+
+        // skip <shim> entries in python 3.12+
+        // Unset file/function name in py3.13 means this is a shim.
+        if filename.is_empty() || filename == "<shim>" {
+            frame_ptr = frame.back();
+            set_last_frame_as_shim_entry(&mut frames);
+            continue;
+        }
+
+        let line = match lineno {
+            LineNo::NoLine => 0,
+            LineNo::First => code.first_lineno(),
+            LineNo::LastInstruction => match get_line_number(&code, frame.lasti(), process) {
+                Ok(line) => line,
+                Err(e) => {
+                    // Failling to get the line number really shouldn't be fatal here, but
+                    // can happen in extreme cases (https://github.com/benfred/py-spy/issues/164)
+                    // Rather than fail set the linenumber to 0. This is used by the native extensions
+                    // to indicate that we can't load a line number and it should be handled gracefully
+                    warn!(
+                        "Failed to get line number from {}.{}: {}",
+                        filename, name, e
+                    );
+                    0
+                }
+            },
         };
 
         let locals = if copy_locals {
@@ -110,7 +196,18 @@ pub fn get_stack_trace<T>(thread: &T, process: &Process, copy_locals: bool) -> R
             None
         };
 
-        frames.push(Frame{name, filename, line, short_filename: None, module: None, locals});
+        let is_entry = frame.is_entry();
+
+        frames.push(Frame {
+            name,
+            filename,
+            line,
+            short_filename: None,
+            module: None,
+            locals,
+            is_entry,
+            is_shim_entry: false,
+        });
         if frames.len() > 4096 {
             return Err(format_err!("Max frame recursion depth reached"));
         }
@@ -118,7 +215,19 @@ pub fn get_stack_trace<T>(thread: &T, process: &Process, copy_locals: bool) -> R
         frame_ptr = frame.back();
     }
 
-    Ok(StackTrace{pid: process.pid, frames, thread_id: thread.thread_id(), thread_name: None, owns_gil: false, active: true, os_thread_id: None, process_info: None})
+    // First frame is always a shim
+    set_last_frame_as_shim_entry(&mut frames);
+
+    Ok(StackTrace {
+        pid: 0,
+        frames,
+        thread_id: thread.thread_id(),
+        thread_name: None,
+        owns_gil: false,
+        active: true,
+        os_thread_id: thread.native_thread_id(),
+        process_info: None,
+    })
 }
 
 impl StackTrace {
@@ -132,49 +241,35 @@ impl StackTrace {
 
     pub fn format_threadid(&self) -> String {
         // native threadids in osx are kinda useless, use the pthread id instead
-        #[cfg(target_os="macos")]
+        #[cfg(target_os = "macos")]
         return format!("{:#X}", self.thread_id);
 
         // otherwise use the native threadid if given
-        #[cfg(not(target_os="macos"))]
+        #[cfg(not(target_os = "macos"))]
         match self.os_thread_id {
             Some(tid) => format!("{}", tid),
-            None => format!("{:#X}", self.thread_id)
+            None => format!("{:#X}", self.thread_id),
         }
     }
 }
 
 /// Returns the line number from a PyCodeObject (given the lasti index from a PyFrameObject)
-fn get_line_number<C: CodeObject, P: ProcessMemory>(code: &C, lasti: i32, process: &P) -> Result<i32, Error> {
-    let table = copy_bytes(code.lnotab(), process).context("Failed to copy line number table")?;
-
-    // unpack the line table. format is specified here:
-    // https://github.com/python/cpython/blob/master/Objects/lnotab_notes.txt
-    let size = table.len();
-    let mut i = 0;
-    let mut line_number: i32 = code.first_lineno();
-    let mut bytecode_address: i32 = 0;
-    while (i + 1) < size {
-        bytecode_address += i32::from(table[i]);
-        if bytecode_address > lasti {
-            break;
-        }
-
-        let mut increment = i32::from(table[i + 1]);
-        // Handle negative line increments in the line number table - as shown here:
-        // https://github.com/python/cpython/blob/143a97f6/Objects/lnotab_notes.txt#L48-L49
-        if increment >= 0x80 {
-            increment -= 0x100;
-        }
-        line_number += increment;
-        i += 2;
-    }
-
-    Ok(line_number)
+fn get_line_number<C: CodeObject, P: ProcessMemory>(
+    code: &C,
+    lasti: i32,
+    process: &P,
+) -> Result<i32, Error> {
+    let table =
+        copy_bytes(code.line_table(), process).context("Failed to copy line number table")?;
+    Ok(code.get_line_number(lasti, &table))
 }
 
-fn get_locals<C: CodeObject, F: FrameObject, P: ProcessMemory>(code: &C, frameptr: *const F, frame: &F, process: &P)
-        -> Result<Vec<LocalVariable>, Error> {
+fn get_locals<C: CodeObject, F: FrameObject, P: ProcessMemory>(
+    code: &C,
+    frameptr: *const F,
+    frame: &F,
+    process: &P,
+) -> Result<Vec<LocalVariable>, Error> {
     let local_count = code.nlocals() as usize;
     let argcount = code.argcount() as usize;
     let varnames = process.copy_pointer(code.varnames())?;
@@ -185,38 +280,87 @@ fn get_locals<C: CodeObject, F: FrameObject, P: ProcessMemory>(code: &C, framept
     let mut ret = Vec::new();
 
     for i in 0..local_count {
-        let nameptr: *const C::StringObject = process.copy_struct(varnames.address(code.varnames() as usize, i))?;
+        let nameptr: *const C::StringObject =
+            process.copy_struct(varnames.address(code.varnames() as usize, i))?;
         let name = copy_string(nameptr, process)?;
         let addr: usize = process.copy_struct(locals_addr + i * ptr_size)?;
         if addr == 0 {
             continue;
         }
-        ret.push(LocalVariable{name, addr, arg: i < argcount, repr: None});
+        ret.push(LocalVariable {
+            name,
+            addr,
+            arg: i < argcount,
+            repr: None,
+        });
     }
     Ok(ret)
 }
 
+pub fn get_gil_threadid<I: InterpreterState, P: ProcessMemory>(
+    threadstate_address: usize,
+    process: &P,
+) -> Result<u64, Error> {
+    // happens during initialization when checking to see if we have a valid interpreter (before we've figured out the threadstate_address)
+    if threadstate_address == 0 {
+        return Ok(0);
+    }
+
+    let addr = if I::HAS_GIL_RUNTIME_STATE {
+        // get the gilruntimestate - note that this struct is identical between 3.12/3.13
+        let gil_state: crate::python_bindings::v3_13_0::_gil_runtime_state =
+            process.copy_struct(threadstate_address)?;
+        // check to see if the GIL is locked already
+        if gil_state.locked != 0 {
+            gil_state.last_holder as usize
+        } else {
+            0
+        }
+    } else {
+        process.copy_struct::<usize>(threadstate_address)?
+    };
+
+    // if the addr is 0, no thread is currently holding the GIL
+    let threadid = if addr != 0 {
+        let threadstate: I::ThreadState = process.copy_struct(addr)?;
+        threadstate.thread_id()
+    } else {
+        0
+    };
+
+    Ok(threadid)
+}
+
 impl ProcessInfo {
     pub fn to_frame(&self) -> Frame {
-        Frame{name: format!("process {}:\"{}\"", self.pid, self.command_line),
+        Frame {
+            name: format!("process {}:\"{}\"", self.pid, self.command_line),
             filename: String::from(""),
-            module: None, short_filename: None, line: 0, locals: None}
+            module: None,
+            short_filename: None,
+            line: 0,
+            locals: None,
+            is_entry: true,
+            is_shim_entry: true,
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::python_bindings::v3_7_0::PyCodeObject;
+    use crate::python_data_access::tests::to_byteobject;
     use remoteprocess::LocalProcess;
-    use python_bindings::v3_7_0::{PyCodeObject};
-    use python_data_access::tests::to_byteobject;
 
     #[test]
     fn test_get_line_number() {
         let mut lnotab = to_byteobject(&[0u8, 1, 10, 1, 8, 1, 4, 1]);
-        let code = PyCodeObject{co_firstlineno: 3,
-                                co_lnotab: &mut lnotab.base.ob_base.ob_base,
-                                ..Default::default()};
+        let code = PyCodeObject {
+            co_firstlineno: 3,
+            co_lnotab: &mut lnotab.base.ob_base.ob_base,
+            ..Default::default()
+        };
         let lineno = get_line_number(&code, 30, &LocalProcess).unwrap();
         assert_eq!(lineno, 7);
     }

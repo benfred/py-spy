@@ -1,0 +1,30 @@
+name: Update Python Test Versions
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 1 * * *"
+jobs:
+  update-dep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ssh-key: ${{ secrets.SSH_PRIVATE_KEY }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.9
+      - name: Install
+        run: pip install --upgrade requests pyyaml
+      - name: Scan for new python versions
+        run: python ci/update_python_test_versions.py
+      - name: Format results
+        run: npx prettier --write ".github/workflows/update_python_test.yml"
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: Update tested python versions
+          title: Update tested python versions
+          branch: update-python-versions
+          labels: |
+            skip-changelog
+            dependencies

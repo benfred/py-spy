@@ -1,3 +1,60 @@
+# Release notes are now being hosted in Github Releases: https://github.com/benfred/py-spy/releases
+
+## v0.3.11
+
+* Update dependencies [#463](https://github.com/benfred/py-spy/pull/463), [#457](https://github.com/benfred/py-spy/pull/463)
+* Warn about SYS_PTRACE when running in docker [#459](https://github.com/benfred/py-spy/pull/459)
+* Fix spelling mistakes [#453](https://github.com/benfred/py-spy/pull/453)
+
+## v0.3.10
+* Add support for profiling Python v3.10 [#425](https://github.com/benfred/py-spy/pull/425)
+* Fix issue with native profiling on Linux with Anaconda [#447](https://github.com/benfred/py-spy/pull/447)
+
+## v0.3.9
+* Add a subcommand to generate shell completions [#427](https://github.com/benfred/py-spy/issues/427)
+* Allow attaching co_firstlineno to frame name [#428](https://github.com/benfred/py-spy/issues/428)
+* Fix speedscope time interval [#434](https://github.com/benfred/py-spy/issues/434)
+* Fix profiling on FreeBSD [#431](https://github.com/benfred/py-spy/issues/431)
+* Use GitHub actions for FreeBSD CI [#433](https://github.com/benfred/py-spy/issues/433)
+
+## v0.3.8
+* Add wheels for Apple Silicon [#419](https://github.com/benfred/py-spy/issues/419)
+* Add --gil and --idle options to top view [#406](https://github.com/benfred/py-spy/issues/406)
+* Fix errors parsing python binaries [#407](https://github.com/benfred/py-spy/issues/407)
+* Specify timeunit in speedscope profiles [#294](https://github.com/benfred/py-spy/issues/294)
+
+## v0.3.7
+* Fix error that sometimes left the profiled program suspended [#390](https://github.com/benfred/py-spy/issues/390)
+* Documentation fixes for README [#391](https://github.com/benfred/py-spy/issues/391), [#393](https://github.com/benfred/py-spy/issues/393)
+
+## v0.3.6
+* Fix profiling inside a venv on windows [#216](https://github.com/benfred/py-spy/issues/216)
+* Detect GIL on Python 3.9.3+, 3.8.9+ [#375](https://github.com/benfred/py-spy/issues/375)
+* Fix getting thread names on python 3.9 [#387](https://github.com/benfred/py-spy/issues/387)
+* Fix getting thread names on ARMv7 [#388](https://github.com/benfred/py-spy/issues/388)
+* Add python integration tests, and test wheels across a range of different python versions [#378](https://github.com/benfred/py-spy/pull/378)
+* Automatically add tests for new versions of python [#379](https://github.com/benfred/py-spy/pull/379)
+
+## v0.3.5
+* Handle case where linux kernel is compiled without ```process_vm_readv``` support  [#22](https://github.com/benfred/py-spy/issues/22)
+* Handle case where /proc/self/ns/mnt is missing [#326](https://github.com/benfred/py-spy/issues/326)
+* Allow attaching to processes where the python binary has been deleted [#109](https://github.com/benfred/py-spy/issues/109)
+* Make '--output' optional [#229](https://github.com/benfred/py-spy/issues/229)
+* Add --full-filenames to allow showing full Python filenames [#363](https://github.com/benfred/py-spy/issues/363)
+* Count "samples" as the number of recorded stacks (per thread) [#365](https://github.com/benfred/py-spy/issues/365)
+* Exit with an error if --gil but we failed to get necessary addrs/offsets [#361](https://github.com/benfred/py-spy/pull/361)
+* Include command/options used to run py-spy in flamegraph output [#293](https://github.com/benfred/py-spy/issues/293)
+* GIL Detection fixes for python 3.9.2/3.8.8 [#362](https://github.com/benfred/py-spy/pull/362)
+* Move to Github Actions for CI
+
+## v0.3.4
+* Build armv7/aarch64 wheels [#328](https://github.com/benfred/py-spy/issues/328)
+* Detect GIL on Python 3.9 / 3.7.7+ / 3.8.2+
+* Add option for more verbose local variables [#287](https://github.com/benfred/py-spy/issues/287)
+* Fix issues with profiling subprocesses [#265](https://github.com/benfred/py-spy/issues/265)
+* Include python thread names in record [#237](https://github.com/benfred/py-spy/issues/237)
+* Fix issue with threadids triggering differential flamegraphs [#234](https://github.com/benfred/py-spy/issues/234)
+
 ## v0.3.3
 
 * Change to display stdout/stderr from profiled child process [#217](https://github.com/benfred/py-spy/issues/217)
@@ -47,7 +104,7 @@
 * Show OS threadids in dump [#57](https://github.com/benfred/py-spy/issues/57)
 * Drop root permissions when starting new process [#116](https://github.com/benfred/py-spy/issues/116)
 * Support building for ARM processors [#89](https://github.com/benfred/py-spy/issues/89)
-* Python 3.8 compatability
+* Python 3.8 compatibility
 * Fix issues profiling functions with more than 4000 lines [#164](https://github.com/benfred/py-spy/issues/164)
 
 ## v0.1.11

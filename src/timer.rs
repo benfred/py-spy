@@ -1,11 +1,10 @@
-use std::time::{Instant, Duration};
+use std::time::{Duration, Instant};
 #[cfg(windows)]
 use winapi::um::timeapi;
 
-use rand;
-use rand_distr::{Exp, Distribution};
+use rand_distr::{Distribution, Exp};
 
-/// Timer is an iterator that sleeps an appropiate amount of time between iterations
+/// Timer is an iterator that sleeps an appropriate amount of time between iterations
 /// so that we can sample the process a certain number of times a second.
 /// We're using an irregular sampling strategy to avoid aliasing effects that can happen
 /// if the target process runs code at a similar schedule as the profiler:
@@ -25,10 +24,16 @@ impl Timer {
         // https://randomascii.wordpress.com/2013/07/08/windows-timer-resolution-megawatts-wasted/
         // and http://www.belshe.com/2010/06/04/chrome-cranking-up-the-clock/
         #[cfg(windows)]
-        unsafe { timeapi::timeBeginPeriod(1); }
+        unsafe {
+            timeapi::timeBeginPeriod(1);
+        }
 
         let start = Instant::now();
-        Timer{start, desired: Duration::from_secs(0), exp: Exp::new(rate).unwrap()}
+        Timer {
+            start,
+            desired: Duration::from_secs(0),
+            exp: Exp::new(rate).unwrap(),
+        }
     }
 }
 
@@ -47,7 +52,7 @@ impl Iterator for Timer {
         // the amount of time from the previous line).
         self.desired += Duration::from_nanos(nanos as u64);
 
-        // sleep if appropiate, or warn if we are behind in sampling
+        // sleep if appropriate, or warn if we are behind in sampling
         if self.desired > elapsed {
             std::thread::sleep(self.desired - elapsed);
             Some(Ok(self.desired - elapsed))
@@ -60,6 +65,8 @@ impl Iterator for Timer {
 impl Drop for Timer {
     fn drop(&mut self) {
         #[cfg(windows)]
-        unsafe { timeapi::timeEndPeriod(1); }
+        unsafe {
+            timeapi::timeEndPeriod(1);
+        }
     }
 }

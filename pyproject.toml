@@ -1,0 +1,26 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "py-spy"
+classifiers = [
+	"Development Status :: 5 - Production/Stable",
+	"Programming Language :: Python :: 3",
+	"Programming Language :: Python :: 2",
+	"Intended Audience :: Developers",
+	"License :: OSI Approved :: MIT License",
+	"Topic :: Software Development :: Libraries",
+	"Topic :: Utilities"
+]
+dynamic = ["version"]
+
+[project.optional-dependencies]
+test = ["numpy"]
+
+[tool.maturin]
+bindings = "bin"
+
+[tool.codespell]
+ignore-words-list = "crate"
+skip = "./.git,./.github,./target,./ci/testdata,./images/"

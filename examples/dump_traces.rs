@@ -1,15 +1,9 @@
+use log::error;
+
 // Simple example of showing how to use the rust API to
 // print out stack traces from a python program
 
-extern crate py_spy;
-extern crate remoteprocess;
-extern crate failure;
-#[macro_use]
-extern crate log;
-extern crate env_logger;
-
-
-fn print_python_stacks(pid: remoteprocess::Pid) -> Result<(), failure::Error> {
+fn print_python_stacks(pid: remoteprocess::Pid) -> Result<(), anyhow::Error> {
     // Create a new PythonSpy object with the default config options
     let config = py_spy::Config::default();
     let mut process = py_spy::PythonSpy::new(pid, &config)?;

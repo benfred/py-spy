@@ -9,7 +9,7 @@ py-spy is extremely low overhead: it is written in Rust for speed and doesn't ru
 in the same process as the profiled Python program. This means py-spy is safe to use against production Python code.
 
 py-spy works on Linux, OSX, Windows and FreeBSD, and supports profiling all recent versions of the CPython
-interpreter (versions 2.3-2.7 and 3.3-3.8).
+interpreter (versions 2.3-2.7 and 3.3-3.13).
 
 ## Installation
 
@@ -20,9 +20,20 @@ pip install py-spy
 ```
 
 You can also download prebuilt binaries from the [GitHub Releases
-Page](https://github.com/benfred/py-spy/releases). This includes binaries for ARM and FreeBSD,
-which can't be installed using pip. If you're a Rust user, py-spy can also be installed with: ```cargo install py-spy```. On Arch Linux, [py-spy is in AUR](https://aur.archlinux.org/packages/py-spy/) and can be
+Page](https://github.com/benfred/py-spy/releases).
+
+If you're a Rust user, py-spy can also be installed with: ```cargo install py-spy```. Note this
+builds py-spy from source and requires `libunwind` on Linux and Window, e.g., 
+`apt install libunwind-dev`.
+
+On macOS, [py-spy is in Homebrew](https://formulae.brew.sh/formula/py-spy#default) and 
+can be installed with ```brew install py-spy```.
+
+On Arch Linux, [py-spy is in AUR](https://aur.archlinux.org/packages/py-spy/) and can be
 installed with ```yay -S py-spy```.
+
+On Alpine Linux, [py-spy is in testing repository](https://pkgs.alpinelinux.org/packages?name=py-spy&branch=edge&repo=testing) and
+can be installed with ```apk add py-spy --update-cache --repository http://dl-3.alpinelinux.org/alpine/edge/testing/ --allow-untrusted```.
 
 ## Usage
 
@@ -151,7 +162,9 @@ OSX always requires running as root, but on Linux it depends on how you are laun
 security settings.
 
 On Linux the default configuration is to require root permissions when attaching to a process that isn't a child.
-For py-spy this means you can profile without root access by getting py-spy to create the process (```py-spy -- python myprogram.py```) but attaching to an existing process by specifying a PID will usually require root (```sudo py-spy --pid 123456```).
+For py-spy this means you can profile without root access by getting py-spy to create the process
+(```py-spy record  -- python myprogram.py```) but attaching to an existing process by specifying a
+PID will usually require root (```sudo py-spy record --pid 123456```).
 You can remove this restriction on Linux by setting the [ptrace_scope sysctl variable](https://wiki.ubuntu.com/SecurityTeam/Roadmap/KernelHardening#ptrace_Protection).
 
 ### How do you detect if a thread is idle or not?
@@ -228,7 +241,7 @@ py-spy needs `SYS_PTRACE` to be able to read process memory. Kubernetes drops th
 ```
 Permission Denied: Try running again with elevated permissions by going 'sudo env "PATH=$PATH" !!'
 ```
-The recommended way to deal with this is to edit the spec and add that capability. For a deployment, this is done by adding this to `Deployment.spec.template.spec.containers`
+The recommended way to deal with this is to edit the spec and add that capability. For a Deployment, this is done by adding this to `Deployment.spec.template.spec.containers`
 ```
 securityContext:
   capabilities:
@@ -236,7 +249,19 @@ securityContext:
     - SYS_PTRACE
 ```
 More details on this here: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-capabilities-for-a-container
-Note that this will remove the existing pods and create those again.
+Note that if you modify the Deployment resource, this will remove the existing Pods and create those again.
+
+You can also create an **ephemeral container** to attach to a running Pod, targeting a specific **container** where your application is running.
+Make sure to use a `profile` that grants the `SYS_PTRACE` permission, for example:
+
+```sh
+kubectl debug --profile=general \
+    -n your-namespace \
+    --target=app-container-name \
+    pod-name \
+    --image=python:3.12-slim \
+    -it -- bash
+```
 
 ### How do I install py-spy on Alpine Linux?
 
@@ -258,28 +283,16 @@ Since the calls we use to read memory from are not atomic, and we have to issue 
 means that occasionally we get errors when sampling. This can show up as an increased error rate when sampling, or as
 partial stack frames being included in the output.
 
-### How are you distributing Rust executable binaries over PyPI?
-
-Ok, so no-one has ever actually asked me this - but I wanted to share since it's a pretty terrible hack
-that might be useful to other people.
-
-I really wanted to distribute this package over PyPI, since installing with pip will make this much easier
-for most Python programmers to get installed on their system. Unfortunately, [installing executables as python
-scripts isn't something that setuptools supports](https://github.com/pypa/setuptools/issues/210).
-
-To get around this I'm using setuptools_rust package to build the py-spy
-binary, and then overriding the [distutils install command](https://github.com/benfred/py-spy/blob/772f24086c30521b4d4af5065aa09da4f9d559ae/setup.py#L44-L83)
-to copy the built binary into the python scripts folder. By doing this with prebuilt wheels for supported
-platforms means that we can install py-spy with pip, and not require a Rust compiler on the machine that
-this is being installed onto.
-
 ### Does py-spy support 32-bit Windows? Integrate with PyPy? Work with USC2 versions of Python2?
 
 Not yet =).
 
 If there are features you'd like to see in py-spy either thumb up the [appropriate
-issue](https://github.com/benfred/py-spy/issues?q=is%3Aissue+is%3Aopen+sort%3Areactions-%2B1-desc) or create a new one that describes what functionality is missing. 
+issue](https://github.com/benfred/py-spy/issues?q=is%3Aissue+is%3Aopen+sort%3Areactions-%2B1-desc) or create a new one that describes what functionality is missing.
 
+### How to force colored output when piping to a pager?
+
+py-spy follows the [CLICOLOR](https://bixense.com/clicolors/) specification, thus setting `CLICOLOR_FORCE=1` in your environment will have py-spy print colored output even when piped to a pager.
 
 ## Credits
 
