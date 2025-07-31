@@ -513,7 +513,7 @@ where
 /// * `process`: Process memory in which the object resides
 fn format_obval<T, P>(addr: usize, process: &P) -> Result<String, Error>
 where
-    T: std::fmt::Display,
+    T: std::fmt::Display + Copy,
     P: ProcessMemory,
 {
     let base_addr = addr as *mut u32;
