@@ -15,6 +15,9 @@ pub fn copy_string<T: StringObject, P: ProcessMemory>(
     process: &P,
 ) -> Result<String, Error> {
     let obj = process.copy_pointer(ptr)?;
+    if obj.size() == 0 {
+        return Ok(String::new());
+    }
     if obj.size() >= 4096 {
         return Err(format_err!(
             "Refusing to copy {} chars of a string",
@@ -510,7 +513,7 @@ where
 /// * `process`: Process memory in which the object resides
 fn format_obval<T, P>(addr: usize, process: &P) -> Result<String, Error>
 where
-    T: std::fmt::Display,
+    T: std::fmt::Display + Copy,
     P: ProcessMemory,
 {
     let base_addr = addr as *mut u32;

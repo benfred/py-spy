@@ -280,7 +280,7 @@ fn test_local_vars() {
     let frame = &trace.frames[0];
     let locals = frame.locals.as_ref().unwrap();
 
-    assert_eq!(locals.len(), 28);
+    assert_eq!(locals.len(), 29);
 
     let arg1 = &locals[0];
     assert_eq!(arg1.name, "arg1");
@@ -422,6 +422,11 @@ fn test_local_vars() {
     let end = unicode_val.char_indices().map(|(i, _)| i).nth(4).unwrap();
     assert_eq!(unicode_val[0..end], *"\"测试1");
 
+    // Empty string
+    let local26 = &locals[28];
+    assert_eq!(local26.name, "local26");
+    assert_eq!(local26.repr, Some("\"\"".to_string()));
+
     // we only support dictionary lookup on python 3.6+ right now
     if runner.spy.version.major == 3 && runner.spy.version.minor >= 6 {
         assert_eq!(
@@ -511,8 +516,9 @@ fn test_negative_linenumber_increment() {
     assert_eq!(traces.len(), 1);
     let trace = &traces[0];
 
-    match runner.spy.version.major {
-        3 => {
+    // Python 3.12 inlined comprehensions - see https://peps.python.org/pep-0709/
+    match (runner.spy.version.major, runner.spy.version.minor) {
+        (3, 0..=11) => {
             assert_eq!(trace.frames[0].name, "<listcomp>");
             assert!(trace.frames[0].line >= 5 && trace.frames[0].line <= 10);
             assert_eq!(trace.frames[1].name, "f");
@@ -520,7 +526,7 @@ fn test_negative_linenumber_increment() {
             assert_eq!(trace.frames[2].name, "<module>");
             assert_eq!(trace.frames[2].line, 13)
         }
-        2 => {
+        (2, _) | (3, 12..) => {
             assert_eq!(trace.frames[0].name, "f");
             assert!(trace.frames[0].line >= 5 && trace.frames[0].line <= 10);
             assert_eq!(trace.frames[1].name, "<module>");
