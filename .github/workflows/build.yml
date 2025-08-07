@@ -216,6 +216,7 @@ jobs:
             3.13.3,
             3.13.4,
             3.13.5,
+            3.13.6,
           ]
         os: [ubuntu-22.04, macos-13, windows-latest, ubuntu-22.04-arm]
         # some versions of python can't be tested on GHA with osx because of SIP:
