@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::io;
-use std::io::{Read, Write};
+use std::io::{BufReader, Read, Write};
 use std::sync::{atomic, Arc, Mutex};
 use std::thread;
 use std::vec::Vec;
@@ -40,14 +40,17 @@ impl ConsoleViewer {
         let input_running = running.clone();
         let input_options = options.clone();
         thread::spawn(move || {
+            let stdin = std::io::stdin();
+            let mut buf_reader = BufReader::new(stdin);
+            let mut buffer = [0u8; 1];
             while input_running.load(atomic::Ordering::Relaxed) {
                 // TODO: there isn't a non-blocking version of stdin, so this will capture the
                 // next keystroke after the ConsoleViewer object has been destroyed =(
-                if let Some(Ok(key)) = std::io::stdin().bytes().next() {
+                if buf_reader.read_exact(&mut buffer).is_ok() {
                     let mut options = input_options.lock().unwrap();
                     options.dirty = true;
                     let previous_usage = options.usage;
-                    match key as char {
+                    match buffer[0] as char {
                         'R' | 'r' => options.reset = true,
                         'L' | 'l' => options.show_linenumbers = !options.show_linenumbers,
                         'X' | 'x' => options.usage = false,
@@ -173,7 +176,7 @@ impl ConsoleViewer {
         if let Some(delay) = self.stats.last_delay {
             let late_rate = self.stats.late_samples as f64 / self.stats.overall_samples as f64;
             if late_rate > 0.10 && delay > std::time::Duration::from_secs(1) {
-                let msg = format!("{:.2?} behind in sampling, results may be inaccurate. Try reducing the sampling rate.", delay);
+                let msg = format!("{delay:.2?} behind in sampling, results may be inaccurate. Try reducing the sampling rate.");
                 out!("{}", style(msg).red());
                 header_lines += 1;
             }
@@ -327,7 +330,7 @@ impl ConsoleViewer {
     pub fn increment_error(&mut self, err: &Error) -> Result<(), Error> {
         self.maybe_reset();
         self.stats.errors += 1;
-        self.stats.last_error = Some(format!("{}", err));
+        self.stats.last_error = Some(format!("{err}"));
         self.increment_common()
     }
 
@@ -492,13 +495,13 @@ impl Stats {
 // helper function for formatting time values (hide decimals for larger values)
 fn display_time(val: f64) -> String {
     if val > 1000.0 {
-        format!("{:.0}", val)
+        format!("{val:.0}")
     } else if val >= 100.0 {
-        format!("{:.1}", val)
+        format!("{val:.1}")
     } else if val >= 1.0 {
-        format!("{:.2}", val)
+        format!("{val:.2}")
     } else {
-        format!("{:.3}", val)
+        format!("{val:.3}")
     }
 }
 

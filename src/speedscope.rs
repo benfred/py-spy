@@ -260,7 +260,7 @@ impl Stats {
             &self.thread_name_map,
             self.config.sampling_rate,
         ))?;
-        writeln!(w, "{}", json)?;
+        writeln!(w, "{json}")?;
         Ok(())
     }
 }

@@ -68,7 +68,7 @@ impl std::fmt::Display for Version {
             self.major, self.minor, self.patch, self.release_flags
         )?;
         if let Some(build_metadata) = &self.build_metadata {
-            write!(f, "+{}", build_metadata,)?
+            write!(f, "+{build_metadata}",)?
         }
         Ok(())
     }

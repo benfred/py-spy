@@ -142,7 +142,6 @@ pub fn copy_int<P: ProcessMemory>(process: &P, addr: usize) -> Result<i64, Error
 }
 
 /// Allows iteration of a python dictionary. Only supports python 3.6+ right now
-
 pub struct DictIterator<'a, P: 'a> {
     process: &'a P,
     entries_addr: usize,
@@ -386,7 +385,7 @@ where
         if value_type_name == "bool" {
             (if value > 0 { "True" } else { "False" }).to_owned()
         } else {
-            format!("{}", value)
+            format!("{value}")
         }
     };
 
@@ -415,7 +414,7 @@ where
         if let Some((offset, _)) = value.char_indices().nth((max_length - 5) as usize) {
             format!("\"{}...\"", &value[..offset])
         } else {
-            format!("\"{}\"", value)
+            format!("\"{value}\"")
         }
     } else if flags & PY_TPFLAGS_DICT_SUBCLASS != 0 {
         if version.major == 3 && version.minor >= 6 {
@@ -430,7 +429,7 @@ where
                     values.push("...".to_owned());
                     break;
                 }
-                values.push(format!("{}: {}", key, value));
+                values.push(format!("{key}: {value}"));
             }
             format!("{{{}}}", values.join(", "))
         } else {
@@ -488,10 +487,10 @@ where
             "numpy.int64" => format_obval::<i64, P>(addr, process)?,
             "numpy.float32" => format_obval::<f32, P>(addr, process)?,
             "numpy.float64" => format_obval::<f64, P>(addr, process)?,
-            _ => format!("<{} at 0x{:x}>", value_type_name, addr),
+            _ => format!("<{value_type_name} at 0x{addr:x}>"),
         }
     } else {
-        format!("<{} at 0x{:x}>", value_type_name, addr)
+        format!("<{value_type_name} at 0x{addr:x}>")
     };
 
     Ok(formatted)
@@ -519,7 +518,7 @@ where
     let base_addr = addr as *mut u32;
     let offset = std::mem::size_of::<crate::python_bindings::v3_7_0::PyObject>() as isize;
     let result = unsafe { process.copy_pointer(base_addr.byte_offset(offset) as *const T)? };
-    Ok(format!("{}", result))
+    Ok(format!("{result}"))
 }
 
 #[cfg(test)]

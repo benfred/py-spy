@@ -87,7 +87,7 @@ impl std::str::FromStr for FileFormat {
                 return Ok(*variant);
             }
         }
-        Err(format!("Invalid fileformat: {}", s))
+        Err(format!("Invalid fileformat: {s}"))
     }
 }
 
