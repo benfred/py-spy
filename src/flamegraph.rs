@@ -80,7 +80,7 @@ impl Flamegraph {
             .collect()
     }
 
-    pub fn write(&self, w: &mut dyn Write) -> Result<(), Error> {
+    pub fn write<T: Write + ?Sized>(&self, w: &mut T) -> Result<(), Error> {
         let mut opts = Options::default();
         opts.direction = Direction::Inverted;
         opts.min_width = 0.1;
@@ -92,7 +92,7 @@ impl Flamegraph {
         Ok(())
     }
 
-    pub fn write_raw(&self, w: &mut dyn Write) -> Result<(), Error> {
+    pub fn write_raw<T: Write + ?Sized>(&self, w: &mut T) -> Result<(), Error> {
         for line in self.get_lines() {
             w.write_all(line.as_bytes())?;
             w.write_all(b"\n")?;
