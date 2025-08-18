@@ -104,7 +104,7 @@ impl Chrometrace {
         Ok(())
     }
 
-    pub fn write(&self, w: &mut dyn Write) -> Result<(), Error> {
+    pub fn write<T: Write + ?Sized>(&self, w: &mut T) -> Result<(), Error> {
         let mut events = Vec::new();
         events.extend(self.events.to_vec());
 

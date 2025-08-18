@@ -28,6 +28,8 @@ pub struct Config {
     #[doc(hidden)]
     pub sampling_rate: u64,
     #[doc(hidden)]
+    pub save_period: Option<u64>,
+    #[doc(hidden)]
     pub filename: Option<String>,
     #[doc(hidden)]
     pub format: Option<FileFormat>,
@@ -125,6 +127,7 @@ impl Default for Config {
             blocking: LockingStrategy::Lock,
             show_line_numbers: false,
             sampling_rate: 100,
+            save_period: None,
             duration: RecordDuration::Unlimited,
             native: false,
             gil_only: false,
@@ -249,6 +252,14 @@ impl Config {
                     .takes_value(true),
             )
             .arg(rate.clone())
+            .arg(
+                Arg::new("save_period")
+                    .long("save_period")
+                    .value_name("save_period")
+                    .value_parser(value_parser!(u64))
+                    .help("The number of intervals between saving the profile to disk")
+                    .takes_value(true),
+            )
             .arg(subprocesses.clone())
             .arg(Arg::new("function").short('F').long("function").help(
                 "Aggregate samples by function's first line number, instead of current line number",
@@ -372,6 +383,7 @@ impl Config {
         match subcommand {
             "record" => {
                 config.sampling_rate = matches.value_of_t("rate")?;
+                config.save_period = matches.get_one::<u64>("save_period").cloned();
                 config.duration = match matches.value_of("duration") {
                     Some("unlimited") | None => RecordDuration::Unlimited,
                     Some(seconds) => {
