@@ -117,13 +117,13 @@ jobs:
           python3 -m pip install --upgrade maturin
           maturin build --release -o dist --target ${{ matrix.target }} --features unwind
           maturin sdist -o dist
-        if: ${{ matrix.target == 'armv7-unknown-linux-musleabihf' || matrix.target == 'x86_64-unknown-linux-musl'}}
+        if: ${{ matrix.target != 'i686-unknown-linux-musl' }}
       - name: Build
         run: |
           python3 -m pip install --upgrade maturin
           maturin build --release -o dist --target ${{ matrix.target }}
           maturin sdist -o dist
-        if: ${{ matrix.target == 'i686-unknown-linux-musl' || matrix.target == 'aarch64-unknown-linux-musl'}}
+        if: ${{ matrix.target == 'i686-unknown-linux-musl' }}
       - name: Rename Wheels
         run: |
           python3 -c "import shutil; import glob; wheels = glob.glob('dist/*.whl'); [shutil.move(wheel, wheel.replace('py3', 'py2.py3')) for wheel in wheels if 'py2' not in wheel]"
