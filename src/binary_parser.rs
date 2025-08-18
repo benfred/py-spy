@@ -125,7 +125,7 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
                 .filter(|header| {
                     strtab
                         .get_at(header.sh_name)
-                        .map_or(true, |name| name == ".bss")
+                        .is_none_or(|name| name == ".bss")
                 })
                 // if we have multiple sections here, take the largest
                 .max_by_key(|header| header.sh_size)
@@ -171,11 +171,10 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
                 bss_end = bss_header.sh_addr + bss_header.sh_size;
             }
 
-            let pyruntime_header = elf.section_headers.iter().find(|header| {
-                strtab
-                    .get_at(header.sh_name)
-                    .map_or(false, |name| name == ".PyRuntime")
-            });
+            let pyruntime_header = elf
+                .section_headers
+                .iter()
+                .find(|header| strtab.get_at(header.sh_name) == Some(".PyRuntime"));
 
             let mut pyruntime_addr = 0;
             let mut pyruntime_size = 0;

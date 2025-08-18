@@ -48,9 +48,7 @@ where
     pub unsafe fn raw_get_bit(this: *const Self, index: usize) -> bool {
         debug_assert!(index / 8 < core::mem::size_of::<Storage>());
         let byte_index = index / 8;
-        let byte = unsafe {
-            *(core::ptr::addr_of!((*this).storage) as *const u8).offset(byte_index as isize)
-        };
+        let byte = unsafe { *(core::ptr::addr_of!((*this).storage) as *const u8).add(byte_index) };
         Self::extract_bit(byte, index)
     }
     #[inline]
@@ -78,9 +76,7 @@ where
     pub unsafe fn raw_set_bit(this: *mut Self, index: usize, val: bool) {
         debug_assert!(index / 8 < core::mem::size_of::<Storage>());
         let byte_index = index / 8;
-        let byte = unsafe {
-            (core::ptr::addr_of_mut!((*this).storage) as *mut u8).offset(byte_index as isize)
-        };
+        let byte = unsafe { (core::ptr::addr_of_mut!((*this).storage) as *mut u8).add(byte_index) };
         unsafe { *byte = Self::change_bit(*byte, index, val) };
     }
     #[inline]

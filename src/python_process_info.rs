@@ -623,8 +623,8 @@ where
             ..
         } => {
             let gil_ptr = interpreter_address + std::mem::offset_of!(v3_13_0::_is, ceval.gil);
-            let gil = process.copy_struct::<usize>(gil_ptr)?;
-            gil
+
+            process.copy_struct::<usize>(gil_ptr)?
         }
         Version {
             major: 3,
@@ -688,8 +688,7 @@ fn error_if_gil(config: &Config, version: &Version, msg: &str) -> Result<(), Err
         if !WARNED.load(std::sync::atomic::Ordering::Relaxed) {
             // only print this once
             eprintln!(
-                "Cannot detect GIL holding in version '{}' on the current platform (reason: {})",
-                version, msg
+                "Cannot detect GIL holding in version '{version}' on the current platform (reason: {msg})"
             );
             eprintln!("Please open an issue in https://github.com/benfred/py-spy with the Python version and your platform.");
             WARNED.store(true, std::sync::atomic::Ordering::Relaxed);

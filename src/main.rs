@@ -62,7 +62,7 @@ fn sample_console(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
 
     let display = match remoteprocess::Process::new(pid)?.cmdline() {
         Ok(cmdline) => cmdline.join(" "),
-        Err(_) => format!("Pid {}", pid),
+        Err(_) => format!("Pid {pid}"),
     };
 
     let mut console =
@@ -81,7 +81,7 @@ fn sample_console(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
     }
 
     if !config.subprocesses {
-        println!("\nprocess {} ended", pid);
+        println!("\nprocess {pid} ended");
     }
     Ok(())
 }
@@ -163,7 +163,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
                     None => String::from("unknown"),
                 },
             };
-            format!("{}-{}.{}", name, local_time, ext)
+            format!("{name}-{local_time}.{ext}")
         }
     };
 
@@ -237,12 +237,12 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
                     let now = std::time::Instant::now();
                     if now - last_late_message > Duration::from_secs(1) {
                         last_late_message = now;
-                        println!("{}{:.2?} behind in sampling, results may be inaccurate. Try reducing the sampling rate", lede, delay)
+                        println!("{lede}{delay:.2?} behind in sampling, results may be inaccurate. Try reducing the sampling rate")
                     }
                 } else {
                     let term = console::Term::stdout();
                     term.move_cursor_up(2)?;
-                    println!("{:.2?} behind in sampling, results may be inaccurate. Try reducing the sampling rate.", delay);
+                    println!("{delay:.2?} behind in sampling, results may be inaccurate. Try reducing the sampling rate.");
                     term.move_cursor_down(1)?;
                 }
             }
@@ -273,9 +273,9 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
             if config.include_thread_ids {
                 let threadid = trace.format_threadid();
                 let thread_fmt = if let Some(thread_name) = &trace.thread_name {
-                    format!("thread ({}): {}", threadid, thread_name)
+                    format!("thread ({threadid}): {thread_name}")
                 } else {
-                    format!("thread ({})", threadid)
+                    format!("thread ({threadid})")
                 };
                 trace.frames.push(Frame {
                     name: thread_fmt,
@@ -313,9 +313,9 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
 
         if config.duration == RecordDuration::Unlimited {
             let msg = if errors > 0 {
-                format!("Collected {} samples ({} errors)", samples, errors)
+                format!("Collected {samples} samples ({errors} errors)")
             } else {
-                format!("Collected {} samples", samples)
+                format!("Collected {samples} samples")
             };
             progress.set_message(msg);
         }
@@ -324,7 +324,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
     progress.finish();
     // write out a message here (so as not to interfere with progress bar) if we ended earlier
     if !exit_message.is_empty() {
-        println!("\n{}{}", lede, exit_message);
+        println!("\n{lede}{exit_message}");
     }
 
     {
@@ -335,8 +335,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
     match config.format.as_ref().unwrap() {
         FileFormat::flamegraph => {
             println!(
-                "{}Wrote flamegraph data to '{}'. Samples: {} Errors: {}",
-                lede, filename, samples, errors
+                "{lede}Wrote flamegraph data to '{filename}'. Samples: {samples} Errors: {errors}"
             );
             // open generated flame graph in the browser on OSX (theory being that on linux
             // you might be SSH'ed into a server somewhere and this isn't desired, but on
@@ -346,27 +345,21 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
         }
         FileFormat::speedscope => {
             println!(
-                "{}Wrote speedscope file to '{}'. Samples: {} Errors: {}",
-                lede, filename, samples, errors
+                "{lede}Wrote speedscope file to '{filename}'. Samples: {samples} Errors: {errors}"
             );
-            println!("{}Visit https://www.speedscope.app/ to view", lede);
+            println!("{lede}Visit https://www.speedscope.app/ to view");
         }
         FileFormat::raw => {
             println!(
-                "{}Wrote raw flamegraph data to '{}'. Samples: {} Errors: {}",
-                lede, filename, samples, errors
+                "{lede}Wrote raw flamegraph data to '{filename}'. Samples: {samples} Errors: {errors}"
             );
-            println!("{}You can use the flamegraph.pl script from https://github.com/brendangregg/flamegraph to generate a SVG", lede);
+            println!("{lede}You can use the flamegraph.pl script from https://github.com/brendangregg/flamegraph to generate a SVG");
         }
         FileFormat::chrometrace => {
             println!(
-                "{}Wrote chrome trace to '{}'. Samples: {} Errors: {}",
-                lede, filename, samples, errors
+                "{lede}Wrote chrome trace to '{filename}'. Samples: {samples} Errors: {errors}"
             );
-            println!(
-                "{}Visit chrome://tracing or https://ui.perfetto.dev/ to view",
-                lede
-            );
+            println!("{lede}Visit chrome://tracing or https://ui.perfetto.dev/ to view");
         }
     };
 
@@ -468,7 +461,7 @@ fn pyspy_main() -> Result<(), Error> {
         if config.capture_output && (!success || result.is_err()) {
             let mut buffer = String::new();
             if process_output.read_to_string(&mut buffer).is_ok() {
-                eprintln!("{}", buffer);
+                eprintln!("{buffer}");
             }
         }
 
@@ -516,10 +509,10 @@ fn main() {
             }
         }
 
-        eprintln!("Error: {}", err);
+        eprintln!("Error: {err}");
         for (i, suberror) in err.chain().enumerate() {
             if i > 0 {
-                eprintln!("Reason: {}", suberror);
+                eprintln!("Reason: {suberror}");
             }
         }
         std::process::exit(1);
