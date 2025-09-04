@@ -1,6 +1,7 @@
 pub mod v2_7_15;
 pub mod v3_10_0;
 pub mod v3_11_0;
+pub mod v3_11_6;
 pub mod v3_12_0;
 pub mod v3_13_0;
 pub mod v3_3_7;
@@ -330,6 +331,19 @@ pub mod pyruntime {
                 minor: 11,
                 ..
             } => Some(432),
+            _ => None,
+        }
+    }
+
+    #[cfg(all(target_os = "linux", target_arch = "riscv64"))]
+    pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
+        match version {
+            Version {
+                major: 3,
+                minor: 11,
+                patch: 6,
+                ..
+            } => Some(576),
             _ => None,
         }
     }
