@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: 3.11
       - uses: pre-commit/action@v3.0.1
@@ -35,12 +35,12 @@ jobs:
       - name: Install Dependencies
         run: sudo apt install libunwind-dev
         if: runner.os == 'Linux'
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: 3.9
       - name: Build
         run: cargo build --release --verbose --examples
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: 3.9
       - name: Install optional numpy dependency
@@ -295,7 +295,7 @@ jobs:
         with:
           pattern: wheels-*
           merge-multiple: true
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install wheel
@@ -348,7 +348,7 @@ jobs:
       - name: Install Dependencies
         run: sudo apt install libunwind-dev
         if: runner.os == 'Linux'
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: 3.9
       - name: Push to PyPi
