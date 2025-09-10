@@ -59,6 +59,8 @@ pub struct Config {
     pub refresh_seconds: f64,
     #[doc(hidden)]
     pub core_filename: Option<String>,
+    #[doc(hidden)]
+    pub lock_timeout_ms: u64,
 }
 
 #[allow(non_camel_case_types)]
@@ -139,6 +141,7 @@ impl Default for Config {
             lineno: LineNo::LastInstruction,
             refresh_seconds: 1.0,
             core_filename: None,
+            lock_timeout_ms: 1000,
         }
     }
 }
