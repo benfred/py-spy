@@ -1,5 +1,6 @@
 [features]
 unwind = ["remoteprocess/unwind"]
+test_artifacts = []
 
 [package]
 name = "py-spy"
@@ -51,3 +52,8 @@ termios = "0.3.3"
 
 [target.'cfg(windows)'.dependencies]
 winapi = {version = "0.3", features = ["errhandlingapi", "winbase", "consoleapi", "wincon", "handleapi", "timeapi", "processenv" ]}
+
+[[bin]]
+name = "hanging_lock_test"
+path = "tests/hanging_lock_test/main.rs"
+required-features = ["test_artifacts"]

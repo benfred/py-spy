@@ -553,3 +553,13 @@ fn test_delayed_subprocess() {
         break;
     }
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn test_hanging_lock() {
+    let child = std::process::Command::new(env!("CARGO_BIN_EXE_hanging_lock_test"))
+        .spawn()
+        .unwrap();
+
+    let result = PythonSpy::lock_process_with_timeout(child.id().try_into().unwrap(), 1000);
+}

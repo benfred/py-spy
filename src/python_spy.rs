@@ -6,7 +6,7 @@ use std::iter::FromIterator;
 use std::path::Path;
 
 use anyhow::{Context, Error, Result};
-use remoteprocess::{Pid, Process, ProcessMemory, Tid};
+use remoteprocess::{Lock, Pid, Process, ProcessMemory, Tid};
 
 use crate::config::{Config, LockingStrategy};
 #[cfg(feature = "unwind")]
@@ -193,6 +193,45 @@ impl PythonSpy {
         }
     }
 
+    /// Lock the process with the given PID; if the process doesn't lock in `lock_timeout_ms`,
+    /// error out gracefully.
+    ///
+    /// Since `remoteprocess::Process::lock` can hang if the process has exited, it is called in
+    /// a separate thread which times out (and results in an error) if the thread doesn't lock in
+    /// the given `lock_timeout_ms`.
+    ///
+    /// The approach here follows https://stackoverflow.com/a/36182336/8100451, but with
+    /// recv_timeout.
+    ///
+    /// * `pid`: ID of the process to lock
+    /// * `lock_timeout_ms`: Length of time to wait before erroring out
+    pub fn lock_process_with_timeout(pid: Pid, lock_timeout_ms: u64) -> Result<()> {
+        let (tx, rx) = std::sync::mpsc::channel();
+
+        // Generate a Process instance so it can be moved to the child thread
+        let process = remoteprocess::Process::new(pid).unwrap_or_else(|_| {
+            unreachable!("Process::new doesn't do anything with the PID upon initialization")
+        });
+
+        let join_handle = std::thread::spawn(move || {
+            // This can fail if the receiver in the main thread has timed out; silently ignore
+            // this, because we don't care (this only happens when the worker thread has
+            // already exceeded the timeout).
+            match process.lock() {
+                Ok(_) => tx.send(Ok(())),
+                Err(error) => tx.send(Err(error)),
+            }
+        });
+
+        rx.recv_timeout(std::time::Duration::from_millis(lock_timeout_ms))
+            .context(format!("Timeout acquiring lock on process {pid}"))
+            .inspect_err(|_| {
+                drop(join_handle);
+                drop(rx);
+            })?
+            .context(format!("Failed to suspend process {pid}"))
+    }
+
     // implementation of get_stack_traces, where we have a type for the InterpreterState
     fn _get_stack_traces<I: InterpreterState>(&mut self) -> Result<Vec<StackTrace>, Error> {
         // Query the OS to get if each thread in the process is running or not
@@ -218,43 +257,9 @@ impl PythonSpy {
         // This has the potential for race conditions (in that the thread activity could change
         // between getting the status and locking the thread), in which case self.process.lock()
         // will hang. This is the reason we do this in a separate thread; after a small timeout,
-        // we just silently avoid taking any samples on this process.
-        //
-        // The approach here follows https://stackoverflow.com/a/36182336/8100451, but with
-        // recv_timeout.
+        // we just error out.
         let _lock = if self.config.blocking == LockingStrategy::Lock {
-            let (tx, rx) = std::sync::mpsc::channel();
-
-            // Clone the process so it can be moved to the child thread. remoteprocess doesn't
-            // derive the clone trait, so we do it by hand here.
-            let process = remoteprocess::Process::new(self.process.pid).unwrap_or_else(|_| {
-                unreachable!("Process::new doesn't do anything with the PID upon initialization")
-            });
-
-            let join_handle = std::thread::spawn(move || {
-                // This can fail if the receiver in the main thread has timed out; silently ignore
-                // this, because we don't care (this only happens when the worker thread has
-                // already exceeded the timeout).
-                match process.lock() {
-                    Ok(_) => tx.send(Ok(())),
-                    Err(error) => tx.send(Err(error)),
-                }
-            });
-
-            Some(
-                rx.recv_timeout(std::time::Duration::from_millis(
-                    self.config.lock_timeout_ms,
-                ))
-                .context(format!(
-                    "Timeout acquiring lock on process {}",
-                    self.process.pid
-                ))
-                .inspect_err(|_| {
-                    drop(join_handle);
-                    drop(rx);
-                })?
-                .context(format!("Failed to suspend process {}", self.process.pid))?,
-            )
+            Some(Self::lock_process_with_timeout(self.process.pid, self.config.lock_timeout_ms)?)
         } else {
             None
         };
