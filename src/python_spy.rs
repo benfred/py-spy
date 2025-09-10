@@ -214,10 +214,41 @@ impl PythonSpy {
 
         // Lock the process if appropriate. Note we have to lock AFTER getting the thread
         // activity status from the OS (otherwise each thread would report being inactive always).
+        //
         // This has the potential for race conditions (in that the thread activity could change
-        // between getting the status and locking the thread, but seems unavoidable right now
+        // between getting the status and locking the thread), in which case self.process.lock()
+        // will hang. This is the reason we do this in a separate thread; after a small timeout,
+        // we just silently avoid taking any samples on this process.
+        //
+        // The approach here follows https://stackoverflow.com/a/36182336/8100451, but with
+        // recv_timeout.
         let _lock = if self.config.blocking == LockingStrategy::Lock {
-            Some(self.process.lock().context("Failed to suspend process")?)
+            let (tx, rx) = std::sync::mpsc::channel();
+
+            // Clone the process so it can be moved to the child thread. remoteprocess doesn't
+            // derive the clone trait, so we do it by hand here.
+            let process = remoteprocess::Process::new(self.process.pid)
+                .unwrap_or_else(|_| {
+                    unreachable!(
+                        "Process::new doesn't do anything with the PID upon initialization"
+                    )
+                });
+
+            let join_handle = std::thread::spawn(move || {
+                // This can fail if the receiver has timed out; silently ignore this, because we
+                // don't care (the worker thread has already exceeded the timeout)
+                let _ = tx.send(process.lock());
+            });
+
+            Some(
+                rx.recv_timeout(std::time::Duration::from_millis(5000))
+                    .context(format!("Timeout acquiring lock on process {}", self.process.pid))
+                    .inspect_err(|_| {
+                        drop(join_handle);
+                        drop(rx);
+                    })?
+                    .context(format!("Failed to suspend process {}", self.process.pid))?
+            )
         } else {
             None
         };
