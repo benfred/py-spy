@@ -227,12 +227,9 @@ impl PythonSpy {
 
             // Clone the process so it can be moved to the child thread. remoteprocess doesn't
             // derive the clone trait, so we do it by hand here.
-            let process = remoteprocess::Process::new(self.process.pid)
-                .unwrap_or_else(|_| {
-                    unreachable!(
-                        "Process::new doesn't do anything with the PID upon initialization"
-                    )
-                });
+            let process = remoteprocess::Process::new(self.process.pid).unwrap_or_else(|_| {
+                unreachable!("Process::new doesn't do anything with the PID upon initialization")
+            });
 
             let join_handle = std::thread::spawn(move || {
                 // This can fail if the receiver has timed out; silently ignore this, because we
@@ -241,13 +238,18 @@ impl PythonSpy {
             });
 
             Some(
-                rx.recv_timeout(std::time::Duration::from_millis(self.config.lock_timeout_ms))
-                    .context(format!("Timeout acquiring lock on process {}", self.process.pid))
-                    .inspect_err(|_| {
-                        drop(join_handle);
-                        drop(rx);
-                    })?
-                    .context(format!("Failed to suspend process {}", self.process.pid))?
+                rx.recv_timeout(std::time::Duration::from_millis(
+                    self.config.lock_timeout_ms,
+                ))
+                .context(format!(
+                    "Timeout acquiring lock on process {}",
+                    self.process.pid
+                ))
+                .inspect_err(|_| {
+                    drop(join_handle);
+                    drop(rx);
+                })?
+                .context(format!("Failed to suspend process {}", self.process.pid))?,
             )
         } else {
             None
