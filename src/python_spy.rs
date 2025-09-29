@@ -6,7 +6,7 @@ use std::iter::FromIterator;
 use std::path::Path;
 
 use anyhow::{Context, Error, Result};
-use remoteprocess::{Lock, Pid, Process, ProcessMemory, Tid};
+use remoteprocess::{Pid, Process, ProcessMemory, Tid};
 
 use crate::config::{Config, LockingStrategy};
 #[cfg(feature = "unwind")]
@@ -201,7 +201,7 @@ impl PythonSpy {
     /// the given `lock_timeout_ms`.
     ///
     /// The approach here follows https://stackoverflow.com/a/36182336/8100451, but with
-    /// recv_timeout.
+    /// `recv_timeout`.
     ///
     /// * `pid`: ID of the process to lock
     /// * `lock_timeout_ms`: Length of time to wait before erroring out
