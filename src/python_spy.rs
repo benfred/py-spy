@@ -232,9 +232,13 @@ impl PythonSpy {
             });
 
             let join_handle = std::thread::spawn(move || {
-                // This can fail if the receiver has timed out; silently ignore this, because we
-                // don't care (the worker thread has already exceeded the timeout)
-                let _ = tx.send(process.lock());
+                // This can fail if the receiver in the main thread has timed out; silently ignore
+                // this, because we don't care (this only happens when the worker thread has
+                // already exceeded the timeout).
+                match process.lock() {
+                    Ok(_) => tx.send(Ok(())),
+                    Err(error) => tx.send(Err(error)),
+                }
             });
 
             Some(
