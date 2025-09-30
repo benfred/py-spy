@@ -1,4 +1,5 @@
 [features]
+test_artifacts = []
 unwind = ["remoteprocess/unwind"]
 
 [package]
@@ -51,3 +52,8 @@ termios = "0.3.3"
 
 [target.'cfg(windows)'.dependencies]
 winapi = {version = "0.3", features = ["errhandlingapi", "winbase", "consoleapi", "wincon", "handleapi", "timeapi", "processenv" ]}
+
+[[bin]]
+name = "hanging_lock_test"
+path = "src/bin/hanging_lock_test.rs"
+required-features = ["test_artifacts"]
