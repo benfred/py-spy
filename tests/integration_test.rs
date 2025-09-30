@@ -577,8 +577,11 @@ fn test_hanging_lock_successful() {
         .expect("Should be able to read");
     assert_eq!(buffer, "awaiting input\n");
 
-    let result = PythonSpy::lock_process_with_timeout(child.id().try_into().unwrap(), 1000);
-    assert!(result.is_ok());
+    let locker = PythonSpy::lock_process_with_timeout(child.id().try_into().unwrap(), 1000);
+    assert!(locker.is_ok());
+
+    // Need to drop the locker in order to unpause the child process
+    drop(locker);
 
     let mut child_stdin = child
         .stdin
@@ -616,9 +619,9 @@ fn test_hanging_lock_failure() {
         .expect("Child process doesn't have stdin handle");
     let _ = child_stdin.write_all(b"continue\n");
 
-    let result = PythonSpy::lock_process_with_timeout(child.id().try_into().unwrap(), 1000);
-    assert!(result.is_err());
-    assert!(result
+    let locker = PythonSpy::lock_process_with_timeout(child.id().try_into().unwrap(), 1000);
+    assert!(locker.is_err());
+    assert!(locker
         .unwrap_err()
         .to_string()
         .contains("Failed to suspend process"));

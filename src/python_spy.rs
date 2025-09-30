@@ -4,6 +4,7 @@ use std::collections::HashSet;
 #[cfg(all(target_os = "linux", feature = "unwind"))]
 use std::iter::FromIterator;
 use std::path::Path;
+use std::sync::mpsc::Sender;
 
 use anyhow::{Context, Error, Result};
 use remoteprocess::{Pid, Process, ProcessMemory, Tid};
@@ -38,6 +39,20 @@ pub struct PythonSpy {
     pub python_thread_names: HashMap<u64, String>,
     #[cfg(target_os = "linux")]
     pub dockerized: bool,
+}
+
+/// A small helper which automatically sends a message on an mpsc channel when it is dropped.
+///
+/// * `release_lock_tx`: An mpsc sender which can send an empty () message.
+#[derive(Debug)]
+pub struct ProcessLocker {
+    release_lock_tx: Sender<()>,
+}
+
+impl Drop for ProcessLocker {
+    fn drop(&mut self) {
+        let _ = self.release_lock_tx.send(());
+    }
 }
 
 impl PythonSpy {
@@ -197,16 +212,21 @@ impl PythonSpy {
     /// error out gracefully.
     ///
     /// Since `remoteprocess::Process::lock` can hang if the process has exited, it is called in
-    /// a separate thread which times out (and results in an error) if the thread doesn't lock in
-    /// the given `lock_timeout_ms`.
+    /// a separate locker thread which times out (and results in an error) if the target thread
+    /// doesn't lock in the given `lock_timeout_ms`. The locker thread then waits to exit, holding
+    /// the lock in memory. When the `ProcessLocker` object returned by this function is dropped,
+    /// it sends a signal to the locker thread using an mpsc channel which causes the locker thread
+    /// to finish executing (causing the lock held in that thread to be dropped, unpausing the
+    /// target thread).
     ///
     /// The approach here follows https://stackoverflow.com/a/36182336/8100451, but with
     /// `recv_timeout`.
     ///
     /// * `pid`: ID of the process to lock
     /// * `lock_timeout_ms`: Length of time to wait before erroring out
-    pub fn lock_process_with_timeout(pid: Pid, lock_timeout_ms: u64) -> Result<()> {
-        let (tx, rx) = std::sync::mpsc::channel();
+    pub fn lock_process_with_timeout(pid: Pid, lock_timeout_ms: u64) -> Result<ProcessLocker> {
+        let (acquire_lock_tx, acquire_lock_rx) = std::sync::mpsc::channel();
+        let (release_lock_tx, release_lock_rx) = std::sync::mpsc::channel::<()>();
 
         // Generate a Process instance so it can be moved to the child thread
         let process = remoteprocess::Process::new(pid).unwrap_or_else(|_| {
@@ -218,18 +238,28 @@ impl PythonSpy {
             // this, because we don't care (this only happens when the worker thread has
             // already exceeded the timeout).
             match process.lock() {
-                Ok(_) => tx.send(Ok(())),
-                Err(error) => tx.send(Err(error)),
+                Ok(_lock) => {
+                    let _ = acquire_lock_tx.send(Ok(()));
+
+                    // Wait until instructed to finish execution (and drop the lock, which
+                    // unlocks the process)
+                    let _ = release_lock_rx.recv();
+                }
+                Err(error) => {
+                    let _ = acquire_lock_tx.send(Err(error));
+                }
             }
         });
 
-        rx.recv_timeout(std::time::Duration::from_millis(lock_timeout_ms))
+        acquire_lock_rx
+            .recv_timeout(std::time::Duration::from_millis(lock_timeout_ms))
             .context(format!("Timeout acquiring lock on process {pid}"))
             .inspect_err(|_| {
                 drop(join_handle);
-                drop(rx);
+                drop(acquire_lock_rx);
             })?
-            .context(format!("Failed to suspend process {pid}"))
+            .context(format!("Failed to suspend process {pid}"))?;
+        Ok(ProcessLocker { release_lock_tx })
     }
 
     // implementation of get_stack_traces, where we have a type for the InterpreterState
