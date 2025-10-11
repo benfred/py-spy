@@ -510,11 +510,6 @@ fn main() {
         }
 
         eprintln!("Error: {err}");
-        for (i, suberror) in err.chain().enumerate() {
-            if i > 0 {
-                eprintln!("Reason: {suberror}");
-            }
-        }
         std::process::exit(1);
     }
 }
