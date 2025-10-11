@@ -510,6 +510,20 @@ fn main() {
         }
 
         eprintln!("Error: {err}");
+        for (i, suberror) in err.chain().enumerate() {
+            if i > 0 {
+                // Skip std::io::Error if the previous error was remoteprocess::Error::IOError
+                // because remoteprocess::Error already displays the io error message
+                if suberror.downcast_ref::<std::io::Error>().is_some() {
+                    if let Some(prev) = err.chain().nth(i - 1) {
+                        if prev.downcast_ref::<remoteprocess::Error>().is_some() {
+                            continue;
+                        }
+                    }
+                }
+                eprintln!("Reason: {suberror}");
+            }
+        }
         std::process::exit(1);
     }
 }
