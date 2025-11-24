@@ -7,10 +7,10 @@ jobs:
   update-dep:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           ssh-key: ${{ secrets.SSH_PRIVATE_KEY }}
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: 3.9
       - name: Install
