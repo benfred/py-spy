@@ -68,6 +68,8 @@ pub enum FileFormat {
     raw,
     speedscope,
     chrometrace,
+    pprof,
+    pprof_gzip,
 }
 
 impl FileFormat {

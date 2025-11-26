@@ -9,4 +9,11 @@ fn main() {
         }
         _ => {}
     }
+
+    // Use bundled protoc from protobuf-src
+    std::env::set_var("PROTOC", protobuf_src::protoc());
+
+    // Add prost-build configuration
+    prost_build::compile_protos(&["src/pprof/profile.proto"], &["src/pprof/"])
+        .expect("Failed to compile protos");
 }
