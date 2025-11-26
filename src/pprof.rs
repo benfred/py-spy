@@ -74,6 +74,9 @@ impl Pprof {
         function_name: String,
     ) -> u64 {
         // TODO(torshepherd) add Function caching as well
+        // TODO(torshepherd) if function_name is <module>, show a more useful name
+        // TODO(torshepherd) add pstree hierarchies like the normal one has as well
+        // TODO(torshepherd) record proc-maps for native code and use different logic so that pprof can disassemble/show better results for native code.
         let function = Function {
             id: {
                 self.current_function_id += 1;
