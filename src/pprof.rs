@@ -2,7 +2,6 @@ pub mod profile {
     include!(concat!(env!("OUT_DIR"), "/perftools.profiles.rs"));
 }
 
-use std::collections::HashMap;
 use std::io::Write;
 use std::time::Instant;
 use std::time::SystemTime;
@@ -20,6 +19,7 @@ use crate::pprof::profile::Location;
 use crate::pprof::profile::Profile;
 use crate::pprof::profile::Sample;
 use crate::pprof::profile::ValueType;
+use crate::stack_trace::Frame;
 use crate::stack_trace::StackTrace;
 
 pub struct Pprof {
@@ -28,6 +28,7 @@ pub struct Pprof {
     start_system: SystemTime,
     // previous_samples_to_sample_idx: HashMap<SampleKey, i64>, // TODO(torshepherd) don't make every stacktrace unique, batch them to save space.
     gzip_profile: bool,
+    command_line: String,
 
     current_function_id: u64,
     current_location_id: u64,
@@ -66,13 +67,7 @@ impl Pprof {
         sample.label.push(label);
     }
 
-    fn add_location(
-        &mut self,
-        line: i64,
-        // column: i64,
-        filename: String,
-        function_name: String,
-    ) -> u64 {
+    fn add_location(&mut self, frame: &Frame) -> u64 {
         // TODO(torshepherd) add Function caching as well
         // TODO(torshepherd) if function_name is <module>, show a more useful name
         // TODO(torshepherd) add pstree hierarchies like the normal one has as well
@@ -82,9 +77,9 @@ impl Pprof {
                 self.current_function_id += 1;
                 self.current_function_id
             },
-            name: self.add_string(&function_name),
+            name: self.add_string(&frame.name),
             system_name: self.add_string(""),
-            filename: self.add_string(&filename),
+            filename: self.add_string(&frame.filename),
             start_line: 0,
         };
         self.profile.function.push(function);
@@ -98,7 +93,7 @@ impl Pprof {
             address: 0,
             line: vec![Line {
                 function_id: self.current_function_id,
-                line,
+                line: frame.line as i64,
                 column: 0,
             }],
             is_folded: false,
@@ -109,22 +104,25 @@ impl Pprof {
     }
 
     pub fn new(gzip_profile: bool) -> Pprof {
+        let command_line = std::env::args().collect::<Vec<String>>().join(" ");
         let mut pprof = Pprof {
             profile: Profile::default(),
             start_instant: Instant::now(),
             start_system: SystemTime::now(),
             // previous_samples_to_sample_idx: HashMap::default(),
             gzip_profile,
+            command_line,
             current_function_id: 1,
             current_location_id: 1,
         };
 
         // First index should always be empty string
-        let _empty_idx = pprof.add_string("");
+        pprof.add_string("");
 
         // Set the sample type
         let r#type = pprof.add_string("py-spy periodic oncpu"); // TODO(torshepherd) is this a good name?
         let unit = pprof.add_string("count");
+        pprof.profile.doc_url = pprof.add_string("https://github.com/benfred/py-spy");
         pprof.profile.sample_type.push(ValueType { r#type, unit });
         pprof.profile.default_sample_type = r#type;
 
@@ -148,11 +146,7 @@ impl Pprof {
         // self.add_label(sample, "command_line", trace.process_info.command_line);
         // self.add_label(sample, "parent_pid", trace.process_info.parent_pid);
 
-        sample.location_id = trace
-            .frames
-            .iter()
-            .map(|f| self.add_location(f.line as i64, f.filename.clone(), f.name.clone()))
-            .collect();
+        sample.location_id = trace.frames.iter().map(|f| self.add_location(&f)).collect();
         self.profile.sample.push(sample);
 
         Ok(())
@@ -170,6 +164,23 @@ impl Pprof {
             .unwrap_or(0);
         let dur = Instant::now().duration_since(self.start_instant);
         profile.duration_nanos = i64::try_from(dur.as_nanos()).unwrap_or(0);
+
+        // Add command line invocation as a comment
+        // TODO(torshepherd) this is also dumb, duplicating impl of add_string
+        if !self.command_line.is_empty() {
+            // Find the string index or add it to the string table
+            let command_line_idx = if let Some(index) = profile
+                .string_table
+                .iter()
+                .position(|x| x == &self.command_line)
+            {
+                index as i64
+            } else {
+                profile.string_table.push(self.command_line.clone());
+                (profile.string_table.len() - 1) as i64
+            };
+            profile.comment.push(command_line_idx);
+        }
 
         // Serialize the protobuf
         let bytes = profile.encode_to_vec();
