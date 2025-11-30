@@ -69,15 +69,22 @@ impl Pprof {
 
     fn add_location(&mut self, frame: &Frame) -> u64 {
         // TODO(torshepherd) add Function caching as well
-        // TODO(torshepherd) if function_name is <module>, show a more useful name
-        // TODO(torshepherd) add pstree hierarchies like the normal one has as well
-        // TODO(torshepherd) record proc-maps for native code and use different logic so that pprof can disassemble/show better results for native code.
+
+        // Determine the function name to use. We rename <module> and raw addresses as the shortened
+        // filename to make pprof more intuitive and helpful at a glance. Consistent filenames also
+        // help with difference-mode pprofs.
+        let function_name: &str = if frame.name == "<module>" || frame.name.starts_with("0x") {
+            frame.short_filename.as_deref().unwrap_or(&frame.filename)
+        } else {
+            &frame.name
+        };
+
         let function = Function {
             id: {
                 self.current_function_id += 1;
                 self.current_function_id
             },
-            name: self.add_string(&frame.name),
+            name: self.add_string(function_name),
             system_name: self.add_string(""),
             filename: self.add_string(&frame.filename),
             start_line: 0,
