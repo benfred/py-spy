@@ -68,7 +68,9 @@ pub enum FileFormat {
     raw,
     speedscope,
     chrometrace,
+    #[cfg(feature = "pprof")]
     pprof,
+    #[cfg(feature = "pprof")]
     pprof_gzip,
 }
 
@@ -369,6 +371,18 @@ impl Config {
                 "Collecting stack traces from native extensions (`--native`) is not supported on your platform."
             );
             std::process::exit(1);
+        }
+
+        // Check if pprof format was requested but pprof feature is not enabled
+        if !cfg!(feature = "pprof") {
+            if let Some(format_str) = matches.value_of("format") {
+                if format_str == "pprof" || format_str == "pprof_gzip" {
+                    eprintln!(
+                        "pprof output format is not supported. Please rebuild with --features pprof"
+                    );
+                    std::process::exit(1);
+                }
+            }
         }
 
         match subcommand {

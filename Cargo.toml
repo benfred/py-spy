@@ -1,5 +1,6 @@
 [features]
 unwind = ["remoteprocess/unwind"]
+pprof = ["prost-build", "protobuf-src", "prost", "prost-types", "flate2"]
 
 [package]
 name = "py-spy"
@@ -15,8 +16,8 @@ build="build.rs"
 edition="2021"
 
 [build-dependencies]
-prost-build = "0.14"
-protobuf-src = "2.0"
+prost-build = { version = "0.14", optional = true }
+protobuf-src = { version = "2.0", optional = true }
 
 [dependencies]
 anyhow = "1"
@@ -46,10 +47,10 @@ rand = "0.8"
 rand_distr = "0.4"
 remoteprocess = "0.5.1"
 chrono = "0.4.26"
-prost = "0.14"
-prost-build = "0.14"
-prost-types = "0.14"
-flate2 = { version = "1.1.5", features = ["rust_backend"] }
+prost = { version = "0.14", optional = true }
+prost-build = { version = "0.14", optional = true }
+prost-types = { version = "0.14", optional = true }
+flate2 = { version = "1.1.5", features = ["rust_backend"], optional = true }
 
 [dev-dependencies]
 py-spy-testdata = "0.1.0"

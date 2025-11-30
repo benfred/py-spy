@@ -15,6 +15,7 @@ mod dump;
 mod flamegraph;
 #[cfg(feature = "unwind")]
 mod native_stack_trace;
+#[cfg(feature = "pprof")]
 mod pprof;
 mod python_bindings;
 mod python_data_access;
@@ -119,6 +120,7 @@ impl Recorder for chrometrace::Chrometrace {
     }
 }
 
+#[cfg(feature = "pprof")]
 impl Recorder for pprof::Pprof {
     fn increment(&mut self, trace: &StackTrace) -> Result<(), Error> {
         Ok(self.increment(trace)?)
@@ -153,7 +155,9 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
         Some(FileFormat::chrometrace) => {
             Box::new(chrometrace::Chrometrace::new(config.show_line_numbers))
         }
+        #[cfg(feature = "pprof")]
         Some(FileFormat::pprof) => Box::new(pprof::Pprof::new(false)),
+        #[cfg(feature = "pprof")]
         Some(FileFormat::pprof_gzip) => Box::new(pprof::Pprof::new(true)),
         None => return Err(format_err!("A file format is required to record samples")),
     };
@@ -166,7 +170,9 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
                 Some(FileFormat::speedscope) => "json",
                 Some(FileFormat::raw) => "txt",
                 Some(FileFormat::chrometrace) => "json",
+                #[cfg(feature = "pprof")]
                 Some(FileFormat::pprof) => "pb",
+                #[cfg(feature = "pprof")]
                 Some(FileFormat::pprof_gzip) => "pb.gz",
                 None => return Err(format_err!("A file format is required to record samples")),
             };
@@ -376,6 +382,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
             );
             println!("{lede}Visit chrome://tracing or https://ui.perfetto.dev/ to view");
         }
+        #[cfg(feature = "pprof")]
         FileFormat::pprof | FileFormat::pprof_gzip => {
             println!(
                 "{lede}Wrote pprof profile to '{filename}'. Samples: {samples} Errors: {errors}"
