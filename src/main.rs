@@ -15,6 +15,8 @@ mod dump;
 mod flamegraph;
 #[cfg(feature = "unwind")]
 mod native_stack_trace;
+#[cfg(feature = "pprof")]
+mod pprof;
 mod python_bindings;
 mod python_data_access;
 mod python_interpreters;
@@ -118,6 +120,17 @@ impl Recorder for chrometrace::Chrometrace {
     }
 }
 
+#[cfg(feature = "pprof")]
+impl Recorder for pprof::Pprof {
+    fn increment(&mut self, trace: &StackTrace) -> Result<(), Error> {
+        Ok(self.increment(trace)?)
+    }
+
+    fn write(&self, w: &mut dyn Write) -> Result<(), Error> {
+        self.write(w)
+    }
+}
+
 pub struct RawFlamegraph(flamegraph::Flamegraph);
 
 impl Recorder for RawFlamegraph {
@@ -142,6 +155,10 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
         Some(FileFormat::chrometrace) => {
             Box::new(chrometrace::Chrometrace::new(config.show_line_numbers))
         }
+        #[cfg(feature = "pprof")]
+        Some(FileFormat::pprof) => Box::new(pprof::Pprof::new(false)),
+        #[cfg(feature = "pprof")]
+        Some(FileFormat::pprof_gzip) => Box::new(pprof::Pprof::new(true)),
         None => return Err(format_err!("A file format is required to record samples")),
     };
 
@@ -153,6 +170,10 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
                 Some(FileFormat::speedscope) => "json",
                 Some(FileFormat::raw) => "txt",
                 Some(FileFormat::chrometrace) => "json",
+                #[cfg(feature = "pprof")]
+                Some(FileFormat::pprof) => "pb",
+                #[cfg(feature = "pprof")]
+                Some(FileFormat::pprof_gzip) => "pb.gz",
                 None => return Err(format_err!("A file format is required to record samples")),
             };
             let local_time = Local::now().to_rfc3339_opts(SecondsFormat::Secs, true);
@@ -360,6 +381,14 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
                 "{lede}Wrote chrome trace to '{filename}'. Samples: {samples} Errors: {errors}"
             );
             println!("{lede}Visit chrome://tracing or https://ui.perfetto.dev/ to view");
+        }
+        #[cfg(feature = "pprof")]
+        FileFormat::pprof | FileFormat::pprof_gzip => {
+            println!(
+                "{lede}Wrote pprof profile to '{filename}'. Samples: {samples} Errors: {errors}"
+            );
+            println!("{lede}Use 'pprof -http=:8080 {filename}' to view");
+            println!("{lede}Or visit https://pprof.me/");
         }
     };
 
