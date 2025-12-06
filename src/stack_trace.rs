@@ -287,7 +287,10 @@ fn get_locals<C: CodeObject, F: FrameObject, P: ProcessMemory>(
         let nameptr: *const C::StringObject =
             process.copy_struct(varnames.address(code.varnames() as usize, i))?;
         let name = copy_string(nameptr, process)?;
-        let addr: usize = process.copy_struct(locals_addr + i * ptr_size)?;
+        let raw_value: usize = process.copy_struct(locals_addr + i * ptr_size)?;
+        // Use the trait method to handle version-specific address reading
+        // (Python 3.14 needs to mask out _PyStackRef tag bits)
+        let addr = F::read_local_address(raw_value);
         if addr == 0 {
             continue;
         }
@@ -311,8 +314,8 @@ pub fn get_gil_threadid<I: InterpreterState, P: ProcessMemory>(
     }
 
     let addr = if I::HAS_GIL_RUNTIME_STATE {
-        // get the gilruntimestate - note that this struct is identical between 3.12/3.13
-        let gil_state: crate::python_bindings::v3_13_0::_gil_runtime_state =
+        // get the gilruntimestate - note that this struct is identical between 3.12/3.14
+        let gil_state: crate::python_bindings::v3_14_0::_gil_runtime_state =
             process.copy_struct(threadstate_address)?;
         // check to see if the GIL is locked already
         if gil_state.locked != 0 {

@@ -16,7 +16,7 @@ impl Version {
     pub fn scan_bytes(data: &[u8]) -> Result<Version, Error> {
         lazy_static! {
             static ref RE: Regex = Regex::new(
-                r"((2|3)\.(3|4|5|6|7|8|9|10|11|12|13)\.(\d{1,2}))((a|b|c|rc)\d{1,2})?(\+(?:[0-9a-z-]+(?:[.][0-9a-z-]+)*)?)? (.{1,64})"
+                r"((2|3)\.(3|4|5|6|7|8|9|10|11|12|13|14)\.(\d{1,2}))((a|b|c|rc)\d{1,2})?(\+(?:[0-9a-z-]+(?:[.][0-9a-z-]+)*)?)? (.{1,64})"
             )
             .unwrap();
         }
@@ -130,6 +130,20 @@ mod tests {
                 minor: 10,
                 patch: 0,
                 release_flags: "rc1".to_owned(),
+                build_metadata: None,
+            }
+        );
+
+        let version =
+            Version::scan_bytes(b"Python 3.14.0a1 (tags/v3.14.0a1, Mar  1 2024, 00:00:00)")
+                .unwrap();
+        assert_eq!(
+            version,
+            Version {
+                major: 3,
+                minor: 14,
+                patch: 0,
+                release_flags: "a1".to_owned(),
                 build_metadata: None,
             }
         );
