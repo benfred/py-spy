@@ -311,8 +311,8 @@ pub fn get_gil_threadid<I: InterpreterState, P: ProcessMemory>(
     }
 
     let addr = if I::HAS_GIL_RUNTIME_STATE {
-        // get the gilruntimestate - note that this struct is identical between 3.12/3.13
-        let gil_state: crate::python_bindings::v3_13_0::_gil_runtime_state =
+        // get the gilruntimestate - note that this struct is identical between 3.12/3.14
+        let gil_state: crate::python_bindings::v3_14_0::_gil_runtime_state =
             process.copy_struct(threadstate_address)?;
         // check to see if the GIL is locked already
         if gil_state.locked != 0 {
