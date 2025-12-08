@@ -12,6 +12,25 @@ import sys
 import tempfile
 
 
+# Keep supported CPython tags in one place so --all stays current.
+SUPPORTED_VERSIONS = [
+    "v3.14.0",
+    "v3.13.0",
+    "v3.12.0",
+    "v3.11.0",
+    "v3.10.0",
+    "v3.9.0",
+    "v3.8.0",
+    "v3.7.0",
+    "v3.6.6",
+    "v3.5.5",
+    "v3.4.8",
+    "v3.3.7",
+    "v3.2.6",
+    "v2.7.15",
+]
+
+
 def build_python(cpython_path, version):
     # TODO: probably easier to use pyenv for this?
     print("Compiling python %s from repo at %s" % (version, cpython_path))
@@ -203,21 +222,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     if args.all:
-        versions = [
-            "v3.13.0",
-            "v3.12.0",
-            "v3.11.0",
-            "v3.10.0",
-            "v3.9.0",
-            "v3.8.0",
-            "v3.7.0",
-            "v3.6.6",
-            "v3.5.5",
-            "v3.4.8",
-            "v3.3.7",
-            "v3.2.6",
-            "v2.7.15",
-        ]
+        versions = SUPPORTED_VERSIONS
     else:
         versions = args.versions
         if not versions:
