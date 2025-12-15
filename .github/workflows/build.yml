@@ -16,8 +16,8 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: 3.11
       - uses: pre-commit/action@v3.0.1
@@ -30,17 +30,17 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: Swatinem/rust-cache@v2
       - name: Install Dependencies
         run: sudo apt install libunwind-dev
         if: runner.os == 'Linux'
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: 3.9
       - name: Build
         run: cargo build --release --verbose --examples
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: 3.9
       - name: Install optional numpy dependency
@@ -79,13 +79,13 @@ jobs:
           python3 -c "import shutil; import glob; wheels = glob.glob('dist/*.whl'); [shutil.move(wheel, wheel.replace('py3', 'py2.py3')) for wheel in wheels if 'py2' not in wheel]"
         if: runner.os != 'Linux'
       - name: Upload Windows Wheels
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: wheels-windows
           path: dist
         if: runner.os == 'Windows'
       - name: Upload Macos Wheels
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: wheels-macos
           path: dist
@@ -110,7 +110,7 @@ jobs:
         RUSTUP_HOME: /root/.rustup
         CARGO_HOME: /root/.cargo
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: Swatinem/rust-cache@v2
       - name: Build
         run: |
@@ -128,7 +128,7 @@ jobs:
         run: |
           python3 -c "import shutil; import glob; wheels = glob.glob('dist/*.whl'); [shutil.move(wheel, wheel.replace('py3', 'py2.py3')) for wheel in wheels if 'py2' not in wheel]"
       - name: Upload wheels
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: wheels-${{ matrix.target }}
           path: dist
@@ -142,7 +142,7 @@ jobs:
         box:
           - freebsd-14
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Display CPU info
         run: lscpu
       - name: Install VM tools
@@ -171,7 +171,7 @@ jobs:
           tar xf build-artifacts.tar target/release/py-spy
           mv target/release/py-spy py-spy-x86_64-unknown-freebsd
       - name: Upload Binaries
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: py-spy-x86_64-unknown-freebsd
           path: py-spy-x86_64-unknown-freebsd
@@ -290,12 +290,12 @@ jobs:
             python-version: 3.12.11
 
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/download-artifact@v5
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v7
         with:
           pattern: wheels-*
           merge-multiple: true
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install wheel
@@ -336,7 +336,7 @@ jobs:
     if: "startsWith(github.ref, 'refs/tags/')"
     needs: [test-wheels]
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v7
         with:
           pattern: wheels-*
           merge-multiple: true
@@ -348,7 +348,7 @@ jobs:
       - name: Install Dependencies
         run: sudo apt install libunwind-dev
         if: runner.os == 'Linux'
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: 3.9
       - name: Push to PyPi
@@ -359,7 +359,7 @@ jobs:
           pip install --upgrade wheel pip setuptools twine
           twine upload *
           rm *
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Push to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
