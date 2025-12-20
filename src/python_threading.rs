@@ -3,13 +3,13 @@ use std::collections::HashMap;
 use anyhow::{Context, Error};
 
 use crate::python_bindings::{
-    v3_10_0, v3_11_0, v3_12_0, v3_13_0, v3_14_0, v3_6_6, v3_7_0, v3_8_0, v3_9_5,
+    v3_10_0, v3_11_0, v3_12_0, v3_13_0, v3_14_0, v3_14_0t, v3_6_6, v3_7_0, v3_8_0, v3_9_5,
 };
 use crate::python_data_access::{copy_long, copy_string, DictIterator, PY_TPFLAGS_MANAGED_DICT};
 use crate::python_interpreters::{InterpreterState, Object, TypeObject};
 use crate::python_spy::PythonSpy;
-use remoteprocess::Process;
 use log::trace;
+use remoteprocess::Process;
 
 use crate::version::Version;
 
@@ -30,10 +30,12 @@ pub fn thread_names_from_interpreter<I: InterpreterState, P: ProcessMemory>(
     let mut candidates = vec![modules as usize];
     if version.major == 3 && version.minor >= 14 {
         // sysdict offset from CPython 3.14 headers (pycore_interp_structs.h)
-        const SYSDICT_OFFSET: usize = 7648;
-        let sysdict_addr: usize = process.copy_struct(interpreter_address + SYSDICT_OFFSET)?;
+        // Free-threaded builds have additional fields, offsetting sysdict by 48 bytes
+        let sysdict_offset = if version.is_free_threaded { 7696 } else { 7648 };
+        let sysdict_addr: usize = process.copy_struct(interpreter_address + sysdict_offset)?;
         if sysdict_addr != 0 {
-            if let Ok(fallback_modules) = find_modules_dict::<I, P>(process, version, sysdict_addr) {
+            if let Ok(fallback_modules) = find_modules_dict::<I, P>(process, version, sysdict_addr)
+            {
                 candidates.push(fallback_modules);
             }
         }
@@ -48,7 +50,8 @@ pub fn thread_names_from_interpreter<I: InterpreterState, P: ProcessMemory>(
                 trace!("thread_names_from_interpreter: found threading module");
                 let module: I::Object = process.copy_struct(value)?;
                 let module_type = process.copy_pointer(module.ob_type())?;
-                let dictptr: usize = process.copy_struct(value + module_type.dictoffset() as usize)?;
+                let dictptr: usize =
+                    process.copy_struct(value + module_type.dictoffset() as usize)?;
                 for i in DictIterator::from(process, version, dictptr)? {
                     let (key, value) = i?;
                     let name = copy_string(key as *const I::StringObject, process)?;
@@ -165,6 +168,12 @@ pub fn thread_name_lookup(process: &PythonSpy) -> Option<HashMap<u64, String>> {
             minor: 13,
             ..
         } => _thread_name_lookup::<v3_13_0::_is>(process),
+        Version {
+            major: 3,
+            minor: 14,
+            is_free_threaded: true,
+            ..
+        } => _thread_name_lookup::<v3_14_0t::_is>(process),
         Version {
             major: 3,
             minor: 14,

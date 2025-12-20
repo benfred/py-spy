@@ -308,6 +308,11 @@ pub fn get_gil_threadid<I: InterpreterState, P: ProcessMemory>(
     threadstate_address: usize,
     process: &P,
 ) -> Result<u64, Error> {
+    // Free-threaded builds don't have a GIL, so we can't get a GIL thread ID
+    if I::IS_FREE_THREADED {
+        return Ok(0);
+    }
+
     // happens during initialization when checking to see if we have a valid interpreter (before we've figured out the threadstate_address)
     if threadstate_address == 0 {
         return Ok(0);

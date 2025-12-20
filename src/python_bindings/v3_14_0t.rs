@@ -19271,7 +19271,7 @@ impl Default for PyDictUnicodeEntry {
     }
 }
 #[repr(C)]
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Copy, Clone)]
 pub struct _dictkeysobject {
     pub dk_refcnt: Py_ssize_t,
     pub dk_log2_size: u8,
@@ -19281,7 +19281,7 @@ pub struct _dictkeysobject {
     pub dk_version: u32,
     pub dk_usable: Py_ssize_t,
     pub dk_nentries: Py_ssize_t,
-    pub dk_indices: __IncompleteArrayField<::std::os::raw::c_char>,
+    pub dk_indices: [::std::os::raw::c_char; 0],
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]

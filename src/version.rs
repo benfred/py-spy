@@ -10,6 +10,7 @@ pub struct Version {
     pub patch: u64,
     pub release_flags: String,
     pub build_metadata: Option<String>,
+    pub is_free_threaded: bool,
 }
 
 impl Version {
@@ -37,6 +38,13 @@ impl Version {
 
             let version = std::str::from_utf8(&cap[0])?;
             info!("Found matching version string '{}'", version);
+
+            // Detect free-threading by checking if "free-threading" appears in the version string
+            let is_free_threaded = version.contains("free-threading");
+            if is_free_threaded {
+                info!("Detected free-threaded Python build");
+            }
+
             #[cfg(windows)]
             {
                 if version.contains("32 bit") {
@@ -54,6 +62,7 @@ impl Version {
                 patch,
                 release_flags: release.to_owned(),
                 build_metadata,
+                is_free_threaded,
             });
         }
         Err(format_err!("failed to find version string"))
@@ -64,8 +73,12 @@ impl std::fmt::Display for Version {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
-            "{}.{}.{}{}",
-            self.major, self.minor, self.patch, self.release_flags
+            "{}.{}.{}{}{}",
+            self.major,
+            self.minor,
+            self.patch,
+            if self.is_free_threaded { "t" } else { "" },
+            self.release_flags
         )?;
         if let Some(build_metadata) = &self.build_metadata {
             write!(f, "+{build_metadata}",)?
@@ -88,6 +101,7 @@ mod tests {
                 patch: 10,
                 release_flags: "".to_owned(),
                 build_metadata: None,
+                is_free_threaded: false,
             }
         );
 
@@ -103,6 +117,7 @@ mod tests {
                 patch: 3,
                 release_flags: "".to_owned(),
                 build_metadata: None,
+                is_free_threaded: false,
             }
         );
 
@@ -117,6 +132,7 @@ mod tests {
                 patch: 0,
                 release_flags: "rc1".to_owned(),
                 build_metadata: None,
+                is_free_threaded: false,
             }
         );
 
@@ -131,6 +147,7 @@ mod tests {
                 patch: 0,
                 release_flags: "rc1".to_owned(),
                 build_metadata: None,
+                is_free_threaded: false,
             }
         );
 
@@ -145,6 +162,7 @@ mod tests {
                 patch: 0,
                 release_flags: "a1".to_owned(),
                 build_metadata: None,
+                is_free_threaded: false,
             }
         );
 
@@ -168,6 +186,7 @@ mod tests {
                 patch: 15,
                 release_flags: "".to_owned(),
                 build_metadata: Some("".to_owned()),
+                is_free_threaded: false,
             }
         );
 
@@ -180,6 +199,7 @@ mod tests {
                 patch: 10,
                 release_flags: "".to_owned(),
                 build_metadata: Some("dcba".to_owned()),
+                is_free_threaded: false,
             }
         );
 
@@ -192,6 +212,7 @@ mod tests {
                 patch: 10,
                 release_flags: "".to_owned(),
                 build_metadata: Some("5-4.abcd".to_owned()),
+                is_free_threaded: false,
             }
         );
 
@@ -204,6 +225,7 @@ mod tests {
                 patch: 5,
                 release_flags: "".to_owned(),
                 build_metadata: Some("cinder".to_owned()),
+                is_free_threaded: false,
             }
         );
     }
