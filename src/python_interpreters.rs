@@ -17,6 +17,21 @@ use crate::python_bindings::{
 };
 use crate::utils::offset_of;
 
+// Python 3.14+ constants for _PyStackRef tagged pointers
+// https://github.com/python/cpython/blob/main/Include/internal/pycore_stackref.h
+/// Number of tag bits used in _PyStackRef for marking pointer types.
+/// Bits 0-2 are used for tagging: Py_TAG_PTR=0, Py_TAG_DEFERRED=1, Py_INT_TAG=3
+const PY_STACKREF_TAG_BITS: usize = 3;
+
+/// Tag mask for extracting PyObject* from localsplus _PyStackRef values in Python 3.14+.
+/// Bit 0 is Py_TAG_REFCNT, used to mark immortal objects. Mask it out to get the pointer.
+const PY_STACKREF_TAG_MASK: usize = !1;
+
+// Python 3.11+ frame ownership constants
+// https://github.com/python/cpython/pull/108036#issuecomment-1684458828
+/// Frame is owned by the C stack (entry frame). Used to determine frame boundaries.
+const FRAME_OWNED_BY_CSTACK: ::std::os::raw::c_char = 3;
+
 pub trait InterpreterState: Copy {
     type ThreadState: ThreadState;
     type Object: Object;
@@ -439,14 +454,17 @@ impl InterpreterState for v3_14_0::PyInterpreterState {
     const HAS_GIL_RUNTIME_STATE: bool = true;
 
     fn threadstate_ptr_ptr(interpreter_address: usize) -> *const *const Self::ThreadState {
-        // Offsets generated from CPython 3.14 headers (pycore_interp_structs.h)
+        // Manual offsets for CPython 3.14 (from pycore_interp_structs.h)
+        // We can't use std::mem::offset_of! because these fields aren't in the
+        // bindgen-generated structs - they're calculated from debug symbols.
+        // PyInterpreterState.threads = 7336, threads.head = +8
         const THREADS_OFFSET: usize = 7336;
         const THREAD_HEAD_OFFSET: usize = 8;
         (interpreter_address + THREADS_OFFSET + THREAD_HEAD_OFFSET)
             as *const *const Self::ThreadState
     }
     fn modules_ptr_ptr(interpreter_address: usize) -> *const *const Self::Object {
-        // imports offset 7664, modules offset 0 (from CPython 3.14 headers)
+        // PyInterpreterState.imports = 7664, imports.modules = +0
         const IMPORTS_OFFSET: usize = 7664;
         (interpreter_address + IMPORTS_OFFSET) as *const *const Self::Object
     }
@@ -481,21 +499,18 @@ impl FrameObject for v3_14_0::_PyInterpreterFrame {
         // In Python 3.14, f_executable is a _PyStackRef, which is a union with a 'bits' field.
         // To get the PyObject pointer, we need to mask out the tag bits (bottom 3 bits).
         // This is equivalent to PyStackRef_AsPyObjectBorrow() in CPython.
-        const PY_TAG_BITS: usize = 3;
         unsafe {
             let bits = self.f_executable.bits;
-            let ptr = (bits & !PY_TAG_BITS) as *mut v3_14_0::PyCodeObject;
-            ptr
+            (bits & !PY_STACKREF_TAG_BITS) as *mut v3_14_0::PyCodeObject
         }
     }
     fn lasti(&self) -> i32 {
         // In Python 3.14, f_executable is a _PyStackRef pointing to the PyCodeObject.
         // Similar to Python 3.12/3.13, we compute offset from the PyCodeObject start,
         // and get_line_number() will adjust for co_code_adaptive offset.
-        const PY_TAG_BITS: usize = 3;
         unsafe {
             let bits = self.f_executable.bits;
-            let code_obj = (bits & !PY_TAG_BITS) as *const v3_14_0::PyCodeObject;
+            let code_obj = (bits & !PY_STACKREF_TAG_BITS) as *const v3_14_0::PyCodeObject;
             let co_code = code_obj as *const u8;
             (self.instr_ptr as *const u8).offset_from(co_code) as i32
         }
@@ -504,15 +519,13 @@ impl FrameObject for v3_14_0::_PyInterpreterFrame {
         self.previous
     }
     fn is_entry(&self) -> bool {
-        // https://github.com/python/cpython/pull/108036#issuecomment-1684458828
-        const FRAME_OWNED_BY_CSTACK: ::std::os::raw::c_char = 3;
         self.owner == FRAME_OWNED_BY_CSTACK
     }
 
     fn read_local_address(raw_value: usize) -> usize {
         // In Python 3.14, localsplus contains _PyStackRef values with Py_TAG_REFCNT (bit 0)
         // marking immortal objects. Mask out bit 0 to get the pointer.
-        raw_value & !1
+        raw_value & PY_STACKREF_TAG_MASK
     }
 }
 
@@ -550,16 +563,16 @@ impl InterpreterState for v3_14_0t::PyInterpreterState {
     const IS_FREE_THREADED: bool = true;
 
     fn threadstate_ptr_ptr(interpreter_address: usize) -> *const *const Self::ThreadState {
-        // Offsets generated from CPython 3.14t headers (pycore_interp_structs.h)
-        // Note: these may differ slightly from 3.14 due to GIL-related structure changes
+        // Manual offsets for CPython 3.14t free-threaded build (from pycore_interp_structs.h)
+        // PyInterpreterState.threads = 7336, threads.head = +8
         const THREADS_OFFSET: usize = 7336;
         const THREAD_HEAD_OFFSET: usize = 8;
         (interpreter_address + THREADS_OFFSET + THREAD_HEAD_OFFSET)
             as *const *const Self::ThreadState
     }
     fn modules_ptr_ptr(interpreter_address: usize) -> *const *const Self::Object {
-        // Offsets for free-threaded build differ from GIL build due to additional fields
-        // imports offset 7712, modules offset 0 (calculated from v3_14_0t PyInterpreterState)
+        // PyInterpreterState.imports = 7712 (differs from non-free-threaded due to extra GIL-related fields)
+        // imports.modules = +0
         const IMPORTS_OFFSET: usize = 7712;
         (interpreter_address + IMPORTS_OFFSET) as *const *const Self::Object
     }
@@ -594,21 +607,18 @@ impl FrameObject for v3_14_0t::_PyInterpreterFrame {
         // In Python 3.14t, f_executable is a _PyStackRef, which is a union with a 'bits' field.
         // To get the PyObject pointer, we need to mask out the tag bits (bottom 3 bits).
         // This is equivalent to PyStackRef_AsPyObjectBorrow() in CPython.
-        const PY_TAG_BITS: usize = 3;
         unsafe {
             let bits = self.f_executable.bits;
-            let ptr = (bits & !PY_TAG_BITS) as *mut v3_14_0t::PyCodeObject;
-            ptr
+            (bits & !PY_STACKREF_TAG_BITS) as *mut v3_14_0t::PyCodeObject
         }
     }
     fn lasti(&self) -> i32 {
         // In Python 3.14t, f_executable is a _PyStackRef pointing to the PyCodeObject.
         // Similar to Python 3.12/3.13, we compute offset from the PyCodeObject start,
         // and get_line_number() will adjust for co_code_adaptive offset.
-        const PY_TAG_BITS: usize = 3;
         unsafe {
             let bits = self.f_executable.bits;
-            let code_obj = (bits & !PY_TAG_BITS) as *const v3_14_0t::PyCodeObject;
+            let code_obj = (bits & !PY_STACKREF_TAG_BITS) as *const v3_14_0t::PyCodeObject;
             let co_code = code_obj as *const u8;
             (self.instr_ptr as *const u8).offset_from(co_code) as i32
         }
@@ -617,15 +627,13 @@ impl FrameObject for v3_14_0t::_PyInterpreterFrame {
         self.previous
     }
     fn is_entry(&self) -> bool {
-        // https://github.com/python/cpython/pull/108036#issuecomment-1684458828
-        const FRAME_OWNED_BY_CSTACK: ::std::os::raw::c_char = 3;
         self.owner == FRAME_OWNED_BY_CSTACK
     }
 
     fn read_local_address(raw_value: usize) -> usize {
         // In Python 3.14t, localsplus contains _PyStackRef values with tags in bits 0-1:
         // Py_TAG_PTR=0, Py_TAG_DEFERRED=1, Py_INT_TAG=3. Mask out bit 0 only.
-        raw_value & !1
+        raw_value & PY_STACKREF_TAG_MASK
     }
 }
 
@@ -707,8 +715,6 @@ impl FrameObject for v3_13_0::_PyInterpreterFrame {
         self.previous
     }
     fn is_entry(&self) -> bool {
-        // https://github.com/python/cpython/pull/108036#issuecomment-1684458828
-        const FRAME_OWNED_BY_CSTACK: ::std::os::raw::c_char = 3;
         self.owner == FRAME_OWNED_BY_CSTACK
     }
 }
@@ -798,8 +804,6 @@ impl FrameObject for v3_12_0::_PyInterpreterFrame {
         self.previous
     }
     fn is_entry(&self) -> bool {
-        // https://github.com/python/cpython/pull/108036#issuecomment-1684458828
-        const FRAME_OWNED_BY_CSTACK: ::std::os::raw::c_char = 3;
         self.owner == FRAME_OWNED_BY_CSTACK
     }
 }

@@ -31,15 +31,33 @@ SUPPORTED_VERSIONS = [
 ]
 
 
+def build_configure_flags(version, install_path=None):
+    """Build configure flags for the given Python version.
+
+    Args:
+        version: Python version string (e.g., "v3.14.0" or "v3.14.0t")
+        install_path: Optional installation path prefix
+
+    Returns:
+        String of configure flags (e.g., "prefix=/path --disable-gil")
+    """
+    flags = []
+    if install_path:
+        flags.append(f"prefix={install_path}")
+
+    # Free-threaded builds (indicated by 't' suffix) need --disable-gil
+    if version.endswith("t"):
+        flags.append("--disable-gil")
+
+    return " ".join(flags)
+
+
 def build_python(cpython_path, version):
     # TODO: probably easier to use pyenv for this?
     print("Compiling python %s from repo at %s" % (version, cpython_path))
     install_path = os.path.abspath(os.path.join(cpython_path, version))
 
-    # Add --disable-gil for free-threaded builds
-    configure_flags = f"prefix={install_path}"
-    if version.endswith("t"):
-        configure_flags += " --disable-gil"
+    configure_flags = build_configure_flags(version, install_path)
 
     ret = os.system(
         f"""
@@ -68,9 +86,8 @@ def calculate_pyruntime_offsets(cpython_path, version, configure=False):
         return ret
 
     if configure:
-        configure_flags = f"prefix={os.path.abspath(os.path.join(cpython_path, version))}"
-        if version.endswith("t"):
-            configure_flags += " --disable-gil"
+        install_path = os.path.abspath(os.path.join(cpython_path, version))
+        configure_flags = build_configure_flags(version, install_path)
         os.system(f"cd {cpython_path} && ./configure {configure_flags}")
 
     # simple little c program to get the offsets we need from the pyruntime struct
@@ -133,9 +150,8 @@ def extract_bindings(cpython_path, version, configure=False):
     # Build configure command with --disable-gil for free-threaded builds
     configure_cmd = ""
     if configure:
-        configure_flags = f"prefix={os.path.abspath(os.path.join(cpython_path, version))}"
-        if version.endswith("t"):
-            configure_flags += " --disable-gil"
+        install_path = os.path.abspath(os.path.join(cpython_path, version))
+        configure_flags = build_configure_flags(version, install_path)
         configure_cmd = f"./configure {configure_flags}"
 
     ret = os.system(
