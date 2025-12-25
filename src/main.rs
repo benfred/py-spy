@@ -261,7 +261,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
         intervals += 1;
         if let Some(max_intervals) = max_intervals {
             if intervals >= max_intervals {
-                exit_message = "";
+                exit_message = "Stopped sampling because max intervals was reached";
                 break;
             }
         }
@@ -441,7 +441,7 @@ fn sample_pyroscope(pid: remoteprocess::Pid, config: &Config) -> Result<(), Erro
         intervals += 1;
         if let Some(max_intervals) = max_intervals {
             if intervals >= max_intervals {
-                exit_message = "";
+                exit_message = "Stopped sampling because max intervals was reached";
                 break;
             }
         }
@@ -496,18 +496,26 @@ fn sample_pyroscope(pid: remoteprocess::Pid, config: &Config) -> Result<(), Erro
                     ("sampleRate", &config.sampling_rate.to_string()),
                 ])
                 .body(body)
-                .send()?;
+                .send();
             start_ts = Local::now().timestamp();
             output = RawFlamegraph(flamegraph::Flamegraph::new(config.show_line_numbers));
             send_samples = 0;
 
-            if res.status() != StatusCode::OK {
+            if let Err(e) = res {
                 println!(
                     "{}An error occurred while sending data to pyroscope: {:#?}",
-                    lede, res
-                )
-            } else {
-                println!("{}Sent pyroscope report!", lede);
+                    lede, e
+                );
+                continue;
+            } else if let Ok(res) = res {
+                if res.status() != StatusCode::OK {
+                    println!(
+                        "{}An error occurred while sending data to pyroscope: {:#?}",
+                        lede, res
+                    )
+                } else {
+                    println!("{}Sent pyroscope report!", lede);
+                }
             }
         }
 
@@ -517,6 +525,11 @@ fn sample_pyroscope(pid: remoteprocess::Pid, config: &Config) -> Result<(), Erro
                 errors += 1;
             }
         }
+    }
+
+
+    if !exit_message.is_empty() {
+        println!("\n{}{}", lede, exit_message);
     }
 
     let mut body: Vec<u8> = Vec::new();
@@ -534,15 +547,11 @@ fn sample_pyroscope(pid: remoteprocess::Pid, config: &Config) -> Result<(), Erro
 
     if res.status() != StatusCode::OK {
         println!(
-            "{}An error occurred while sending data to pyroscope: {:#?}",
+            "{}An error occurred while sending final data to pyroscope: {:#?}",
             lede, res
         )
     } else {
         println!("{}Sent final pyroscope report!", lede);
-    }
-
-    if !exit_message.is_empty() {
-        println!("\n{}{}", lede, exit_message);
     }
 
     println!(

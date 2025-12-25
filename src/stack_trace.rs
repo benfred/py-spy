@@ -277,7 +277,7 @@ pub fn get_gil_threadid<I: InterpreterState, P: ProcessMemory>(
 impl ProcessInfo {
     pub fn to_frame(&self) -> Frame {
         Frame {
-            name: String.from(self.command_line),
+            name: self.command_line.clone(),
             filename: String::from(""),
             module: None,
             short_filename: None,
