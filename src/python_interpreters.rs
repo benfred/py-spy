@@ -454,19 +454,12 @@ impl InterpreterState for v3_14_0::PyInterpreterState {
     const HAS_GIL_RUNTIME_STATE: bool = true;
 
     fn threadstate_ptr_ptr(interpreter_address: usize) -> *const *const Self::ThreadState {
-        // Manual offsets for CPython 3.14 (from pycore_interp_structs.h)
-        // We can't use std::mem::offset_of! because these fields aren't in the
-        // bindgen-generated structs - they're calculated from debug symbols.
-        // PyInterpreterState.threads = 7336, threads.head = +8
-        const THREADS_OFFSET: usize = 7336;
-        const THREAD_HEAD_OFFSET: usize = 8;
-        (interpreter_address + THREADS_OFFSET + THREAD_HEAD_OFFSET)
+        (interpreter_address + std::mem::offset_of!(Self, threads.head))
             as *const *const Self::ThreadState
     }
     fn modules_ptr_ptr(interpreter_address: usize) -> *const *const Self::Object {
-        // PyInterpreterState.imports = 7664, imports.modules = +0
-        const IMPORTS_OFFSET: usize = 7664;
-        (interpreter_address + IMPORTS_OFFSET) as *const *const Self::Object
+        (interpreter_address + std::mem::offset_of!(Self, imports.modules))
+            as *const *const Self::Object
     }
 }
 
@@ -563,18 +556,12 @@ impl InterpreterState for v3_14_0t::PyInterpreterState {
     const IS_FREE_THREADED: bool = true;
 
     fn threadstate_ptr_ptr(interpreter_address: usize) -> *const *const Self::ThreadState {
-        // Manual offsets for CPython 3.14t free-threaded build (from pycore_interp_structs.h)
-        // PyInterpreterState.threads = 7336, threads.head = +8
-        const THREADS_OFFSET: usize = 7336;
-        const THREAD_HEAD_OFFSET: usize = 8;
-        (interpreter_address + THREADS_OFFSET + THREAD_HEAD_OFFSET)
+        (interpreter_address + std::mem::offset_of!(Self, threads.head))
             as *const *const Self::ThreadState
     }
     fn modules_ptr_ptr(interpreter_address: usize) -> *const *const Self::Object {
-        // PyInterpreterState.imports = 7712 (differs from non-free-threaded due to extra GIL-related fields)
-        // imports.modules = +0
-        const IMPORTS_OFFSET: usize = 7712;
-        (interpreter_address + IMPORTS_OFFSET) as *const *const Self::Object
+        (interpreter_address + std::mem::offset_of!(Self, imports.modules))
+            as *const *const Self::Object
     }
 }
 
