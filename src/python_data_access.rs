@@ -1,7 +1,7 @@
 #![allow(clippy::unnecessary_cast)]
 use anyhow::Error;
 
-use crate::python_bindings::v3_13_0;
+use crate::python_bindings::{v3_13_0, v3_14_0, v3_14_0t};
 use crate::python_interpreters::{
     BytesObject, InterpreterState, ListObject, Object, StringObject, TupleObject, TypeObject,
 };
@@ -72,12 +72,36 @@ pub fn copy_long<P: ProcessMemory>(
     let (size, negative, digit, value_size) = match version {
         Version {
             major: 3,
-            minor: 12..=13,
+            minor: 14,
+            is_free_threaded: true,
+            ..
+        } => {
+            // Python 3.14t (free-threaded): PyObject has different size due to biased refcounting fields
+            let value = process
+                .copy_pointer(addr as *const crate::python_bindings::v3_14_0t::PyLongObject)?;
+
+            let size = value.long_value.lv_tag >> 3;
+            let negative: i64 = if (value.long_value.lv_tag & 3) == 2 {
+                -1
+            } else {
+                1
+            };
+            (
+                size,
+                negative,
+                value.long_value.ob_digit[0] as u32,
+                std::mem::size_of_val(&value),
+            )
+        }
+        Version {
+            major: 3,
+            minor: 12..=14,
             ..
         } => {
             // PyLongObject format changed in python 3.12
             let value = process
                 .copy_pointer(addr as *const crate::python_bindings::v3_12_0::PyLongObject)?;
+
             let size = value.long_value.lv_tag >> 3;
             let negative: i64 = if (value.long_value.lv_tag & 3) == 2 {
                 -1
@@ -145,10 +169,17 @@ pub fn copy_int<P: ProcessMemory>(process: &P, addr: usize) -> Result<i64, Error
 pub struct DictIterator<'a, P: 'a> {
     process: &'a P,
     entries_addr: usize,
-    kind: u8,
     index: usize,
     entries: usize,
     values: usize,
+    entry_format: DictEntryFormat,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+enum DictEntryFormat {
+    Legacy,
+    Unicode,
+    KeyWithHash,
 }
 
 impl<'a, P: ProcessMemory> DictIterator<'a, P> {
@@ -159,45 +190,70 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
         tp_addr: usize,
         flags: usize,
     ) -> Result<DictIterator<'a, P>, Error> {
-        // Handles logic of _PyObject_ManagedDictPointer in python 3.11
-        let mut values_addr: usize =
-            process.copy_struct(addr - 4 * std::mem::size_of::<usize>())?;
+        // Handles logic of _PyObject_ManagedDictPointer in python 3.11+
+        // MANAGED_DICT_OFFSET is different between GIL and free-threaded builds:
+        // - GIL builds: -3 * sizeof(PyObject*)
+        // - Free-threaded builds: -1 * sizeof(PyObject*)
+        let managed_dict_offset = match version {
+            Version {
+                major: 3,
+                minor: 11..,
+                is_free_threaded: true,
+                ..
+            } => -1,
+            _ => -3,
+        };
+        let managed_dict_ptr_addr =
+            (addr as isize + managed_dict_offset * std::mem::size_of::<usize>() as isize) as usize;
 
-        // TODO: MANAGED_DICT_OFFSET is -3 if GIL isn't disabled, -1 otherwise (in py3.13+)
-        // handle gil-less python branches
-        let mut dict_addr: usize = process.copy_struct(addr - 3 * std::mem::size_of::<usize>())?;
+        let managed_dict_ptr: usize = process.copy_struct(managed_dict_ptr_addr)?;
 
-        // for python 3.12, the values/dict are combined into a single tagged pointer
-        if version.major == 3 && version.minor == 12 {
-            if dict_addr & 1 == 0 {
-                values_addr = 0;
-            } else {
-                values_addr = dict_addr + 1;
-                dict_addr = 0;
-            }
-        }
+        let tp_basicsize = if version.major == 3 && version.minor >= 14 && version.is_free_threaded
+        {
+            let tp: crate::python_bindings::v3_14_0t::PyTypeObject =
+                process.copy_struct(tp_addr)?;
+            tp.tp_basicsize as usize
+        } else if version.major == 3 && version.minor >= 14 {
+            let tp: crate::python_bindings::v3_14_0::PyTypeObject = process.copy_struct(tp_addr)?;
+            tp.tp_basicsize as usize
+        } else if version.major == 3 && version.minor >= 13 {
+            let tp: crate::python_bindings::v3_13_0::PyTypeObject = process.copy_struct(tp_addr)?;
+            tp.tp_basicsize as usize
+        } else {
+            let tp: crate::python_bindings::v3_11_0::PyTypeObject = process.copy_struct(tp_addr)?;
+            tp.tp_basicsize as usize
+        };
 
-        if values_addr != 0 {
-            let ht_cached_keys = if version.major == 3 && version.minor >= 12 {
-                let ht: crate::python_bindings::v3_12_0::PyHeapTypeObject =
-                    process.copy_struct(tp_addr)?;
-                ht.ht_cached_keys as usize
-            } else {
-                let ht: crate::python_bindings::v3_11_0::PyHeapTypeObject =
-                    process.copy_struct(tp_addr)?;
-                ht.ht_cached_keys as usize
-            };
+        // Inline values were introduced in 3.13, with layout tweaks in 3.14
+        if flags & PY_TPFLAGS_INLINE_VALUES != 0 {
+            let ht_cached_keys =
+                if version.major == 3 && version.minor >= 14 && version.is_free_threaded {
+                    let ht: crate::python_bindings::v3_14_0t::PyHeapTypeObject =
+                        process.copy_struct(tp_addr)?;
+                    ht.ht_cached_keys as usize
+                } else if version.major == 3 && version.minor >= 14 {
+                    let ht: crate::python_bindings::v3_14_0::PyHeapTypeObject =
+                        process.copy_struct(tp_addr)?;
+                    ht.ht_cached_keys as usize
+                } else {
+                    let ht: crate::python_bindings::v3_12_0::PyHeapTypeObject =
+                        process.copy_struct(tp_addr)?;
+                    ht.ht_cached_keys as usize
+                };
 
-            // handle inline values in py3.13+
-            // https://github.com/python/cpython/issues/115776
-            if flags & PY_TPFLAGS_INLINE_VALUES != 0 {
-                // PyDictValues is stored inline after the initial PyObject
-                let dict_values: v3_13_0::_dictvalues = Default::default();
-                let values_offset = offset_of(&dict_values, &dict_values.values);
+            let values_offset =
+                if version.major == 3 && version.minor >= 14 && version.is_free_threaded {
+                    let dict_values: v3_14_0t::_dictvalues = Default::default();
+                    offset_of(&dict_values, &dict_values.values)
+                } else if version.major == 3 && version.minor >= 14 {
+                    let dict_values: v3_14_0::_dictvalues = Default::default();
+                    offset_of(&dict_values, &dict_values.values)
+                } else {
+                    let dict_values: v3_13_0::_dictvalues = Default::default();
+                    offset_of(&dict_values, &dict_values.values)
+                };
 
-                values_addr = addr + std::mem::size_of::<v3_13_0::PyObject>() + values_offset;
-            }
-
+            let values_addr = addr + tp_basicsize + values_offset;
             let keys: crate::python_bindings::v3_12_0::PyDictKeysObject =
                 process.copy_struct(ht_cached_keys as usize)?;
 
@@ -208,14 +264,20 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
                 process,
                 entries_addr,
                 index: 0,
-                kind: keys.dk_kind,
                 entries: keys.dk_nentries as usize,
                 values: values_addr,
+                entry_format: if keys.dk_kind == 0 {
+                    DictEntryFormat::KeyWithHash
+                } else {
+                    DictEntryFormat::Unicode
+                },
             })
-        } else if dict_addr != 0 {
-            DictIterator::from(process, version, dict_addr)
+        } else if managed_dict_ptr != 0 {
+            DictIterator::from(process, version, managed_dict_ptr)
         } else {
-            Err(format_err!("neither values or dict is set in managed dict"))
+            Err(format_err!(
+                "neither inline values nor managed dict pointer set"
+            ))
         }
     }
 
@@ -227,7 +289,33 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
         match version {
             Version {
                 major: 3,
-                minor: 11..=13,
+                minor: 14,
+                is_free_threaded: true,
+                ..
+            } => {
+                let dict: crate::python_bindings::v3_14_0t::PyDictObject =
+                    process.copy_struct(addr)?;
+                let keys = process.copy_pointer(dict.ma_keys)?;
+
+                let entries_addr = dict.ma_keys as usize
+                    + (1 << keys.dk_log2_index_bytes)
+                    + std::mem::size_of_val(&keys);
+                Ok(DictIterator {
+                    process,
+                    entries_addr,
+                    index: 0,
+                    entries: keys.dk_nentries as usize,
+                    values: dict.ma_values as usize,
+                    entry_format: if keys.dk_kind == 0 {
+                        DictEntryFormat::KeyWithHash
+                    } else {
+                        DictEntryFormat::Unicode
+                    },
+                })
+            }
+            Version {
+                major: 3,
+                minor: 11..=14,
                 ..
             } => {
                 let dict: crate::python_bindings::v3_11_0::PyDictObject =
@@ -241,9 +329,13 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
                     process,
                     entries_addr,
                     index: 0,
-                    kind: keys.dk_kind,
                     entries: keys.dk_nentries as usize,
                     values: dict.ma_values as usize,
+                    entry_format: if version.minor >= 14 && keys.dk_kind == 0 {
+                        DictEntryFormat::KeyWithHash
+                    } else {
+                        DictEntryFormat::Unicode
+                    },
                 })
             }
             _ => {
@@ -270,9 +362,9 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
                     process,
                     entries_addr,
                     index: 0,
-                    kind: 0,
                     entries: keys.dk_nentries as usize,
                     values: dict.ma_values as usize,
+                    entry_format: DictEntryFormat::Legacy,
                 })
             }
         }
@@ -288,27 +380,31 @@ impl<'a, P: ProcessMemory> Iterator for DictIterator<'a, P> {
             self.index += 1;
 
             // get the addresses of the key/value for the current index
-            let entry = match self.kind {
-                0 => {
-                    let addr = index
-                        * std::mem::size_of::<crate::python_bindings::v3_7_0::PyDictKeyEntry>()
-                        + self.entries_addr;
-                    let ret = self
-                        .process
-                        .copy_struct::<crate::python_bindings::v3_7_0::PyDictKeyEntry>(addr);
-                    ret.map(|entry| (entry.me_key as usize, entry.me_value as usize))
+            let entry_size = match self.entry_format {
+                DictEntryFormat::KeyWithHash => std::mem::size_of::<PyDictKeyEntryHash>(),
+                DictEntryFormat::Unicode => {
+                    std::mem::size_of::<crate::python_bindings::v3_11_0::PyDictUnicodeEntry>()
                 }
-                _ => {
-                    // Python 3.11 added a PyDictUnicodeEntry , which uses the hash from the Unicode key rather than recalculate
-                    let addr = index
-                        * std::mem::size_of::<crate::python_bindings::v3_11_0::PyDictUnicodeEntry>(
-                        )
-                        + self.entries_addr;
-                    let ret = self
-                        .process
-                        .copy_struct::<crate::python_bindings::v3_11_0::PyDictUnicodeEntry>(addr);
-                    ret.map(|entry| (entry.me_key as usize, entry.me_value as usize))
+                DictEntryFormat::Legacy => {
+                    std::mem::size_of::<crate::python_bindings::v3_7_0::PyDictKeyEntry>()
                 }
+            };
+
+            let addr = self.entries_addr + index * entry_size;
+
+            let entry = match self.entry_format {
+                DictEntryFormat::KeyWithHash => self
+                    .process
+                    .copy_struct::<PyDictKeyEntryHash>(addr)
+                    .map(|entry| (entry.me_key as usize, entry.me_value as usize)),
+                DictEntryFormat::Unicode => self
+                    .process
+                    .copy_struct::<crate::python_bindings::v3_11_0::PyDictUnicodeEntry>(addr)
+                    .map(|entry| (entry.me_key as usize, entry.me_value as usize)),
+                DictEntryFormat::Legacy => self
+                    .process
+                    .copy_struct::<crate::python_bindings::v3_7_0::PyDictKeyEntry>(addr)
+                    .map(|entry| (entry.me_key as usize, entry.me_value as usize)),
             };
 
             match entry {
@@ -351,6 +447,14 @@ const PY_TPFLAGS_TUPLE_SUBCLASS: usize = 1 << 26;
 const PY_TPFLAGS_BYTES_SUBCLASS: usize = 1 << 27;
 const PY_TPFLAGS_STRING_SUBCLASS: usize = 1 << 28;
 const PY_TPFLAGS_DICT_SUBCLASS: usize = 1 << 29;
+
+#[repr(C)]
+#[derive(Copy, Clone, Default)]
+struct PyDictKeyEntryHash {
+    me_hash: isize,
+    me_key: *mut crate::python_bindings::v3_14_0::PyObject,
+    me_value: *mut crate::python_bindings::v3_14_0::PyObject,
+}
 
 /// Converts a python variable in the other process to a human readable string
 pub fn format_variable<I, P>(
@@ -469,24 +573,39 @@ where
         }
         format!("({})", values.join(", "))
     } else if value_type_name == "float" {
-        let value =
-            process.copy_pointer(addr as *const crate::python_bindings::v3_7_0::PyFloatObject)?;
-        format!("{}", value.ob_fval)
+        let value = match version {
+            Version {
+                major: 3,
+                minor: 14,
+                is_free_threaded: true,
+                ..
+            } => {
+                let val = process
+                    .copy_pointer(addr as *const crate::python_bindings::v3_14_0t::PyFloatObject)?;
+                val.ob_fval
+            }
+            _ => {
+                let val = process
+                    .copy_pointer(addr as *const crate::python_bindings::v3_7_0::PyFloatObject)?;
+                val.ob_fval
+            }
+        };
+        format!("{}", value)
     } else if value_type_name == "NoneType" {
         "None".to_owned()
     } else if value_type_name.starts_with("numpy.") {
         match value_type_name {
-            "numpy.bool" => format_obval::<bool, P>(addr, process)?,
-            "numpy.uint8" => format_obval::<u8, P>(addr, process)?,
-            "numpy.uint16" => format_obval::<u16, P>(addr, process)?,
-            "numpy.uint32" => format_obval::<u32, P>(addr, process)?,
-            "numpy.uint64" => format_obval::<u64, P>(addr, process)?,
-            "numpy.int8" => format_obval::<i8, P>(addr, process)?,
-            "numpy.int16" => format_obval::<i16, P>(addr, process)?,
-            "numpy.int32" => format_obval::<i32, P>(addr, process)?,
-            "numpy.int64" => format_obval::<i64, P>(addr, process)?,
-            "numpy.float32" => format_obval::<f32, P>(addr, process)?,
-            "numpy.float64" => format_obval::<f64, P>(addr, process)?,
+            "numpy.bool" => format_obval::<bool, P>(addr, process, version)?,
+            "numpy.uint8" => format_obval::<u8, P>(addr, process, version)?,
+            "numpy.uint16" => format_obval::<u16, P>(addr, process, version)?,
+            "numpy.uint32" => format_obval::<u32, P>(addr, process, version)?,
+            "numpy.uint64" => format_obval::<u64, P>(addr, process, version)?,
+            "numpy.int8" => format_obval::<i8, P>(addr, process, version)?,
+            "numpy.int16" => format_obval::<i16, P>(addr, process, version)?,
+            "numpy.int32" => format_obval::<i32, P>(addr, process, version)?,
+            "numpy.int64" => format_obval::<i64, P>(addr, process, version)?,
+            "numpy.float32" => format_obval::<f32, P>(addr, process, version)?,
+            "numpy.float64" => format_obval::<f64, P>(addr, process, version)?,
             _ => format!("<{value_type_name} at 0x{addr:x}>"),
         }
     } else {
@@ -510,13 +629,22 @@ where
 ///
 /// * `addr`: Address of the numpy scalar
 /// * `process`: Process memory in which the object resides
-fn format_obval<T, P>(addr: usize, process: &P) -> Result<String, Error>
+/// * `version`: Python version to determine PyObject size
+fn format_obval<T, P>(addr: usize, process: &P, version: &Version) -> Result<String, Error>
 where
     T: std::fmt::Display + Copy,
     P: ProcessMemory,
 {
     let base_addr = addr as *mut u32;
-    let offset = std::mem::size_of::<crate::python_bindings::v3_7_0::PyObject>() as isize;
+    let offset = match version {
+        Version {
+            major: 3,
+            minor: 14,
+            is_free_threaded: true,
+            ..
+        } => std::mem::size_of::<crate::python_bindings::v3_14_0t::PyObject>() as isize,
+        _ => std::mem::size_of::<crate::python_bindings::v3_7_0::PyObject>() as isize,
+    };
     let result = unsafe { process.copy_pointer(base_addr.byte_offset(offset) as *const T)? };
     Ok(format!("{result}"))
 }
