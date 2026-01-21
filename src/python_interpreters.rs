@@ -70,6 +70,12 @@ pub trait CodeObject: Copy {
     fn varnames(&self) -> *mut Self::TupleObject;
 
     fn get_line_number(&self, lasti: i32, table: &[u8]) -> i32;
+
+    /// Returns the qualified name (co_qualname) if available (Python 3.11+).
+    /// For older Python versions, returns None.
+    fn qualname(&self) -> Option<*mut Self::StringObject> {
+        None
+    }
 }
 
 pub trait BytesObject: Copy {
@@ -353,6 +359,10 @@ macro_rules! CompactCodeObjectImpl {
                     }
                 }
                 line_number
+            }
+
+            fn qualname(&self) -> Option<*mut Self::StringObject> {
+                Some(self.co_qualname as *mut Self::StringObject)
             }
         }
     };
@@ -920,5 +930,25 @@ mod tests {
             22, 208, 4, 22,
         ];
         assert_eq!(code.get_line_number(214, &table), 5);
+    }
+
+    #[test]
+    fn test_py3_11_qualname() {
+        use crate::python_bindings::v3_11_0::PyCodeObject;
+        let code = PyCodeObject {
+            co_firstlineno: 1,
+            ..Default::default()
+        };
+        assert!(code.qualname().is_some());
+    }
+
+    #[test]
+    fn test_py3_10_qualname_not_available() {
+        use crate::python_bindings::v3_10_0::PyCodeObject;
+        let code = PyCodeObject {
+            co_firstlineno: 1,
+            ..Default::default()
+        };
+        assert!(code.qualname().is_none());
     }
 }

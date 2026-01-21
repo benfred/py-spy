@@ -150,7 +150,15 @@ where
             .context("Failed to copy PyCodeObject")?;
 
         let filename = copy_string(code.filename(), process).context("Failed to copy filename");
-        let name = copy_string(code.name(), process).context("Failed to copy function name");
+
+        // Try to get qualname first (available in Python 3.11+), fall back to name
+        let name = match code.qualname() {
+            Some(qualname_ptr) => {
+                copy_string(qualname_ptr, process).or_else(|_| copy_string(code.name(), process))
+            }
+            None => copy_string(code.name(), process),
+        }
+        .context("Failed to copy function name");
 
         // just skip processing the current frame if we can't load the filename or function name.
         // this can happen in python 3.13+ since the f_executable isn't guaranteed to be
