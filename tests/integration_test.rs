@@ -1,6 +1,8 @@
 extern crate py_spy;
 use py_spy::{Config, Pid, PythonSpy};
 use std::collections::HashSet;
+use std::io::{BufRead, BufReader, Write};
+use std::process::Stdio;
 
 struct ScriptRunner {
     #[allow(dead_code)]
@@ -552,4 +554,78 @@ fn test_delayed_subprocess() {
         assert!(traces[0].pid != process.id());
         break;
     }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn test_hanging_lock_successful() {
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_hanging_lock_test"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    let child_stdout = child
+        .stdout
+        .take()
+        .expect("Child process doesn't have stdout handle");
+    let mut stdout_reader = BufReader::new(child_stdout);
+    let mut buffer = String::new();
+
+    stdout_reader
+        .read_line(&mut buffer)
+        .expect("Should be able to read");
+    assert_eq!(buffer, "awaiting input\n");
+
+    let locker = PythonSpy::lock_process_with_timeout(child.id().try_into().unwrap(), 1000);
+    assert!(locker.is_ok());
+
+    // Need to drop the locker in order to unpause the child process
+    drop(locker);
+
+    let mut child_stdin = child
+        .stdin
+        .take()
+        .expect("Child process doesn't have stdin handle");
+    let _ = child_stdin.write_all(b"continue\n");
+    let ecode = child.wait().expect("Child process should exit");
+    assert!(ecode.success());
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn test_hanging_lock_failure() {
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_hanging_lock_test"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    let child_stdout = child
+        .stdout
+        .take()
+        .expect("Child process doesn't have stdout handle");
+    let mut stdout_reader = BufReader::new(child_stdout);
+    let mut buffer = String::new();
+
+    stdout_reader
+        .read_line(&mut buffer)
+        .expect("Should be able to read");
+    assert_eq!(buffer, "awaiting input\n");
+
+    let mut child_stdin = child
+        .stdin
+        .take()
+        .expect("Child process doesn't have stdin handle");
+    let _ = child_stdin.write_all(b"continue\n");
+
+    let locker = PythonSpy::lock_process_with_timeout(child.id().try_into().unwrap(), 1000);
+    assert!(locker.is_err());
+    assert!(locker
+        .unwrap_err()
+        .to_string()
+        .contains("Failed to suspend process"));
+
+    let ecode = child.wait().expect("Child process should exit");
+    assert!(ecode.success());
 }

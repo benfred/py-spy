@@ -44,11 +44,11 @@ jobs:
         with:
           python-version: 3.9
       - name: Install optional numpy dependency
-        run: pip install numpy>=2
+        run: pip install "numpy>=2"
       - name: Test
         id: test
         continue-on-error: true
-        run: cargo test --release
+        run: cargo test --release --features test_artifacts
       - name: Test (retry#1)
         id: test1
         run: cargo test --release

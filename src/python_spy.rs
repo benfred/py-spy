@@ -4,6 +4,7 @@ use std::collections::HashSet;
 #[cfg(all(target_os = "linux", feature = "unwind"))]
 use std::iter::FromIterator;
 use std::path::Path;
+use std::sync::mpsc::Sender;
 
 use anyhow::{Context, Error, Result};
 use remoteprocess::{Pid, Process, ProcessMemory, Tid};
@@ -38,6 +39,20 @@ pub struct PythonSpy {
     pub python_thread_names: HashMap<u64, String>,
     #[cfg(target_os = "linux")]
     pub dockerized: bool,
+}
+
+/// A small helper which automatically sends a message on an mpsc channel when it is dropped.
+///
+/// * `release_lock_tx`: An mpsc sender which can send an empty () message.
+#[derive(Debug)]
+pub struct ProcessLocker {
+    release_lock_tx: Sender<()>,
+}
+
+impl Drop for ProcessLocker {
+    fn drop(&mut self) {
+        let _ = self.release_lock_tx.send(());
+    }
 }
 
 impl PythonSpy {
@@ -193,6 +208,60 @@ impl PythonSpy {
         }
     }
 
+    /// Lock the process with the given PID; if the process doesn't lock in `lock_timeout_ms`,
+    /// error out gracefully.
+    ///
+    /// Since `remoteprocess::Process::lock` can hang if the process has exited, it is called in
+    /// a separate locker thread which times out (and results in an error) if the target thread
+    /// doesn't lock in the given `lock_timeout_ms`. The locker thread then waits to exit, holding
+    /// the lock in memory. When the `ProcessLocker` object returned by this function is dropped,
+    /// it sends a signal to the locker thread using an mpsc channel which causes the locker thread
+    /// to finish executing (causing the lock held in that thread to be dropped, unpausing the
+    /// target thread).
+    ///
+    /// The approach here follows https://stackoverflow.com/a/36182336/8100451, but with
+    /// `recv_timeout`.
+    ///
+    /// * `pid`: ID of the process to lock
+    /// * `lock_timeout_ms`: Length of time to wait before erroring out
+    pub fn lock_process_with_timeout(pid: Pid, lock_timeout_ms: u64) -> Result<ProcessLocker> {
+        let (acquire_lock_tx, acquire_lock_rx) = std::sync::mpsc::channel();
+        let (release_lock_tx, release_lock_rx) = std::sync::mpsc::channel::<()>();
+
+        // Generate a Process instance so it can be moved to the child thread
+        let process = remoteprocess::Process::new(pid).unwrap_or_else(|_| {
+            unreachable!("Process::new doesn't do anything with the PID upon initialization")
+        });
+
+        let join_handle = std::thread::spawn(move || {
+            // This can fail if the receiver in the main thread has timed out; silently ignore
+            // this, because we don't care (this only happens when the worker thread has
+            // already exceeded the timeout).
+            match process.lock() {
+                Ok(_lock) => {
+                    let _ = acquire_lock_tx.send(Ok(()));
+
+                    // Wait until instructed to finish execution (and drop the lock, which
+                    // unlocks the process)
+                    let _ = release_lock_rx.recv();
+                }
+                Err(error) => {
+                    let _ = acquire_lock_tx.send(Err(error));
+                }
+            }
+        });
+
+        acquire_lock_rx
+            .recv_timeout(std::time::Duration::from_millis(lock_timeout_ms))
+            .context(format!("Timeout acquiring lock on process {pid}"))
+            .inspect_err(|_| {
+                drop(join_handle);
+                drop(acquire_lock_rx);
+            })?
+            .context(format!("Failed to suspend process {pid}"))?;
+        Ok(ProcessLocker { release_lock_tx })
+    }
+
     // implementation of get_stack_traces, where we have a type for the InterpreterState
     fn _get_stack_traces<I: InterpreterState>(&mut self) -> Result<Vec<StackTrace>, Error> {
         // Query the OS to get if each thread in the process is running or not
@@ -214,10 +283,19 @@ impl PythonSpy {
 
         // Lock the process if appropriate. Note we have to lock AFTER getting the thread
         // activity status from the OS (otherwise each thread would report being inactive always).
+        //
         // This has the potential for race conditions (in that the thread activity could change
-        // between getting the status and locking the thread, but seems unavoidable right now
+        // between getting the status and locking the thread), in which case self.process.lock()
+        // will hang. This is the reason we do this in a separate thread; after a small timeout,
+        // we just error out.
+        //
+        // The approach here follows https://stackoverflow.com/a/36182336/8100451, but with
+        // recv_timeout.
         let _lock = if self.config.blocking == LockingStrategy::Lock {
-            Some(self.process.lock().context("Failed to suspend process")?)
+            Some(Self::lock_process_with_timeout(
+                self.process.pid,
+                self.config.lock_timeout_ms,
+            )?)
         } else {
             None
         };
