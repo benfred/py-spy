@@ -1,4 +1,6 @@
 [features]
+default = ["cli"]
+cli = ["dep:clap", "dep:clap_complete", "dep:console", "dep:ctrlc", "dep:indicatif", "dep:inferno", "dep:env_logger"]
 unwind = ["remoteprocess/unwind"]
 
 [package]
@@ -11,19 +13,24 @@ description = "Sampling profiler for Python programs "
 readme = "README.md"
 exclude = ["images/*", "test_programs/*"]
 license = "MIT"
-build="build.rs"
-edition="2021"
+build = "build.rs"
+edition = "2021"
+
+[[bin]]
+name = "py-spy"
+path = "src/main.rs"
+required-features = ["cli"]
 
 [dependencies]
 anyhow = "1"
-clap = {version="4.6.1", features=["wrap_help", "cargo", "derive"]}
-clap_complete="4.6.1"
-console = "0.16"
-ctrlc = "3"
-indicatif = "0.18"
-env_logger = "0.11"
+clap = { version = "4.6.1", features = ["wrap_help", "cargo", "derive"], optional = true }
+clap_complete = { version = "4.6.1", optional = true }
+console = { version = "0.16", optional = true }
+ctrlc = { version = "3", optional = true }
+indicatif = { version = "0.18", optional = true }
+env_logger = { version = "0.11", optional = true }
+inferno = { version = "0.12.6", optional = true }
 goblin = "0.10.5"
-inferno = "0.12.6"
 lazy_static = "1.4.0"
 libc = "0.2"
 log = "0.4"
@@ -35,7 +42,7 @@ page_size = "0.6.0"
 proc-maps = "0.4.0"
 memmap2 = "0.9.4"
 cpp_demangle = "0.5"
-serde = {version="1.0", features=["rc"]}
+serde = { version = "1.0", features = ["rc"] }
 serde_derive = "1.0"
 serde_json = "1.0"
 rand = "0.9"
@@ -50,4 +57,4 @@ py-spy-testdata = "0.1.0"
 termios = "0.3.3"
 
 [target.'cfg(windows)'.dependencies]
-winapi = {version = "0.3", features = ["errhandlingapi", "winbase", "consoleapi", "wincon", "handleapi", "timeapi", "processenv" ]}
+winapi = { version = "0.3", features = ["errhandlingapi", "winbase", "consoleapi", "wincon", "handleapi", "timeapi", "processenv"] }

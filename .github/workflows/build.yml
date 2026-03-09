@@ -43,6 +43,8 @@ jobs:
           python-version: 3.9
       - name: Build
         run: cargo build --release --verbose --examples
+      - name: Build library
+        run: cargo build --release --verbose --lib --no-default-features
       - uses: actions/setup-python@v6
         with:
           python-version: 3.9

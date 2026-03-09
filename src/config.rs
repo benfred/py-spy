@@ -1,4 +1,6 @@
+#[cfg(feature = "cli")]
 use clap::builder::{styling::AnsiColor, EnumValueParser, Styles};
+#[cfg(feature = "cli")]
 use clap::{
     crate_description, crate_name, crate_version, value_parser, Arg, ArgAction, Command, ValueEnum,
 };
@@ -62,7 +64,8 @@ pub struct Config {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(ValueEnum, Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[cfg_attr(feature = "cli", derive(ValueEnum))]
 pub enum FileFormat {
     flamegraph,
     raw,
@@ -70,6 +73,7 @@ pub enum FileFormat {
     chrometrace,
 }
 
+#[cfg(feature = "cli")]
 impl std::str::FromStr for FileFormat {
     type Err = String;
 
@@ -135,6 +139,7 @@ impl Default for Config {
     }
 }
 
+#[cfg(feature = "cli")]
 impl Config {
     /// Uses clap to set config options from commandline arguments
     pub fn from_commandline() -> Config {
@@ -503,6 +508,7 @@ impl Config {
     }
 }
 
+#[cfg(feature = "cli")]
 #[cfg(test)]
 mod tests {
     use super::*;
