@@ -58,6 +58,8 @@ pub struct Config {
     #[doc(hidden)]
     pub refresh_seconds: f64,
     #[doc(hidden)]
+    pub core_filename: Option<String>,
+    #[doc(hidden)]
     pub period: Option<u64>,
 }
 
@@ -138,6 +140,7 @@ impl Default for Config {
             full_filenames: false,
             lineno: LineNo::LastInstruction,
             refresh_seconds: 1.0,
+            core_filename: None,
             period: None,
         }
     }
@@ -276,6 +279,7 @@ impl Config {
                 Arg::new("hideprogress")
                     .long("hideprogress")
                     .hide(true)
+                    .help("Hides progress bar (useful for showing error output on record)"),
             )
             .arg(
                 Arg::new("period")
@@ -401,7 +405,6 @@ impl Config {
                     std::process::exit(1);
                 }
                 config.hide_progress = matches.occurrences_of("hideprogress") > 0;
-
 
                 if let Some(period_str) = matches.value_of("period") {
                     let period_secs: u64 = period_str.parse().map_err(|_| {

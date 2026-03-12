@@ -1,4 +1,5 @@
 /target
+/release
 remoteprocess/target
 **/*.rs.bk
 
