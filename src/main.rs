@@ -130,20 +130,46 @@ impl Recorder for RawFlamegraph {
     }
 }
 
-fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error> {
-    let mut output: Box<dyn Recorder> = match config.format {
+fn create_recorder(config: &Config) -> Result<Box<dyn Recorder>, Error> {
+    match config.format {
         Some(FileFormat::flamegraph) => {
-            Box::new(flamegraph::Flamegraph::new(config.show_line_numbers))
+            Ok(Box::new(flamegraph::Flamegraph::new(config.show_line_numbers)))
         }
-        Some(FileFormat::speedscope) => Box::new(speedscope::Stats::new(config)),
-        Some(FileFormat::raw) => Box::new(RawFlamegraph(flamegraph::Flamegraph::new(
+        Some(FileFormat::speedscope) => Ok(Box::new(speedscope::Stats::new(config))),
+        Some(FileFormat::raw) => Ok(Box::new(RawFlamegraph(flamegraph::Flamegraph::new(
             config.show_line_numbers,
-        ))),
+        )))),
         Some(FileFormat::chrometrace) => {
-            Box::new(chrometrace::Chrometrace::new(config.show_line_numbers))
+            Ok(Box::new(chrometrace::Chrometrace::new(config.show_line_numbers)))
         }
-        None => return Err(format_err!("A file format is required to record samples")),
-    };
+        None => Err(format_err!("A file format is required to record samples")),
+    }
+}
+
+fn generate_periodic_filename(
+    base_filename: &str,
+    period_index: u64,
+    format: &FileFormat,
+) -> String {
+    use std::path::Path;
+    let path = Path::new(base_filename);
+    let stem = path.file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("output");
+    let ext = path.extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or(match format {
+            FileFormat::flamegraph => "svg",
+            FileFormat::speedscope => "json",
+            FileFormat::raw => "txt",
+            FileFormat::chrometrace => "json",
+        });
+    
+    format!("{}-{}.{}", stem, period_index, ext)
+}
+
+fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error> {
+    let mut output: Box<dyn Recorder> = create_recorder(config)?;
 
     let filename = match config.filename.clone() {
         Some(filename) => filename,
@@ -168,6 +194,10 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
     };
 
     let sampler = sampler::Sampler::new(pid, config)?;
+    let period_duration = config.period.map(|secs| std::time::Duration::from_secs(secs));
+    let mut period_start = period_duration.map(|_| std::time::Instant::now());
+    let mut period_index = 0u64;
+    let mut period_samples = 0u64;
 
     // if we're not showing a progress bar, it's probably because we've spawned the process and
     // are displaying its stderr/stdout. In that case add a prefix to our println messages so
@@ -301,7 +331,35 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
             }
 
             samples += 1;
+            period_samples += 1;
             output.increment(trace)?;
+            
+            // Periodic output: check if we need to write out intermediate results
+            if let (Some(duration), Some(current_period_start)) = (period_duration, period_start.as_ref()) {
+                if current_period_start.elapsed() >= duration {
+                    // Create filename for this period
+                    if let Some(base_filename) = &config.filename {
+                        let period_filename = generate_periodic_filename(base_filename, period_index, config.format.as_ref().unwrap());
+                        
+                        // Try to write the output to the period filename
+                        if let Ok(mut file) = std::fs::File::create(&period_filename) {
+                            if let Err(e) = output.write(&mut file) {
+                                warn!("Failed to write period output to '{}': {}", period_filename, e);
+                            } else {
+                                println!("Wrote period output to '{}' ({} samples)", period_filename, period_samples);
+                            }
+                        } else {
+                            warn!("Failed to create period output file '{}'", period_filename);
+                        }
+                        
+                        // Reset the output recorder and period stats for next period
+                        output = create_recorder(config)?;
+                        period_index += 1;
+                        period_samples = 0;
+                        period_start = Some(std::time::Instant::now());
+                    }
+                }
+            }
         }
 
         if let Some(sampling_errors) = sample.sampling_errors {
@@ -327,9 +385,35 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
         println!("\n{lede}{exit_message}");
     }
 
-    {
-        let mut out_file = std::fs::File::create(&filename)?;
-        output.write(&mut out_file)?;
+    // Determine final output behavior based on whether periods were used
+    let final_filename = if config.period.is_some() && period_samples > 0 && config.filename.is_some() {
+        // If periods used and we have leftover data, create a final output file based on the last period
+        let base_filename = config.filename.as_ref().unwrap();
+        let final_period_filename = generate_periodic_filename(base_filename, period_index, config.format.as_ref().unwrap());
+        info!("Writing remaining samples to '{}'", final_period_filename);
+        Some(final_period_filename)
+    } else if config.period.is_none() && config.filename.is_some() {
+        // Regular mode with filename specified -> use that file
+        Some(config.filename.as_ref().unwrap().clone())
+    } else if config.period.is_none() {
+        // Regular mode without filename -> use auto-generated filename
+        Some(filename.clone())
+    } else {
+        // Periodic mode but no filename specified and no remaining samples to write
+        None
+    };
+    
+    if let Some(final_output_filename) = final_filename {
+        match std::fs::File::create(&final_output_filename) {
+            Ok(mut out_file) => {
+                if let Err(e) = output.write(&mut out_file) {
+                    warn!("Failed to write output to '{}': {}", final_output_filename, e);
+                }
+            }
+            Err(e) => {
+                warn!("Failed to create output file '{}': {}", final_output_filename, e);
+            }
+        }
     }
 
     match config.format.as_ref().unwrap() {

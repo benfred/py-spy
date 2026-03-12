@@ -58,7 +58,7 @@ pub struct Config {
     #[doc(hidden)]
     pub refresh_seconds: f64,
     #[doc(hidden)]
-    pub core_filename: Option<String>,
+    pub period: Option<u64>,
 }
 
 #[allow(non_camel_case_types)]
@@ -138,7 +138,7 @@ impl Default for Config {
             full_filenames: false,
             lineno: LineNo::LastInstruction,
             refresh_seconds: 1.0,
-            core_filename: None,
+            period: None,
         }
     }
 }
@@ -276,7 +276,13 @@ impl Config {
                 Arg::new("hideprogress")
                     .long("hideprogress")
                     .hide(true)
-                    .help("Hides progress bar (useful for showing error output on record)"),
+            )
+            .arg(
+                Arg::new("period")
+                    .long("period")
+                    .value_name("seconds")
+                    .help("Generate periodic output files every N seconds (default: disabled)")
+                    .takes_value(true),
             );
 
         let top = Command::new("top")
@@ -395,6 +401,23 @@ impl Config {
                     std::process::exit(1);
                 }
                 config.hide_progress = matches.occurrences_of("hideprogress") > 0;
+
+
+                if let Some(period_str) = matches.value_of("period") {
+                    let period_secs: u64 = period_str.parse().map_err(|_| {
+                        clap::Error::raw(
+                            clap::ErrorKind::InvalidValue,
+                            "Invalid value for --period: must be a positive integer",
+                        )
+                    })?;
+                    if period_secs == 0 {
+                        return Err(clap::Error::raw(
+                            clap::ErrorKind::InvalidValue,
+                            "Period must be greater than 0",
+                        ));
+                    }
+                    config.period = Some(period_secs);
+                }
             }
             "top" => {
                 config.sampling_rate = matches.value_of_t("rate")?;
