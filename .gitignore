@@ -1,4 +1,5 @@
 /target
+/release
 remoteprocess/target
 **/*.rs.bk
 
@@ -23,3 +24,6 @@ var/
 .vscode/
 **/.vagrant
 *.log
+
+# ai
+/.sisyphus
