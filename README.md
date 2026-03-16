@@ -189,7 +189,7 @@ Finally, run the following command:
 sudo codesign --entitlements entitlements.xml -fs NAME_OF_CREATED_CERTIFICATE PATH_TO_PYSPY_BINARY
 ```
 
-You may now run py-spy without sudo, but you will still be asked for your user password.
+You may now run py-spy without sudo. You will be asked for your system admin credentials (only once per session).
 
 #### Linux
 
