@@ -393,7 +393,7 @@ fn pyspy_main() -> Result<(), Error> {
         if unsafe { libc::geteuid() } != 0 {
             eprintln!("This program requires root on OSX.");
             eprintln!("Try running again with elevated permissions by going 'sudo !!'");
-            std::process::exit(1)
+            // std::process::exit(1)
         }
     }
 
