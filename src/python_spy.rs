@@ -9,10 +9,11 @@ use anyhow::{Context, Error, Result};
 use remoteprocess::{Pid, Process, ProcessMemory, Tid};
 
 use crate::config::{Config, LockingStrategy};
+use crate::debug_offsets::DebugOffsets;
 #[cfg(feature = "unwind")]
 use crate::native_stack_trace::NativeStack;
 use crate::python_bindings::{
-    v2_7_15, v3_10_0, v3_11_0, v3_12_0, v3_13_0, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0, v3_9_5,
+    v2_7_15, v3_10_0, v3_11_0, v3_12_0, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0, v3_9_5,
 };
 use crate::python_data_access::format_variable;
 use crate::python_interpreters::{InterpreterState, ThreadState};
@@ -36,6 +37,7 @@ pub struct PythonSpy {
     pub short_filenames: HashMap<String, Option<String>>,
     pub python_thread_ids: HashMap<u64, Tid>,
     pub python_thread_names: HashMap<u64, String>,
+    pub debug_offsets: Option<DebugOffsets>,
     #[cfg(target_os = "linux")]
     pub dockerized: bool,
 }
@@ -70,6 +72,22 @@ impl PythonSpy {
             config,
         )?;
 
+        let debug_offsets = if version.minor >= 13 {
+            if let Some(&runtime_addr) = python_info.get_symbol("_PyRuntime") {
+                match DebugOffsets::read(&process, runtime_addr as usize, &version) {
+                    Ok(offsets) => Some(offsets),
+                    Err(e) => {
+                        warn!("Failed to read _Py_DebugOffsets: {}", e);
+                        None
+                    }
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         #[cfg(feature = "unwind")]
         let native = if config.native {
             Some(NativeStack::new(
@@ -95,6 +113,7 @@ impl PythonSpy {
             short_filenames: HashMap::new(),
             python_thread_ids: HashMap::new(),
             python_thread_names: HashMap::new(),
+            debug_offsets,
         })
     }
 
@@ -185,7 +204,12 @@ impl PythonSpy {
                 major: 3,
                 minor: 13,
                 ..
-            } => self._get_stack_traces::<v3_13_0::_is>(),
+            } => self.get_stack_traces_via_offsets(),
+            Version {
+                major: 3,
+                minor: 14,
+                ..
+            } => self.get_stack_traces_via_offsets(),
             _ => Err(format_err!(
                 "Unsupported version of Python: {}",
                 self.version
@@ -193,29 +217,10 @@ impl PythonSpy {
         }
     }
 
-    // implementation of get_stack_traces, where we have a type for the InterpreterState
     fn _get_stack_traces<I: InterpreterState>(&mut self) -> Result<Vec<StackTrace>, Error> {
-        // Query the OS to get if each thread in the process is running or not
-        let mut thread_activity = HashMap::new();
-        if self.config.gil_only {
-            // Don't need to collect thread activity if we're only getting the
-            // GIL thread: If we're holding the GIL we're by definition active.
-        } else {
-            for thread in self.process.threads()?.iter() {
-                let threadid: Tid = thread.id()?;
-                let Ok(active) = thread.active() else {
-                    // Do not fail all sampling if a single thread died between entering the loop
-                    // and reading its status.
-                    continue;
-                };
-                thread_activity.insert(threadid, active);
-            }
-        }
+        let thread_activity = self._collect_thread_activity()?;
 
-        // Lock the process if appropriate. Note we have to lock AFTER getting the thread
-        // activity status from the OS (otherwise each thread would report being inactive always).
-        // This has the potential for race conditions (in that the thread activity could change
-        // between getting the status and locking the thread, but seems unavoidable right now
+        // Lock after getting thread activity (otherwise all threads report inactive)
         let _lock = if self.config.blocking == LockingStrategy::Lock {
             Some(self.process.lock().context("Failed to suspend process")?)
         } else {
@@ -262,12 +267,11 @@ impl PythonSpy {
             // python 3.11+ has the native thread id directly on the PyThreadState object,
             // for older versions of python, try using OS specific code to get the native
             // thread id (doesn't work on freebsd, or on arm/i686 processors on linux)
+            // For older Python (<3.11), native thread id isn't on the thread state
             if trace.os_thread_id.is_none() {
                 let mut os_thread_id =
                     self._get_os_thread_id::<I>(python_thread_id, threads_head)?;
 
-                // linux can see issues where pthread_ids get recycled for new OS threads,
-                // which totally breaks the caching we were doing here. Detect this and retry
                 if let Some(tid) = os_thread_id {
                     if !thread_activity.is_empty() && !thread_activity.contains_key(&tid) {
                         info!("clearing away thread id caches, thread {} has exited", tid);
@@ -281,72 +285,22 @@ impl PythonSpy {
                 trace.os_thread_id = os_thread_id.map(|id| id as u64);
             }
 
-            trace.thread_name = self._get_python_thread_name(python_thread_id);
             trace.owns_gil = owns_gil;
-            trace.pid = self.process.pid;
-
-            // Figure out if the thread is sleeping from the OS if possible
-            trace.active = true;
-            if let Some(id) = trace.os_thread_id {
-                let id = id as Tid;
-                if let Some(active) = thread_activity.get(&id as _) {
-                    trace.active = *active;
-                }
-            }
-
-            // fallback to using a heuristic if we think the thread is still active
-            // Note that on linux the OS thread activity can only be gotten on x86_64
-            // processors and even then seems to be wrong occasionally in thinking 'select'
-            // calls are active (which seems related to the thread locking code,
-            // this problem doesn't seem to happen with the --nonblocking option)
-            // Note: this should be done before the native merging for correct results
-            if trace.active {
-                trace.active = !self._heuristic_is_thread_idle(&trace);
-            }
-
-            // Merge in the native stack frames if necessary
-            #[cfg(feature = "unwind")]
-            {
-                if self.config.native {
-                    if let Some(native) = self.native.as_mut() {
-                        let thread_id = trace
-                            .os_thread_id
-                            .ok_or_else(|| format_err!("failed to get os threadid"))?;
-                        let os_thread = remoteprocess::Thread::new(thread_id as Tid)?;
-                        trace.frames = native.merge_native_thread(&trace.frames, &os_thread)?
-                    }
-                }
-            }
-
-            for frame in &mut trace.frames {
-                frame.short_filename = self.shorten_filename(&frame.filename);
-                if let Some(locals) = frame.locals.as_mut() {
-                    let max_length = (128 * self.config.dump_locals) as isize;
-                    for local in locals {
-                        let repr = format_variable::<I, Process>(
-                            &self.process,
-                            &self.version,
-                            local.addr,
-                            max_length,
-                        );
-                        local.repr = Some(repr.unwrap_or_else(|_| "?".to_owned()));
-                    }
-                }
-            }
-
             traces.push(trace);
 
-            // This seems to happen occasionally when scanning BSS addresses for valid interpreters
             if traces.len() > 4096 {
                 return Err(format_err!("Max thread recursion depth reached"));
             }
 
             if self.config.gil_only {
-                // There's only one GIL thread and we've captured it, so we can
-                // stop now
                 break;
             }
         }
+
+        self._enrich_traces(&mut traces, &thread_activity, |process, version, addr, max_len| {
+            format_variable::<I, Process>(process, version, addr, max_len)
+        })?;
+
         Ok(traces)
     }
 
@@ -592,5 +546,106 @@ impl PythonSpy {
         self.short_filenames
             .insert(filename.to_owned(), shortened.clone());
         shortened
+    }
+
+    /// Get stack traces using the offset-based path.
+    pub fn get_stack_traces_via_offsets(&mut self) -> Result<Vec<StackTrace>, Error> {
+        let offsets = self.debug_offsets.clone().ok_or_else(|| {
+            format_err!(
+                "Offset-based reading not available for Python {}",
+                self.version
+            )
+        })?;
+
+        let thread_activity = self._collect_thread_activity()?;
+
+        let _lock = if self.config.blocking == LockingStrategy::Lock {
+            Some(self.process.lock().context("Failed to suspend process")?)
+        } else {
+            None
+        };
+
+        let mut traces = crate::offset_stack_trace::get_stack_traces_via_offsets(
+            self.interpreter_address,
+            &self.process,
+            &offsets,
+            &self.version,
+            self.config.lineno,
+            self.config.dump_locals > 0,
+        )?;
+
+        if self.config.gil_only {
+            traces.retain(|t| t.owns_gil);
+        }
+
+        self._enrich_traces(&mut traces, &thread_activity, |process, _version, addr, max_len| {
+            crate::offset_stack_trace::format_variable_via_offsets(process, &offsets, addr, max_len)
+        })?;
+
+        Ok(traces)
+    }
+
+    fn _collect_thread_activity(&self) -> Result<HashMap<Tid, bool>, Error> {
+        let mut thread_activity = HashMap::new();
+        if !self.config.gil_only {
+            for thread in self.process.threads()?.iter() {
+                let threadid: Tid = thread.id()?;
+                let Ok(active) = thread.active() else {
+                    continue;
+                };
+                thread_activity.insert(threadid, active);
+            }
+        }
+        Ok(thread_activity)
+    }
+
+    fn _enrich_traces(
+        &mut self,
+        traces: &mut [StackTrace],
+        thread_activity: &HashMap<Tid, bool>,
+        format_var: impl Fn(&Process, &Version, usize, isize) -> Result<String, Error>,
+    ) -> Result<(), Error> {
+        for trace in traces.iter_mut() {
+            trace.pid = self.process.pid;
+            trace.thread_name = self._get_python_thread_name(trace.thread_id);
+
+            if let Some(id) = trace.os_thread_id {
+                let id = id as Tid;
+                if let Some(active) = thread_activity.get(&id) {
+                    trace.active = *active;
+                }
+            }
+
+            if trace.active {
+                trace.active = !self._heuristic_is_thread_idle(trace);
+            }
+
+            #[cfg(feature = "unwind")]
+            {
+                if self.config.native {
+                    if let Some(native) = self.native.as_mut() {
+                        if let Some(thread_id) = trace.os_thread_id {
+                            let os_thread = remoteprocess::Thread::new(thread_id as Tid)?;
+                            trace.frames =
+                                native.merge_native_thread(&trace.frames, &os_thread)?;
+                        }
+                    }
+                }
+            }
+
+            for frame in &mut trace.frames {
+                frame.short_filename = self.shorten_filename(&frame.filename);
+                if let Some(locals) = frame.locals.as_mut() {
+                    let max_length = (128 * self.config.dump_locals) as isize;
+                    for local in locals {
+                        local.repr = Some(
+                            format_var(&self.process, &self.version, local.addr, max_length)
+                                .unwrap_or_else(|_| "?".to_owned()),
+                        );
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 }

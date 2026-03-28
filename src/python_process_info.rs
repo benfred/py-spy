@@ -16,6 +16,7 @@ use remoteprocess::ProcessMemory;
 
 use crate::binary_parser::{parse_binary, BinaryInfo};
 use crate::config::Config;
+use crate::debug_offsets::{read_ptr, DebugOffsets};
 use crate::python_bindings::{
     pyruntime, v2_7_15, v3_10_0, v3_11_0, v3_12_0, v3_13_0, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0,
     v3_9_5,
@@ -376,6 +377,35 @@ where
     match version {
         Version {
             major: 3,
+            minor: 14,
+            ..
+        } => {
+            if let Some(&runtime_addr) = python_info.get_symbol("_PyRuntime") {
+                let offsets = DebugOffsets::read(process, runtime_addr as usize, version)?;
+                let interp_addr: usize = process.copy_struct(
+                    runtime_addr as usize + offsets.runtime_interpreters_head as usize,
+                )?;
+
+                match check_interpreter_via_offsets(
+                    interp_addr,
+                    &*python_info.maps,
+                    process,
+                    &offsets,
+                ) {
+                    Ok(addr) => return Ok(addr),
+                    Err(e) => {
+                        warn!(
+                            "Interpreter address from _PyRuntime symbol is invalid {:016x}: {}",
+                            interp_addr, e
+                        );
+                    }
+                };
+            } else {
+                warn!("_PyRuntime symbol not found for Python 3.14");
+            }
+        }
+        Version {
+            major: 3,
             minor: 13,
             ..
         } => {
@@ -484,6 +514,9 @@ where
 
     // We're going to scan the BSS/data section for things, and try to narrowly scan things that
     // look like pointers to PyinterpreterState
+    if binary.bss_size == 0 {
+        return Err(format_err!("BSS section is empty"));
+    }
     let bss = process.copy(binary.bss_addr as usize, binary.bss_size as usize)?;
 
     #[allow(clippy::cast_ptr_alignment)]
@@ -602,8 +635,68 @@ where
             minor: 13,
             ..
         } => check::<v3_13_0::_is, P>(addrs, maps, process),
+        Version {
+            major: 3,
+            minor: 14,
+            ..
+        } => {
+            // For 3.14 we don't have bindgen structs — validate using debug offsets.
+            // This BSS-scan fallback should never be reached in practice: 3.14
+            // always has _PyRuntime, so the symbol-based path above handles it.
+            // We use 3.13 offsets as a best-effort approximation; if a future
+            // version moves threads.head or thread.interp, the proper fix is to
+            // read debug offsets (which requires _PyRuntime, making this moot).
+            let offsets = DebugOffsets {
+                interp_threads_head: std::mem::offset_of!(v3_13_0::PyInterpreterState, threads.head) as u64,
+                thread_interp: std::mem::offset_of!(v3_13_0::PyThreadState, interp) as u64,
+                ..DebugOffsets::default()
+            };
+            check_via_offsets(addrs, maps, process, &offsets)
+        }
         _ => Err(format_err!("Unsupported version of Python: {}", version)),
     }
+}
+
+/// Offset-based interpreter address validation — equivalent to `check::<I>` but
+/// uses runtime offsets instead of compile-time struct layouts.
+fn check_interpreter_via_offsets<P: ProcessMemory>(
+    addr: usize,
+    maps: &dyn ContainsAddr,
+    process: &P,
+    offsets: &DebugOffsets,
+) -> Result<usize, Error> {
+    check_via_offsets(&[addr], maps, process, offsets)
+}
+
+fn check_via_offsets<P: ProcessMemory>(
+    addrs: &[usize],
+    maps: &dyn ContainsAddr,
+    process: &P,
+    offsets: &DebugOffsets,
+) -> Result<usize, Error> {
+    for &addr in addrs {
+        if !maps.contains_addr(addr) {
+            continue;
+        }
+        let threads_head = match read_ptr(process, addr, offsets.interp_threads_head) {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        if threads_head == 0 || !maps.contains_addr(threads_head) {
+            continue;
+        }
+        // Verify the thread points back to this interpreter
+        let interp_back = match read_ptr(process, threads_head, offsets.thread_interp) {
+            Ok(i) => i,
+            Err(_) => continue,
+        };
+        if interp_back == addr {
+            return Ok(addr);
+        }
+    }
+    Err(format_err!(
+        "Failed to find a python interpreter via offset-based validation"
+    ))
 }
 
 pub fn get_threadstate_address<P>(
@@ -617,6 +710,21 @@ where
     P: ProcessMemory,
 {
     let threadstate_address = match version {
+        Version {
+            major: 3,
+            minor: 14,
+            ..
+        } => {
+            // The offset-based stack trace path handles GIL detection internally,
+            // so we just need the inline _gil struct address for initialization.
+            if let Some(&runtime_addr) = python_info.get_symbol("_PyRuntime") {
+                let offsets = DebugOffsets::read(process, runtime_addr as usize, version)?;
+                interpreter_address + offsets.interp_gil_runtime_state as usize
+            } else {
+                error_if_gil(config, version, "failed to find _PyRuntime symbol for 3.14")?;
+                0
+            }
+        }
         Version {
             major: 3,
             minor: 13,
@@ -767,7 +875,7 @@ pub fn get_windows_python_symbols(
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 pub fn is_python_lib(pathname: &str) -> bool {
     lazy_static! {
-        static ref RE: Regex = Regex::new(r"/libpython\d.\d\d?(m|d|u)?.so").unwrap();
+        static ref RE: Regex = Regex::new(r"/libpython\d[.]\d\d?[mdut]?[.]so").unwrap();
     }
     RE.is_match(pathname)
 }
@@ -775,7 +883,7 @@ pub fn is_python_lib(pathname: &str) -> bool {
 #[cfg(target_os = "macos")]
 pub fn is_python_lib(pathname: &str) -> bool {
     lazy_static! {
-        static ref RE: Regex = Regex::new(r"/libpython\d.\d\d?(m|d|u)?.(dylib|so)$").unwrap();
+        static ref RE: Regex = Regex::new(r"/libpython\d[.]\d\d?[mdut]?[.](dylib|so)$").unwrap();
     }
     RE.is_match(pathname) || is_python_framework(pathname)
 }
@@ -783,7 +891,7 @@ pub fn is_python_lib(pathname: &str) -> bool {
 #[cfg(windows)]
 pub fn is_python_lib(pathname: &str) -> bool {
     lazy_static! {
-        static ref RE: Regex = RegexBuilder::new(r"\\python\d\d\d?(m|d|u)?.dll$")
+        static ref RE: Regex = RegexBuilder::new(r"\\python\d\d\d?[mdut]?[.]dll$")
             .case_insensitive(true)
             .build()
             .unwrap();

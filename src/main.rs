@@ -11,10 +11,12 @@ mod console_viewer;
 mod coredump;
 #[cfg(feature = "unwind")]
 mod cython;
+mod debug_offsets;
 mod dump;
 mod flamegraph;
 #[cfg(feature = "unwind")]
 mod native_stack_trace;
+mod offset_stack_trace;
 mod python_bindings;
 mod python_data_access;
 mod python_interpreters;

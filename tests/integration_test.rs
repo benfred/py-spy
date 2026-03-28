@@ -553,3 +553,336 @@ fn test_delayed_subprocess() {
         break;
     }
 }
+
+fn require_root_on_macos() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        if unsafe { libc::geteuid() } != 0 {
+            return false;
+        }
+    }
+    true
+}
+
+fn assert_traces_equivalent(trait_traces: &[py_spy::StackTrace], offset_traces: &[py_spy::StackTrace]) {
+
+    assert_eq!(
+        trait_traces.len(),
+        offset_traces.len(),
+        "Thread count mismatch: trait={} offset={}",
+        trait_traces.len(),
+        offset_traces.len()
+    );
+
+    for (t_trace, o_trace) in trait_traces.iter().zip(offset_traces.iter()) {
+        assert_eq!(
+            t_trace.thread_id, o_trace.thread_id,
+            "Thread ID mismatch"
+        );
+        assert_eq!(
+            t_trace.os_thread_id, o_trace.os_thread_id,
+            "OS thread ID mismatch for thread {}",
+            t_trace.thread_id
+        );
+        assert_eq!(
+            t_trace.owns_gil, o_trace.owns_gil,
+            "GIL ownership mismatch for thread {}",
+            t_trace.thread_id
+        );
+        assert_eq!(
+            t_trace.frames.len(),
+            o_trace.frames.len(),
+            "Frame count mismatch for thread {}: trait={} offset={}.\n  trait frames: {:?}\n  offset frames: {:?}",
+            t_trace.thread_id,
+            t_trace.frames.len(),
+            o_trace.frames.len(),
+            t_trace.frames.iter().map(|f| format!("{}:{}", f.filename, f.name)).collect::<Vec<_>>(),
+            o_trace.frames.iter().map(|f| format!("{}:{}", f.filename, f.name)).collect::<Vec<_>>(),
+        );
+
+        for (i, (t_frame, o_frame)) in
+            t_trace.frames.iter().zip(o_trace.frames.iter()).enumerate()
+        {
+            assert_eq!(
+                t_frame.filename, o_frame.filename,
+                "Filename mismatch at frame {} of thread {}",
+                i, t_trace.thread_id
+            );
+            assert_eq!(
+                t_frame.name, o_frame.name,
+                "Function name mismatch at frame {} of thread {}",
+                i, t_trace.thread_id
+            );
+            assert_eq!(
+                t_frame.line, o_frame.line,
+                "Line number mismatch at frame {} ({}.{}) of thread {}",
+                i, t_frame.filename, t_frame.name, t_trace.thread_id
+            );
+            assert_eq!(
+                t_frame.is_entry, o_frame.is_entry,
+                "is_entry mismatch at frame {} of thread {}",
+                i, t_trace.thread_id
+            );
+        }
+    }
+}
+
+/// Run an offset-vs-trait oracle comparison with the process suspended so both
+/// paths see identical interpreter state.
+fn run_offset_oracle(runner: &mut TestRunner) {
+    if runner.spy.version.minor < 13 {
+        eprintln!(
+            "Skipping: Python {}.{} < 3.13",
+            runner.spy.version.major, runner.spy.version.minor
+        );
+        return;
+    }
+    // Suspend the process externally so both reads see the same state.
+    // Override blocking to NonBlocking so the internal get_stack_traces
+    // doesn't try to ptrace-attach (which would conflict with our lock).
+    let _lock = match runner.spy.process.lock() {
+        Ok(lock) => lock,
+        Err(e) => {
+            eprintln!("Skipping oracle test: cannot lock process ({})", e);
+            return;
+        }
+    };
+    runner.spy.config.blocking = py_spy::config::LockingStrategy::NonBlocking;
+    let trait_traces = runner.spy.get_stack_traces().unwrap();
+    let offset_traces = runner.spy.get_stack_traces_via_offsets().unwrap();
+    drop(_lock);
+    assert_traces_equivalent(&trait_traces, &offset_traces);
+}
+
+#[test]
+fn test_offset_oracle_longsleep() {
+    if !require_root_on_macos() {
+        return;
+    }
+    let mut runner = TestRunner::new(Config::default(), "./tests/scripts/longsleep.py");
+    run_offset_oracle(&mut runner);
+}
+
+#[test]
+fn test_offset_oracle_busyloop() {
+    if !require_root_on_macos() {
+        return;
+    }
+    let mut runner = TestRunner::new(Config::default(), "./tests/scripts/busyloop.py");
+    run_offset_oracle(&mut runner);
+}
+
+#[test]
+fn test_offset_oracle_threads() {
+    if !require_root_on_macos() {
+        return;
+    }
+    let mut runner = TestRunner::new(Config::default(), "./tests/scripts/thread_names.py");
+    run_offset_oracle(&mut runner);
+}
+
+#[test]
+fn test_offset_oracle_recursive() {
+    if !require_root_on_macos() {
+        return;
+    }
+    let mut runner = TestRunner::new(Config::default(), "./tests/scripts/recursive.py");
+    run_offset_oracle(&mut runner);
+}
+
+const PYTHON314: &str = "python3.14";
+
+fn python314_available() -> bool {
+    std::process::Command::new(PYTHON314)
+        .arg("--version")
+        .output()
+        .is_ok()
+}
+
+#[test]
+fn test_314_longsleep() {
+    if !require_root_on_macos() {
+        return;
+    }
+    if !python314_available() {
+        eprintln!("Skipping: {} not found in PATH", PYTHON314);
+        return;
+    }
+    let child = ScriptRunner::new(PYTHON314, "./tests/scripts/longsleep.py");
+    std::thread::sleep(std::time::Duration::from_millis(400));
+    let mut spy = PythonSpy::retry_new(child.id(), &Config::default(), 20).unwrap();
+    assert_eq!(spy.version.minor, 14);
+
+    let traces = spy.get_stack_traces().unwrap();
+    assert_eq!(traces.len(), 1);
+    let trace = &traces[0];
+    assert_eq!(trace.frames[0].name, "longsleep");
+    assert!(trace.frames[0].filename.contains("longsleep.py"));
+    assert_eq!(trace.frames[0].line, 5);
+    assert_eq!(trace.frames[1].name, "<module>");
+}
+
+#[test]
+fn test_314_busyloop() {
+    if !require_root_on_macos() {
+        return;
+    }
+    if !python314_available() {
+        eprintln!("Skipping: {} not found in PATH", PYTHON314);
+        return;
+    }
+    let child = ScriptRunner::new(PYTHON314, "./tests/scripts/busyloop.py");
+    std::thread::sleep(std::time::Duration::from_millis(400));
+    let mut spy = PythonSpy::retry_new(child.id(), &Config::default(), 20).unwrap();
+    assert_eq!(spy.version.minor, 14);
+
+    let traces = spy.get_stack_traces().unwrap();
+    assert!(!traces.is_empty());
+    assert!(traces[0].active);
+    // Verify we get valid frames with expected filenames
+    assert!(traces[0].frames.iter().any(|f| f.filename.contains("busyloop.py")));
+}
+
+#[test]
+fn test_314_threads() {
+    if !require_root_on_macos() {
+        return;
+    }
+    if !python314_available() {
+        eprintln!("Skipping: {} not found in PATH", PYTHON314);
+        return;
+    }
+    let child = ScriptRunner::new(PYTHON314, "./tests/scripts/thread_names.py");
+    std::thread::sleep(std::time::Duration::from_millis(400));
+    let mut spy = PythonSpy::retry_new(child.id(), &Config::default(), 20).unwrap();
+    assert_eq!(spy.version.minor, 14);
+
+    let traces = spy.get_stack_traces().unwrap();
+    // thread_names.py creates 10 threads + main = 11
+    assert!(traces.len() >= 2, "Expected multiple threads, got {}", traces.len());
+}
+
+const PYTHON314T: &str = "python3.14t";
+
+fn python314t_available() -> bool {
+    std::process::Command::new(PYTHON314T)
+        .arg("--version")
+        .output()
+        .is_ok()
+}
+
+#[test]
+fn test_314t_longsleep() {
+    if !require_root_on_macos() {
+        return;
+    }
+    if !python314t_available() {
+        eprintln!("Skipping: {} not found in PATH", PYTHON314T);
+        return;
+    }
+    let child = ScriptRunner::new(PYTHON314T, "./tests/scripts/longsleep.py");
+    std::thread::sleep(std::time::Duration::from_millis(400));
+    let mut spy = PythonSpy::retry_new(child.id(), &Config::default(), 20).unwrap();
+    assert_eq!(spy.version.minor, 14);
+
+    let traces = spy.get_stack_traces().unwrap();
+    assert_eq!(traces.len(), 1);
+    let trace = &traces[0];
+    assert_eq!(trace.frames[0].name, "longsleep");
+    assert!(trace.frames[0].filename.contains("longsleep.py"));
+    assert_eq!(trace.frames[0].line, 5);
+    assert_eq!(trace.frames[1].name, "<module>");
+    // In free-threaded builds with GIL disabled, no thread owns the GIL
+    assert!(!trace.owns_gil);
+}
+
+#[test]
+fn test_314t_busyloop() {
+    if !require_root_on_macos() {
+        return;
+    }
+    if !python314t_available() {
+        eprintln!("Skipping: {} not found in PATH", PYTHON314T);
+        return;
+    }
+    let child = ScriptRunner::new(PYTHON314T, "./tests/scripts/busyloop.py");
+    std::thread::sleep(std::time::Duration::from_millis(400));
+    let mut spy = PythonSpy::retry_new(child.id(), &Config::default(), 20).unwrap();
+    assert_eq!(spy.version.minor, 14);
+
+    let traces = spy.get_stack_traces().unwrap();
+    assert!(!traces.is_empty());
+    assert!(traces[0].frames.iter().any(|f| f.filename.contains("busyloop.py")));
+}
+
+#[test]
+fn test_314t_threads() {
+    if !require_root_on_macos() {
+        return;
+    }
+    if !python314t_available() {
+        eprintln!("Skipping: {} not found in PATH", PYTHON314T);
+        return;
+    }
+    let child = ScriptRunner::new(PYTHON314T, "./tests/scripts/thread_names.py");
+    std::thread::sleep(std::time::Duration::from_millis(400));
+    let mut spy = PythonSpy::retry_new(child.id(), &Config::default(), 20).unwrap();
+    assert_eq!(spy.version.minor, 14);
+
+    let traces = spy.get_stack_traces().unwrap();
+    assert!(traces.len() >= 2, "Expected multiple threads, got {}", traces.len());
+    // No thread should own the GIL in a free-threaded build
+    for trace in &traces {
+        assert!(!trace.owns_gil, "Thread {} unexpectedly owns GIL in free-threaded build", trace.thread_id);
+    }
+}
+
+#[test]
+fn test_314t_thread_names() {
+    if !require_root_on_macos() {
+        return;
+    }
+    if !python314t_available() {
+        eprintln!("Skipping: {} not found in PATH", PYTHON314T);
+        return;
+    }
+    let config = Config {
+        include_idle: true,
+        ..Default::default()
+    };
+    let child = ScriptRunner::new(PYTHON314T, "./tests/scripts/thread_names.py");
+    std::thread::sleep(std::time::Duration::from_millis(400));
+    let mut spy = PythonSpy::retry_new(child.id(), &config, 20).unwrap();
+    assert_eq!(spy.version.minor, 14);
+
+    let traces = spy.get_stack_traces().unwrap();
+    assert_eq!(traces.len(), 11, "Expected 11 threads (main + 10 custom)");
+
+    let mut expected_threads: HashSet<String> =
+        (0..10).map(|n| format!("CustomThreadName-{}", n)).collect();
+    expected_threads.insert("MainThread".to_string());
+    let detected_threads: HashSet<String> = traces
+        .iter()
+        .filter_map(|trace| trace.thread_name.clone())
+        .collect();
+    assert_eq!(expected_threads, detected_threads);
+}
+
+#[test]
+fn test_314t_recursive() {
+    if !require_root_on_macos() {
+        return;
+    }
+    if !python314t_available() {
+        eprintln!("Skipping: {} not found in PATH", PYTHON314T);
+        return;
+    }
+    let child = ScriptRunner::new(PYTHON314T, "./tests/scripts/recursive.py");
+    std::thread::sleep(std::time::Duration::from_millis(400));
+    let mut spy = PythonSpy::retry_new(child.id(), &Config::default(), 20).unwrap();
+
+    let traces = spy.get_stack_traces().unwrap();
+    assert!(!traces.is_empty());
+    assert!(traces[0].frames.len() >= 2, "Expected recursive frames");
+    assert!(traces[0].frames.iter().any(|f| f.name == "recurse"));
+}

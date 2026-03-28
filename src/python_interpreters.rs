@@ -248,7 +248,7 @@ macro_rules! PythonCodeObjectImpl {
     };
 }
 
-fn read_varint(index: &mut usize, table: &[u8]) -> Option<usize> {
+pub fn read_varint(index: &mut usize, table: &[u8]) -> Option<usize> {
     if *index >= table.len() {
         return None;
     }
@@ -270,13 +270,57 @@ fn read_varint(index: &mut usize, table: &[u8]) -> Option<usize> {
     Some(ret)
 }
 
-fn read_signed_varint(index: &mut usize, table: &[u8]) -> Option<isize> {
+pub fn read_signed_varint(index: &mut usize, table: &[u8]) -> Option<isize> {
     let unsigned_val = read_varint(index, table)?;
     if unsigned_val & 1 != 0 {
         Some(-((unsigned_val >> 1) as isize))
     } else {
         Some((unsigned_val >> 1) as isize)
     }
+}
+
+/// Decode line number from the compact line table format used in Python 3.11+.
+/// `lasti` should already be adjusted for `co_code_adaptive` offset.
+pub fn get_line_number_compact(first_lineno: i32, lasti: i32, table: &[u8]) -> i32 {
+    let mut line_number: i32 = first_lineno;
+    let mut bytecode_address: i32 = 0;
+    let mut index: usize = 0;
+
+    loop {
+        if index >= table.len() {
+            break;
+        }
+        let byte = table[index];
+        index += 1;
+
+        let delta = ((byte & 7) as i32) + 1;
+        bytecode_address += delta * 2;
+        let code = (byte >> 3) & 15;
+        let line_delta = match code {
+            15 => 0,
+            14 => {
+                let delta = read_signed_varint(&mut index, table).unwrap_or(0);
+                read_varint(&mut index, table); // end line
+                read_varint(&mut index, table); // start column
+                read_varint(&mut index, table); // end column
+                delta
+            }
+            13 => read_signed_varint(&mut index, table).unwrap_or(0),
+            10..=12 => {
+                index += 2; // start column / end column
+                (code - 10).into()
+            }
+            _ => {
+                index += 1; // column
+                0
+            }
+        };
+        line_number += line_delta as i32;
+        if bytecode_address >= lasti {
+            break;
+        }
+    }
+    line_number
 }
 
 // Use for 3.11 and 3.12
@@ -310,48 +354,8 @@ macro_rules! CompactCodeObjectImpl {
             }
 
             fn get_line_number(&self, lasti: i32, table: &[u8]) -> i32 {
-                // unpack compressed table format from python 3.11
-                // https://github.com/python/cpython/pull/91666/files
                 let lasti = lasti - offset_of(self, &self.co_code_adaptive) as i32;
-                let mut line_number: i32 = self.first_lineno();
-                let mut bytecode_address: i32 = 0;
-
-                let mut index: usize = 0;
-                loop {
-                    if index >= table.len() {
-                        break;
-                    }
-                    let byte = table[index];
-                    index += 1;
-
-                    let delta = ((byte & 7) as i32) + 1;
-                    bytecode_address += delta * 2;
-                    let code = (byte >> 3) & 15;
-                    let line_delta = match code {
-                        15 => 0,
-                        14 => {
-                            let delta = read_signed_varint(&mut index, table).unwrap_or(0);
-                            read_varint(&mut index, table); // end line
-                            read_varint(&mut index, table); // start column
-                            read_varint(&mut index, table); // end column
-                            delta
-                        }
-                        13 => read_signed_varint(&mut index, table).unwrap_or(0),
-                        10..=12 => {
-                            index += 2; // start column / end column
-                            (code - 10).into()
-                        }
-                        _ => {
-                            index += 1; // column
-                            0
-                        }
-                    };
-                    line_number += line_delta as i32;
-                    if bytecode_address >= lasti {
-                        break;
-                    }
-                }
-                line_number
+                get_line_number_compact(self.first_lineno(), lasti, table)
             }
         }
     };

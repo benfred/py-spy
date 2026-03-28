@@ -35,9 +35,11 @@ pub mod config;
 pub mod coredump;
 #[cfg(feature = "unwind")]
 mod cython;
+mod debug_offsets;
 pub mod dump;
 #[cfg(feature = "unwind")]
 mod native_stack_trace;
+mod offset_stack_trace;
 mod python_bindings;
 mod python_data_access;
 mod python_interpreters;
