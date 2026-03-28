@@ -9,6 +9,29 @@ use crate::utils::offset_of;
 use crate::version::Version;
 use remoteprocess::ProcessMemory;
 
+/// Decode raw unicode bytes into a String given the kind and ascii flag.
+pub fn decode_unicode_bytes(kind: u32, ascii: bool, bytes: &[u8]) -> Result<String, Error> {
+    match (kind, ascii) {
+        (4, _) => {
+            #[allow(clippy::cast_ptr_alignment)]
+            let chars = unsafe {
+                std::slice::from_raw_parts(bytes.as_ptr() as *const char, bytes.len() / 4)
+            };
+            Ok(chars.iter().collect())
+        }
+        (2, _) => {
+            #[allow(clippy::cast_ptr_alignment)]
+            let chars = unsafe {
+                std::slice::from_raw_parts(bytes.as_ptr() as *const u16, bytes.len() / 2)
+            };
+            Ok(String::from_utf16(chars)?)
+        }
+        (1, true) => Ok(String::from_utf8(bytes.to_vec())?),
+        (1, false) => Ok(bytes.iter().map(|&b| b as char).collect()),
+        _ => Err(format_err!("Unknown string kind {}", kind)),
+    }
+}
+
 /// Copies a string from a target process. Attempts to handle unicode differences, which mostly seems to be working
 pub fn copy_string<T: StringObject, P: ProcessMemory>(
     ptr: *const T,
@@ -26,28 +49,8 @@ pub fn copy_string<T: StringObject, P: ProcessMemory>(
     }
 
     let kind = obj.kind();
-
     let bytes = process.copy(obj.address(ptr as usize), obj.size() * kind as usize)?;
-
-    match (kind, obj.ascii()) {
-        (4, _) => {
-            #[allow(clippy::cast_ptr_alignment)]
-            let chars = unsafe {
-                std::slice::from_raw_parts(bytes.as_ptr() as *const char, bytes.len() / 4)
-            };
-            Ok(chars.iter().collect())
-        }
-        (2, _) => {
-            #[allow(clippy::cast_ptr_alignment)]
-            let chars = unsafe {
-                std::slice::from_raw_parts(bytes.as_ptr() as *const u16, bytes.len() / 2)
-            };
-            Ok(String::from_utf16(chars)?)
-        }
-        (1, true) => Ok(String::from_utf8(bytes)?),
-        (1, false) => Ok(bytes.iter().map(|&b| b as char).collect()),
-        _ => Err(format_err!("Unknown string kind {}", kind)),
-    }
+    decode_unicode_bytes(kind, obj.ascii(), &bytes)
 }
 
 /// Copies data from a PyBytesObject (currently only lnotab object)
@@ -63,19 +66,54 @@ pub fn copy_bytes<T: BytesObject, P: ProcessMemory>(
     Ok(process.copy(obj.address(ptr as usize), size as usize)?)
 }
 
+/// Decode a Python int from pre-extracted size, sign, and digit address.
+/// Returns (value, overflowed).
+pub fn decode_long<P: ProcessMemory>(
+    process: &P,
+    size: usize,
+    negative: i64,
+    digits_addr: usize,
+) -> Result<(i64, bool), Error> {
+    match size {
+        0 => Ok((0, false)),
+        1 => {
+            let digit: u32 = process.copy_struct(digits_addr)?;
+            Ok((negative * digit as i64, false))
+        }
+        #[cfg(target_pointer_width = "64")]
+        2 => {
+            let digits: [u32; 2] = process.copy_struct(digits_addr)?;
+            let mut ret: i64 = 0;
+            for (i, &digit) in digits[..size].iter().enumerate() {
+                ret += (digit as i64) << (30 * i);
+            }
+            Ok((negative * ret, false))
+        }
+        #[cfg(target_pointer_width = "32")]
+        2..=4 => {
+            let digits: [u16; 4] = process.copy_struct(digits_addr)?;
+            let mut ret: i64 = 0;
+            for (i, &digit) in digits[..size].iter().enumerate() {
+                ret += (digit as i64) << (15 * i);
+            }
+            Ok((negative * ret, false))
+        }
+        _ => Ok((size as i64, true)),
+    }
+}
+
 /// Copies a i64 from a PyLongObject. Returns the value + if it overflowed
 pub fn copy_long<P: ProcessMemory>(
     process: &P,
     version: &Version,
     addr: usize,
 ) -> Result<(i64, bool), Error> {
-    let (size, negative, digit, value_size) = match version {
+    let (size, negative, digits_addr) = match version {
         Version {
             major: 3,
-            minor: 12..=13,
+            minor: 12..=14,
             ..
         } => {
-            // PyLongObject format changed in python 3.12
             let value = process
                 .copy_pointer(addr as *const crate::python_bindings::v3_12_0::PyLongObject)?;
             let size = value.long_value.lv_tag >> 3;
@@ -84,54 +122,25 @@ pub fn copy_long<P: ProcessMemory>(
             } else {
                 1
             };
-            (
-                size,
-                negative,
-                value.long_value.ob_digit[0] as u32,
-                std::mem::size_of_val(&value),
-            )
+            let digits_addr = addr
+                + std::mem::offset_of!(
+                    crate::python_bindings::v3_12_0::PyLongObject,
+                    long_value.ob_digit
+                );
+            (size, negative, digits_addr)
         }
         _ => {
-            // this is PyLongObject for a specific version of python, but this works since it's binary compatible
-            // layout across versions we're targeting
             let value = process
                 .copy_pointer(addr as *const crate::python_bindings::v3_7_0::PyLongObject)?;
             let negative: i64 = if value.ob_base.ob_size < 0 { -1 } else { 1 };
             let size = (value.ob_base.ob_size * (negative as isize)) as usize;
-            (
-                size,
-                negative,
-                value.ob_digit[0] as u32,
-                std::mem::size_of_val(&value),
-            )
+            let digits_addr =
+                addr + std::mem::offset_of!(crate::python_bindings::v3_7_0::PyLongObject, ob_digit);
+            (size, negative, digits_addr)
         }
     };
 
-    match size {
-        0 => Ok((0, false)),
-        1 => Ok((negative * (digit as i64), false)),
-
-        #[cfg(target_pointer_width = "64")]
-        2 => {
-            let digits: [u32; 2] = process.copy_struct(addr + value_size - 8)?;
-            let mut ret: i64 = 0;
-            for i in 0..size {
-                ret += (digits[i as usize] as i64) << (30 * i);
-            }
-            Ok((negative * ret, false))
-        }
-        #[cfg(target_pointer_width = "32")]
-        2..=4 => {
-            let digits: [u16; 4] = process.copy_struct(addr + value_size - 4)?;
-            let mut ret: i64 = 0;
-            for i in 0..size {
-                ret += (digits[i as usize] as i64) << (15 * i);
-            }
-            Ok((negative * ret, false))
-        }
-        // we don't support arbitrary sized integers yet, signal this by returning that we've overflowed
-        _ => Ok((size as i64, true)),
-    }
+    decode_long(process, size, negative, digits_addr)
 }
 
 /// Copies a i64 from a python 2.7 PyIntObject
@@ -227,7 +236,7 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
         match version {
             Version {
                 major: 3,
-                minor: 11..=13,
+                minor: 11..=14,
                 ..
             } => {
                 let dict: crate::python_bindings::v3_11_0::PyDictObject =
@@ -344,13 +353,13 @@ impl<'a, P: ProcessMemory> Iterator for DictIterator<'a, P> {
 
 pub const PY_TPFLAGS_INLINE_VALUES: usize = 1 << 2;
 pub const PY_TPFLAGS_MANAGED_DICT: usize = 1 << 4;
-const PY_TPFLAGS_INT_SUBCLASS: usize = 1 << 23;
-const PY_TPFLAGS_LONG_SUBCLASS: usize = 1 << 24;
-const PY_TPFLAGS_LIST_SUBCLASS: usize = 1 << 25;
-const PY_TPFLAGS_TUPLE_SUBCLASS: usize = 1 << 26;
-const PY_TPFLAGS_BYTES_SUBCLASS: usize = 1 << 27;
-const PY_TPFLAGS_STRING_SUBCLASS: usize = 1 << 28;
-const PY_TPFLAGS_DICT_SUBCLASS: usize = 1 << 29;
+pub const PY_TPFLAGS_INT_SUBCLASS: usize = 1 << 23;
+pub const PY_TPFLAGS_LONG_SUBCLASS: usize = 1 << 24;
+pub const PY_TPFLAGS_LIST_SUBCLASS: usize = 1 << 25;
+pub const PY_TPFLAGS_TUPLE_SUBCLASS: usize = 1 << 26;
+pub const PY_TPFLAGS_BYTES_SUBCLASS: usize = 1 << 27;
+pub const PY_TPFLAGS_STRING_SUBCLASS: usize = 1 << 28;
+pub const PY_TPFLAGS_DICT_SUBCLASS: usize = 1 << 29;
 
 /// Converts a python variable in the other process to a human readable string
 pub fn format_variable<I, P>(
