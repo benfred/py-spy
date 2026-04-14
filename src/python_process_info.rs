@@ -389,8 +389,6 @@ where
                     } => {
                         let debug_offsets: v3_14_0::_Py_DebugOffsets =
                             process.copy_struct(pyruntime_addr as usize)?;
-                        info!("3.14 debug offsets {:#?}", debug_offsets);
-                        info!("3.14 pyruntime_addr {:#?}", pyruntime_addr as usize);
                         process.copy_struct(
                             pyruntime_addr as usize
                                 + debug_offsets.runtime_state.interpreters_head as usize,
@@ -399,7 +397,6 @@ where
                     _ => {
                         let debug_offsets: v3_13_0::_Py_DebugOffsets =
                             process.copy_struct(pyruntime_addr as usize)?;
-                        info!("debug offsets {:#?}", debug_offsets);
                         process.copy_struct(
                             pyruntime_addr as usize
                                 + debug_offsets.runtime_state.interpreters_head as usize,
@@ -408,7 +405,6 @@ where
                 };
 
                 // Make sure the interpreter addr is valid before returning
-                info!("checking addr {}", addr);
                 match check_interpreter_addresses(&[addr], &*python_info.maps, process, version) {
                     Ok(addr) => return Ok(addr),
                     Err(_) => {
