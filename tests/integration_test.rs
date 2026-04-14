@@ -554,3 +554,86 @@ fn test_delayed_subprocess() {
         break;
     }
 }
+
+#[cfg(not(target_os = "freebsd"))]
+#[test]
+fn test_dump_subprocesses_no_duplication() {
+    #[cfg(target_os = "macos")]
+    {
+        if unsafe { libc::geteuid() } != 0 {
+            return;
+        }
+    }
+
+    use std::io::{BufRead, BufReader};
+
+    // Regression test for the dup-per-thread bug in dump.rs: spawning the
+    // target as a child of this test process makes the test the ptrace
+    // ancestor, so we don't need elevated privileges on Linux.
+    console::set_colors_enabled(false);
+
+    let mut child = std::process::Command::new("python")
+        .arg("./tests/scripts/dump_subprocesses_threads.py")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("failed to spawn parent script");
+
+    struct Killer(std::process::Child);
+    impl Drop for Killer {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+        }
+    }
+    let stdout = child.stdout.take().unwrap();
+    let mut child = Killer(child);
+
+    let mut parent_pid: Option<Pid> = None;
+    let mut child_pid: Option<Pid> = None;
+    let reader = BufReader::new(stdout);
+    for line in reader.lines() {
+        let line = line.expect("failed to read from parent stdout");
+        if let Some(rest) = line.strip_prefix("PID_PARENT=") {
+            parent_pid = Some(rest.trim().parse().unwrap());
+        } else if let Some(rest) = line.strip_prefix("PID_CHILD=") {
+            child_pid = Some(rest.trim().parse().unwrap());
+        } else if line.trim() == "READY" {
+            break;
+        }
+    }
+    let parent_pid = parent_pid.expect("parent script never reported PID_PARENT");
+    let child_pid = child_pid.expect("parent script never reported PID_CHILD");
+
+    // Give the child subprocess a moment to finish Python initialization.
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    let config = Config {
+        subprocesses: true,
+        ..Default::default()
+    };
+    let mut buf: Vec<u8> = Vec::new();
+    py_spy::dump::write_traces(&mut buf, parent_pid, &config, None)
+        .expect("write_traces failed");
+    let out = String::from_utf8(buf).expect("dump output was not utf-8");
+
+    // Match at line start only, so "Parent Process <pid>:" headers don't count.
+    let parent_header = format!("Process {}:", parent_pid);
+    let child_header = format!("Process {}:", child_pid);
+    let count_line_start = |needle: &str| -> usize {
+        out.lines().filter(|line| line.starts_with(needle)).count()
+    };
+    let parent_occurrences = count_line_start(&parent_header);
+    let child_occurrences = count_line_start(&child_header);
+    assert_eq!(
+        parent_occurrences, 1,
+        "expected parent process header once, got {}:\n{}",
+        parent_occurrences, out
+    );
+    assert_eq!(
+        child_occurrences, 1,
+        "expected child process header once, got {}:\n{}",
+        child_occurrences, out
+    );
+
+    let _ = child.0.kill();
+}

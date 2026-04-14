@@ -2,12 +2,10 @@ from __future__ import print_function
 
 import json
 import os
-import signal
 import subprocess
 import sys
 import re
 import tempfile
-import time
 import unittest
 from collections import defaultdict, namedtuple
 from shutil import which
@@ -118,64 +116,6 @@ class TestPyspy(unittest.TestCase):
     def test_shell_completions(self):
         cmdline = [PYSPY, "completions", "bash"]
         subprocess.check_output(cmdline)
-
-    def test_dump_subprocesses_no_duplication(self):
-        # Regression test: `py-spy dump --subprocesses` used to print each
-        # child process once per parent thread because the subprocess walk
-        # was nested inside the per-thread loop in src/dump.rs.
-        if not PYSPY:
-            raise ValueError("Failed to find py-spy on the path")
-
-        script = _get_script("dump_subprocesses_threads.py")
-        parent = subprocess.Popen(
-            [sys.executable, script],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            universal_newlines=True,
-        )
-        child_pid = None
-        try:
-            pids = {}
-            deadline = time.time() + 10
-            while time.time() < deadline:
-                line = parent.stdout.readline()
-                if not line:
-                    break
-                line = line.strip()
-                if line.startswith("PID_PARENT="):
-                    pids["parent"] = int(line.split("=", 1)[1])
-                elif line.startswith("PID_CHILD="):
-                    pids["child"] = int(line.split("=", 1)[1])
-                elif line == "READY":
-                    break
-            assert "parent" in pids and "child" in pids, (
-                "parent script did not report pids within timeout"
-            )
-            child_pid = pids["child"]
-
-            out = subprocess.check_output(
-                [PYSPY, "dump", "--subprocesses", "--pid", str(pids["parent"])],
-                universal_newlines=True,
-            )
-
-            process_headers = re.findall(r"^Process (\d+):", out, re.MULTILINE)
-            assert sorted(process_headers) == sorted(
-                [str(pids["parent"]), str(pids["child"])]
-            ), (
-                "expected one dump per process, got Process headers = %r;\n"
-                "full py-spy output:\n%s" % (process_headers, out)
-            )
-        finally:
-            if child_pid is not None:
-                try:
-                    os.kill(child_pid, signal.SIGTERM)
-                except (ProcessLookupError, OSError):
-                    pass
-            parent.terminate()
-            try:
-                parent.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                parent.kill()
 
 
 def _get_script(name):
