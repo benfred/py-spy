@@ -73,7 +73,7 @@ def update_python_test_versions():
     test_matrix = build_yml["jobs"]["test-wheels"]["strategy"]["matrix"]
     existing_python_versions = test_matrix["python-version"]
     if versions == existing_python_versions:
-        return
+       return
 
     print("Adding new versions")
     print("Old:", existing_python_versions)
@@ -97,8 +97,8 @@ def update_python_test_versions():
     exclusions = []
     for v in versions:
         # if we don't have a python version for osx/windows skip
-        if ("darwin", "arm64") not in platforms[v] or v.startswith("3.12"):
-            exclusions.append("          - os: macos-14\n")
+        if ("darwin", "arm64") not in platforms[v]: # or v.startswith("3.12"):
+            exclusions.append("          - os: macos-latest\n")
             exclusions.append(f"            python-version: {v}\n")
 
         if ("win32", "x64") not in platforms[v]:

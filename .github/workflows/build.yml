@@ -220,16 +220,16 @@ jobs:
             3.14.3,
             3.14.4,
           ]
-        os: [ubuntu-22.04, macos-14, windows-latest, ubuntu-22.04-arm]
+        os: [ubuntu-22.04, macos-latest, windows-latest, ubuntu-22.04-arm]
         # some versions of python can't be tested on GHA with osx because of SIP:
         exclude:
-          - os: macos-14
+          - os: macos-latest
             python-version: 3.6.7
           - os: ubuntu-22.04
             python-version: 3.6.7
           - os: ubuntu-22.04-arm
             python-version: 3.6.7
-          - os: macos-14
+          - os: macos-latest
             python-version: 3.6.15
           - os: windows-latest
             python-version: 3.6.15
@@ -237,55 +237,53 @@ jobs:
             python-version: 3.6.15
           - os: ubuntu-22.04-arm
             python-version: 3.6.15
-          - os: macos-14
+          - os: macos-latest
             python-version: 3.7.1
           - os: ubuntu-22.04
             python-version: 3.7.1
           - os: ubuntu-22.04-arm
             python-version: 3.7.1
-          - os: macos-14
+          - os: macos-latest
             python-version: 3.7.17
           - os: windows-latest
             python-version: 3.7.17
           - os: ubuntu-22.04-arm
             python-version: 3.7.17
-          - os: macos-14
+          - os: macos-latest
             python-version: 3.8.0
           - os: ubuntu-22.04
             python-version: 3.8.0
           - os: ubuntu-22.04-arm
             python-version: 3.8.0
-          - os: macos-14
+          - os: macos-latest
             python-version: 3.8.18
           - os: windows-latest
             python-version: 3.8.18
-          - os: macos-14
+          - os: macos-latest
             python-version: 3.9.0
           - os: ubuntu-22.04
             python-version: 3.9.0
           - os: ubuntu-22.04-arm
             python-version: 3.9.0
-          - os: macos-14
+          - os: macos-latest
             python-version: 3.9.25
           - os: windows-latest
             python-version: 3.9.25
-          - os: macos-14
+          - os: macos-latest
             python-version: 3.10.0
           - os: ubuntu-22.04
             python-version: 3.10.0
           - os: ubuntu-22.04-arm
             python-version: 3.10.0
-          - os: macos-14
+          - os: macos-latest
             python-version: 3.10.20
           - os: windows-latest
             python-version: 3.10.20
-          - os: macos-14
+          - os: macos-latest
             python-version: 3.11.15
           - os: windows-latest
             python-version: 3.11.15
-          - os: macos-14
-            python-version: 3.12.0
-          - os: macos-14
+          - os: macos-latest
             python-version: 3.12.13
           - os: windows-latest
             python-version: 3.12.13

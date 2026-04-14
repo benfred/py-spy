@@ -389,6 +389,7 @@ where
                     } => {
                         let debug_offsets: v3_14_0::_Py_DebugOffsets =
                             process.copy_struct(pyruntime_addr as usize)?;
+                        println!("debug offsets {:#?}", debug_offsets);
                         process.copy_struct(
                             pyruntime_addr as usize
                                 + debug_offsets.runtime_state.interpreters_head as usize,
