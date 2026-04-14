@@ -4,8 +4,9 @@ import pathlib
 import yaml
 import re
 
-
 _VERSIONS_URL = "https://raw.githubusercontent.com/actions/python-versions/main/versions-manifest.json"  # noqa
+
+_OSX_PYTHON_EXCLUSIONS = ["3.12", "3.14.0", "3.14.1", "3.14.2", "3.14.3"]
 
 
 def parse_version(v):
@@ -73,7 +74,7 @@ def update_python_test_versions():
     test_matrix = build_yml["jobs"]["test-wheels"]["strategy"]["matrix"]
     existing_python_versions = test_matrix["python-version"]
     if versions == existing_python_versions:
-       return
+        return
 
     print("Adding new versions")
     print("Old:", existing_python_versions)
@@ -96,8 +97,11 @@ def update_python_test_versions():
     # since it currently fails in GHA on SIP errors
     exclusions = []
     for v in versions:
-        # if we don't have a python version for osx/windows skip
-        if ("darwin", "arm64") not in platforms[v]: # or v.startswith("3.12"):
+        # if we don't have a python version for the platform, skip it in GHA
+        # also, ignore python 3.12.* and 3.14.0 to 3.14.3 on OSX
+        if ("darwin", "arm64") not in platforms[v] or any(
+            v.startswith(pattern) for pattern in _OSX_PYTHON_EXCLUSIONS
+        ):
             exclusions.append("          - os: macos-latest\n")
             exclusions.append(f"            python-version: {v}\n")
 

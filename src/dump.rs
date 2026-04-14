@@ -8,7 +8,7 @@ use crate::stack_trace::StackTrace;
 use remoteprocess::Pid;
 
 pub fn print_traces(pid: Pid, config: &Config, parent: Option<Pid>) -> Result<(), Error> {
-    let mut process = PythonSpy::new(pid, config).context("Failed to create PythonSpy object")?;
+    let mut process = PythonSpy::new(pid, config)?;
     if config.dump_json {
         let traces = process
             .get_stack_traces()
