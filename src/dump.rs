@@ -43,22 +43,23 @@ pub fn print_traces(pid: Pid, config: &Config, parent: Option<Pid>) -> Result<()
         .context("Failed to get stack traces")?;
     for trace in traces.iter().rev() {
         print_trace(trace, true);
-        if config.subprocesses {
-            for (childpid, parentpid) in process
-                .process
-                .child_processes()
-                .expect("failed to get subprocesses")
-            {
-                let term = Term::stdout();
-                let (_, width) = term.size();
+    }
 
-                println!("\n{}", &style("-".repeat(width as usize)).dim());
-                // child_processes() returns the whole process tree, since we're recursing here
-                // though we could end up printing grandchild processes multiple times. Limit down
-                // to just once
-                if parentpid == pid {
-                    print_traces(childpid, config, Some(parentpid))?;
-                }
+    if config.subprocesses {
+        for (childpid, parentpid) in process
+            .process
+            .child_processes()
+            .expect("failed to get subprocesses")
+        {
+            let term = Term::stdout();
+            let (_, width) = term.size();
+
+            println!("\n{}", &style("-".repeat(width as usize)).dim());
+            // child_processes() returns the whole process tree, since we're recursing here
+            // though we could end up printing grandchild processes multiple times. Limit down
+            // to just once
+            if parentpid == pid {
+                print_traces(childpid, config, Some(parentpid))?;
             }
         }
     }
