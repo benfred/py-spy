@@ -131,7 +131,7 @@ class TestPyspy(unittest.TestCase):
             [sys.executable, script],
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
-            text=True,
+            universal_newlines=True,
         )
         child_pid = None
         try:
@@ -155,7 +155,7 @@ class TestPyspy(unittest.TestCase):
 
             out = subprocess.check_output(
                 [PYSPY, "dump", "--subprocesses", "--pid", str(pids["parent"])],
-                text=True,
+                universal_newlines=True,
             )
 
             process_headers = re.findall(r"^Process (\d+):", out, re.MULTILINE)
@@ -168,8 +168,8 @@ class TestPyspy(unittest.TestCase):
         finally:
             if child_pid is not None:
                 try:
-                    os.kill(child_pid, signal.SIGKILL)
-                except ProcessLookupError:
+                    os.kill(child_pid, signal.SIGTERM)
+                except (ProcessLookupError, OSError):
                     pass
             parent.terminate()
             try:
