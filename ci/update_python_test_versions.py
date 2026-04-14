@@ -97,7 +97,7 @@ def update_python_test_versions():
     exclusions = []
     for v in versions:
         # if we don't have a python version for osx/windows skip
-        if ("darwin", "x64") not in platforms[v] or v.startswith("3.12"):
+        if ("darwin", "arm64") not in platforms[v] or v.startswith("3.12"):
             exclusions.append("          - os: macos-14\n")
             exclusions.append(f"            python-version: {v}\n")
 
