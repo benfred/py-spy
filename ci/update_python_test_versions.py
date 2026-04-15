@@ -1,3 +1,4 @@
+import argparse
 from collections import defaultdict
 import requests
 import pathlib
@@ -6,7 +7,7 @@ import re
 
 _VERSIONS_URL = "https://raw.githubusercontent.com/actions/python-versions/main/versions-manifest.json"  # noqa
 
-_OSX_PYTHON_EXCLUSIONS = ["3.12", "3.14.0", "3.14.1", "3.14.2", "3.14.3"]
+_OSX_PYTHON_EXCLUSIONS = ["3.11.0", "3.12", "3.14.0", "3.14.1", "3.14.2", "3.14.3"]
 
 
 def parse_version(v):
@@ -62,7 +63,7 @@ def get_github_python_versions():
     return versions, platforms
 
 
-def update_python_test_versions():
+def update_python_test_versions(force=False):
     versions, platforms = get_github_python_versions()
     versions = sorted(versions, key=parse_version)
 
@@ -73,7 +74,8 @@ def update_python_test_versions():
     build_yml = yaml.safe_load(open(build_yml_path))
     test_matrix = build_yml["jobs"]["test-wheels"]["strategy"]["matrix"]
     existing_python_versions = test_matrix["python-version"]
-    if versions == existing_python_versions:
+    if not force and versions == existing_python_versions:
+        print("No new python versions found - not updating github actions")
         return
 
     print("Adding new versions")
@@ -126,4 +128,15 @@ def update_python_test_versions():
 
 
 if __name__ == "__main__":
-    update_python_test_versions()
+    parser = argparse.ArgumentParser(
+        description="Updates github actions with new python versions",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "--force",
+        help="Run script even if there are no new python versions",
+        action="store_true",
+    )
+    args = parser.parse_args()
+
+    update_python_test_versions(force=args.force)
