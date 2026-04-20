@@ -195,7 +195,10 @@ where
         };
 
         let locals = if copy_locals {
-            Some(get_locals(&code, frame_ptr, &frame, process)?)
+            Some(
+                get_locals(&code, frame_ptr, &frame, process)
+                    .context("Failed to get local variables")?,
+            )
         } else {
             None
         };
@@ -276,7 +279,9 @@ fn get_locals<C: CodeObject, F: FrameObject, P: ProcessMemory>(
 ) -> Result<Vec<LocalVariable>, Error> {
     let local_count = code.nlocals() as usize;
     let argcount = code.argcount() as usize;
-    let varnames = process.copy_pointer(code.varnames())?;
+    let varnames = process
+        .copy_pointer(code.varnames())
+        .context("Failed to get varnames from PyCodeObject")?;
 
     let ptr_size = std::mem::size_of::<*const i32>();
     let locals_addr = frameptr as usize + std::mem::size_of_val(frame) - ptr_size;
@@ -286,8 +291,13 @@ fn get_locals<C: CodeObject, F: FrameObject, P: ProcessMemory>(
     for i in 0..local_count {
         let nameptr: *const C::StringObject =
             process.copy_struct(varnames.address(code.varnames() as usize, i))?;
-        let name = copy_string(nameptr, process)?;
+
+        let name = copy_string(nameptr, process).context("Failed to copy local variable name")?;
         let addr: usize = process.copy_struct(locals_addr + i * ptr_size)?;
+
+        // hack: handle things like None, True, False, small integer constants etc on Python 3.14
+        let addr = if addr & 1 == 1 { addr - 1 } else { addr };
+
         if addr == 0 {
             continue;
         }
@@ -311,7 +321,7 @@ pub fn get_gil_threadid<I: InterpreterState, P: ProcessMemory>(
     }
 
     let addr = if I::HAS_GIL_RUNTIME_STATE {
-        // get the gilruntimestate - note that this struct is identical between 3.12/3.13
+        // get the gilruntimestate - note that this struct is identical between 3.12/3.13/3.14
         let gil_state: crate::python_bindings::v3_13_0::_gil_runtime_state =
             process.copy_struct(threadstate_address)?;
         // check to see if the GIL is locked already
