@@ -12,7 +12,8 @@ use crate::config::{Config, LockingStrategy};
 #[cfg(feature = "unwind")]
 use crate::native_stack_trace::NativeStack;
 use crate::python_bindings::{
-    v2_7_15, v3_10_0, v3_11_0, v3_12_0, v3_13_0, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0, v3_9_5,
+    v2_7_15, v3_10_0, v3_11_0, v3_12_0, v3_13_0, v3_14_0, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0,
+    v3_9_5,
 };
 use crate::python_data_access::format_variable;
 use crate::python_interpreters::{InterpreterState, ThreadState};
@@ -150,16 +151,6 @@ impl PythonSpy {
             Version {
                 major: 3, minor: 7, ..
             } => self._get_stack_traces::<v3_7_0::_is>(),
-            // v3.8.0a1 to v3.8.0a3 is compatible with 3.7 ABI, but later versions of 3.8.0 aren't
-            Version {
-                major: 3,
-                minor: 8,
-                patch: 0,
-                ..
-            } => match self.version.release_flags.as_ref() {
-                "a1" | "a2" | "a3" => self._get_stack_traces::<v3_7_0::_is>(),
-                _ => self._get_stack_traces::<v3_8_0::_is>(),
-            },
             Version {
                 major: 3, minor: 8, ..
             } => self._get_stack_traces::<v3_8_0::_is>(),
@@ -186,6 +177,11 @@ impl PythonSpy {
                 minor: 13,
                 ..
             } => self._get_stack_traces::<v3_13_0::_is>(),
+            Version {
+                major: 3,
+                minor: 14,
+                ..
+            } => self._get_stack_traces::<v3_14_0::_is>(),
             _ => Err(format_err!(
                 "Unsupported version of Python: {}",
                 self.version
@@ -255,7 +251,13 @@ impl PythonSpy {
                 &self.process,
                 self.config.dump_locals > 0,
                 self.config.lineno,
-            )?;
+            )
+            .with_context(|| {
+                format!(
+                    "Failed to call get_stack_trace for thread {}",
+                    python_thread_id
+                )
+            })?;
 
             // Try getting the native thread id
 

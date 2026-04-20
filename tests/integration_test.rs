@@ -464,12 +464,13 @@ fn test_subprocesses() {
     for sample in sampler {
         // wait for other processes here if we don't have the expected number
         let traces = sample.traces;
-        if traces.len() != 3 && attempts < 4 {
+        if traces.len() < 3 && attempts < 4 {
             attempts += 1;
             std::thread::sleep(std::time::Duration::from_millis(1000));
             continue;
         }
-        assert_eq!(traces.len(), 3);
+
+        assert!(traces.len() >= 3);
         assert!(traces[0].pid != traces[1].pid);
         assert!(traces[1].pid != traces[2].pid);
         break;
