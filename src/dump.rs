@@ -116,12 +116,7 @@ pub fn write_trace<W: Write>(
             )?;
         }
         None => {
-            writeln!(
-                out,
-                "Thread {}{}",
-                style(thread_id).bold().yellow(),
-                status
-            )?;
+            writeln!(out, "Thread {}{}", style(thread_id).bold().yellow(), status)?;
         }
     };
 

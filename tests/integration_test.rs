@@ -612,16 +612,14 @@ fn test_dump_subprocesses_no_duplication() {
         ..Default::default()
     };
     let mut buf: Vec<u8> = Vec::new();
-    py_spy::dump::write_traces(&mut buf, parent_pid, &config, None)
-        .expect("write_traces failed");
+    py_spy::dump::write_traces(&mut buf, parent_pid, &config, None).expect("write_traces failed");
     let out = String::from_utf8(buf).expect("dump output was not utf-8");
 
     // Match at line start only, so "Parent Process <pid>:" headers don't count.
     let parent_header = format!("Process {}:", parent_pid);
     let child_header = format!("Process {}:", child_pid);
-    let count_line_start = |needle: &str| -> usize {
-        out.lines().filter(|line| line.starts_with(needle)).count()
-    };
+    let count_line_start =
+        |needle: &str| -> usize { out.lines().filter(|line| line.starts_with(needle)).count() };
     let parent_occurrences = count_line_start(&parent_header);
     let child_occurrences = count_line_start(&child_header);
     assert_eq!(
