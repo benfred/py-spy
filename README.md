@@ -9,7 +9,7 @@ py-spy is extremely low overhead: it is written in Rust for speed and doesn't ru
 in the same process as the profiled Python program. This means py-spy is safe to use against production Python code.
 
 py-spy works on Linux, OSX, Windows and FreeBSD, and supports profiling all recent versions of the CPython
-interpreter (versions 2.3-2.7 and 3.3-3.13).
+interpreter (versions 2.3-2.7 and 3.3-3.14).
 
 ## Installation
 
@@ -132,11 +132,18 @@ and check if the layout of that address is what we expect.
 ### Can py-spy profile native extensions?
 
 Yes! py-spy supports profiling native python extensions written in languages like C/C++ or Cython,
-on x86_64 Linux and Windows. You can enable this mode by passing ```--native``` on the
+on some platforms (see table below). You can enable this mode by passing ```--native``` on the
 command line. For best results, you should compile your Python extension with symbols. Also worth
 noting for Cython programs is that py-spy needs the generated C or C++ file in order to return line
 numbers of the original .pyx file.  Read the [blog post](https://www.benfrederickson.com/profiling-native-python-extensions-with-py-spy/)
 for more information.
+
+|         | Linux | Windows | OSX | FreeBSD |
+|---------|-------|---------|-----|---------|
+| i686    |       |         |     |         |
+| x86-64  | yes   | yes     |     |         |
+| ARM     | yes   |         |     |         |
+| Aarch64 |       |         |     |         |
 
 ### How can I profile subprocesses?
 

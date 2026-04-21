@@ -1,4 +1,4 @@
-use anyhow::Error;
+use anyhow::{Context, Error};
 use console::{style, Term};
 
 use crate::config::Config;
@@ -10,7 +10,9 @@ use remoteprocess::Pid;
 pub fn print_traces(pid: Pid, config: &Config, parent: Option<Pid>) -> Result<(), Error> {
     let mut process = PythonSpy::new(pid, config)?;
     if config.dump_json {
-        let traces = process.get_stack_traces()?;
+        let traces = process
+            .get_stack_traces()
+            .context("Failed to get stack traces")?;
         println!("{}", serde_json::to_string_pretty(&traces)?);
         return Ok(());
     }
@@ -36,7 +38,9 @@ pub fn print_traces(pid: Pid, config: &Config, parent: Option<Pid>) -> Result<()
         );
     }
     println!();
-    let traces = process.get_stack_traces()?;
+    let traces = process
+        .get_stack_traces()
+        .context("Failed to get stack traces")?;
     for trace in traces.iter().rev() {
         print_trace(trace, true);
         if config.subprocesses {

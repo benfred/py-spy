@@ -125,7 +125,7 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
                 .filter(|header| {
                     strtab
                         .get_at(header.sh_name)
-                        .map_or(true, |name| name == ".bss")
+                        .is_none_or(|name| name == ".bss")
                 })
                 // if we have multiple sections here, take the largest
                 .max_by_key(|header| header.sh_size)
@@ -150,9 +150,11 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
                     )
                 })?;
 
-            // p_vaddr may be larger than the map address in case when the header has an offset and
-            // the map address is relatively small. In this case we can default to 0.
-            let offset = offset.saturating_sub(program_header.p_vaddr);
+            // Align the virtual address offset, then subtract it from the offset
+            // to get real offset for symbol addresses in the file.
+            let aligned_vaddr =
+                program_header.p_vaddr - (program_header.p_vaddr % page_size::get() as u64);
+            let offset = offset.saturating_sub(aligned_vaddr);
 
             let mut bss_addr = 0;
             let mut bss_size = 0;
@@ -169,11 +171,10 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
                 bss_end = bss_header.sh_addr + bss_header.sh_size;
             }
 
-            let pyruntime_header = elf.section_headers.iter().find(|header| {
-                strtab
-                    .get_at(header.sh_name)
-                    .map_or(false, |name| name == ".PyRuntime")
-            });
+            let pyruntime_header = elf
+                .section_headers
+                .iter()
+                .find(|header| strtab.get_at(header.sh_name) == Some(".PyRuntime"));
 
             let mut pyruntime_addr = 0;
             let mut pyruntime_size = 0;
