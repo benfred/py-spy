@@ -332,7 +332,9 @@ impl Config {
             .arg(
                 Arg::new("shell")
                     .value_parser(value_parser!(clap_complete::Shell))
-                    .help("Shell type"),
+                    .help("Shell type")
+                    .required(true)
+                    .action(ArgAction::Set),
             );
 
         let record = record.arg(native.clone());
@@ -372,7 +374,7 @@ impl Config {
         let (subcommand, matches) = matches.subcommand().unwrap();
 
         // Check if `--native` was used on an unsupported platform
-        if !cfg!(feature = "unwind") && matches.get_flag("native") {
+        if subcommand != "completions" && !cfg!(feature = "unwind") && matches.get_flag("native") {
             eprintln!(
                 "Collecting stack traces from native extensions (`--native`) is not supported on your platform."
             );
