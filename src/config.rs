@@ -365,7 +365,7 @@ impl Config {
             .subcommand(dump)
             .subcommand(completions);
         let matches = app.clone().try_get_matches_from(args)?;
-        info!("Command line args: {:?}", matches);
+        debug!("Command line args: {:?}", matches);
 
         let mut config = Config::default();
 
@@ -496,6 +496,7 @@ impl Config {
                 }
             }
         }
+        info!("config {:#?}", config);
         Ok(config)
     }
 }
