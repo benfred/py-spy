@@ -16,8 +16,8 @@ edition="2021"
 
 [dependencies]
 anyhow = "1"
-clap = {version="3.2", features=["wrap_help", "cargo", "derive"]}
-clap_complete="3.2"
+clap = {version="4.6.1", features=["wrap_help", "cargo", "derive"]}
+clap_complete="4.6.1"
 console = "0.16"
 ctrlc = "3"
 indicatif = "0.18"
@@ -30,7 +30,7 @@ log = "0.4"
 lru = "0.17"
 num-traits = "0.2"
 regex = ">=1.6.0"
-tempfile = "3.6.0"
+tempfile = "3.27.0"
 page_size = "0.6.0"
 proc-maps = "0.4.0"
 memmap2 = "0.9.4"
