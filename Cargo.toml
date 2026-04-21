@@ -40,7 +40,7 @@ serde_derive = "1.0"
 serde_json = "1.0"
 rand = "0.9"
 rand_distr = "0.5"
-remoteprocess = "0.5.1"
+remoteprocess = "0.5.2"
 chrono = "0.4.44"
 
 [dev-dependencies]
