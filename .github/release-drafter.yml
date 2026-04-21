@@ -15,7 +15,7 @@ categories:
     labels:
       - "documentation"
   - title: "🧰 Maintenance"
-    label:
+    labels:
       - "chore"
       - "ci"
       - "dependencies"
@@ -36,6 +36,7 @@ version-resolver:
     labels:
       - "patch"
   default: patch
+
 template: |
   ## Changes
 
