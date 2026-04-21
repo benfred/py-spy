@@ -1,4 +1,4 @@
-use clap::builder::{styling::AnsiColor, PossibleValue, PossibleValuesParser, Styles};
+use clap::builder::{styling::AnsiColor, EnumValueParser, Styles};
 use clap::{
     crate_description, crate_name, crate_version, value_parser, Arg, ArgAction, Command, ValueEnum,
 };
@@ -68,14 +68,6 @@ pub enum FileFormat {
     raw,
     speedscope,
     chrometrace,
-}
-
-impl FileFormat {
-    pub fn possible_values() -> impl Iterator<Item = PossibleValue> {
-        FileFormat::value_variants()
-            .iter()
-            .filter_map(ValueEnum::to_possible_value)
-    }
 }
 
 impl std::str::FromStr for FileFormat {
@@ -163,7 +155,8 @@ impl Config {
         let mut native = Arg::new("native")
             .short('n')
             .long("native")
-            .help("Collect stack traces from native extensions written in Cython, C or C++");
+            .help("Collect stack traces from native extensions written in Cython, C or C++")
+            .action(ArgAction::SetTrue);
 
         // Only show `--native` on platforms where it's supported
         if !cfg!(feature = "unwind") {
@@ -174,7 +167,8 @@ impl Config {
         let nonblocking = Arg::new("nonblocking")
                     .long("nonblocking")
                     .help("Don't pause the python process when collecting samples. Setting this option will reduce \
-                          the performance impact of sampling, but may lead to inaccurate results");
+                          the performance impact of sampling, but may lead to inaccurate results")
+                    .action(ArgAction::SetTrue);
 
         let rate = Arg::new("rate")
             .short('r')
@@ -182,16 +176,19 @@ impl Config {
             .value_name("rate")
             .help("The number of samples to collect per second")
             .default_value("100")
+            .value_parser(value_parser!(u64))
             .action(ArgAction::Set);
 
         let subprocesses = Arg::new("subprocesses")
             .short('s')
             .long("subprocesses")
-            .help("Profile subprocesses of the original process");
+            .help("Profile subprocesses of the original process")
+            .action(ArgAction::SetTrue);
 
-        let full_filenames = Arg::new("full_filenames").long("full-filenames").help(
-            "Show full Python filenames, instead of shortening to show only the package part",
-        );
+        let full_filenames = Arg::new("full_filenames")
+            .long("full-filenames")
+            .help("Show full Python filenames, instead of shortening to show only the package part")
+            .action(ArgAction::SetTrue);
         let program = Arg::new("python_program")
             .help("commandline of a python program to run")
             .action(ArgAction::Append);
@@ -199,12 +196,14 @@ impl Config {
         let idle = Arg::new("idle")
             .short('i')
             .long("idle")
-            .help("Include stack traces for idle threads");
+            .help("Include stack traces for idle threads")
+            .action(ArgAction::SetTrue);
 
         let gil = Arg::new("gil")
             .short('g')
             .long("gil")
-            .help("Only include traces that are holding on to the GIL");
+            .help("Only include traces that are holding on to the GIL")
+            .action(ArgAction::SetTrue);
 
         let top_delay = Arg::new("delay")
             .long("delay")
@@ -235,7 +234,7 @@ impl Config {
                     .value_name("format")
                     .help("Output file format")
                     .action(ArgAction::Set)
-                    .value_parser(PossibleValuesParser::new(FileFormat::possible_values()))
+                    .value_parser(EnumValueParser::<FileFormat>::new())
                     .ignore_case(true)
                     .default_value("flamegraph"),
             )
@@ -252,17 +251,19 @@ impl Config {
             .arg(subprocesses.clone())
             .arg(Arg::new("function").short('F').long("function").help(
                 "Aggregate samples by function's first line number, instead of current line number",
-            ))
+            ).action(ArgAction::SetTrue))
             .arg(
                 Arg::new("nolineno")
                     .long("nolineno")
-                    .help("Do not show line numbers"),
+                    .help("Do not show line numbers")
+                    .action(ArgAction::SetTrue),
             )
             .arg(
                 Arg::new("threads")
                     .short('t')
                     .long("threads")
-                    .help("Show thread ids in the output"),
+                    .help("Show thread ids in the output")
+                    .action(ArgAction::SetTrue),
             )
             .arg(gil.clone())
             .arg(idle.clone())
@@ -270,13 +271,15 @@ impl Config {
                 Arg::new("capture")
                     .long("capture")
                     .hide(true)
-                    .help("Captures output from child process"),
+                    .help("Captures output from child process")
+                    .action(ArgAction::SetTrue),
             )
             .arg(
                 Arg::new("hideprogress")
                     .long("hideprogress")
                     .hide(true)
-                    .help("Hides progress bar (useful for showing error output on record)"),
+                    .help("Hides progress bar (useful for showing error output on record)")
+                    .action(ArgAction::SetTrue),
             );
 
         let top = Command::new("top")
@@ -319,7 +322,8 @@ impl Config {
             .arg(Arg::new("json")
                 .short('j')
                 .long("json")
-                .help("Format output as JSON"))
+                .help("Format output as JSON")
+                .action(ArgAction::SetTrue))
             .arg(subprocesses.clone());
 
         let completions = Command::new("completions")
@@ -368,7 +372,7 @@ impl Config {
         let (subcommand, matches) = matches.subcommand().unwrap();
 
         // Check if `--native` was used on an unsupported platform
-        if !cfg!(feature = "unwind") && matches.contains_id("native") {
+        if !cfg!(feature = "unwind") && matches.get_flag("native") {
             eprintln!(
                 "Collecting stack traces from native extensions (`--native`) is not supported on your platform."
             );
@@ -386,27 +390,27 @@ impl Config {
                 };
                 config.format = matches.get_one("format").copied();
                 config.filename = matches.get_one::<String>("output").cloned();
-                config.show_line_numbers = !matches.contains_id("nolineno");
-                config.lineno = if matches.contains_id("nolineno") {
+                config.show_line_numbers = !matches.get_flag("nolineno");
+                config.lineno = if matches.get_flag("nolineno") {
                     LineNo::NoLine
-                } else if matches.contains_id("function") {
+                } else if matches.get_flag("function") {
                     LineNo::First
                 } else {
                     LineNo::LastInstruction
                 };
-                config.include_thread_ids = matches.contains_id("threads");
-                if matches.contains_id("nolineno") && matches.contains_id("function") {
+                config.include_thread_ids = matches.get_flag("threads");
+                if matches.get_flag("nolineno") && matches.get_flag("function") {
                     eprintln!("--function & --nolinenos can't be used together");
                     std::process::exit(1);
                 }
-                config.hide_progress = matches.contains_id("hideprogress");
+                config.hide_progress = matches.get_flag("hideprogress");
             }
             "top" => {
                 config.sampling_rate = *matches.get_one("rate").unwrap();
                 config.refresh_seconds = *matches.get_one::<f64>("delay").unwrap();
             }
             "dump" => {
-                config.dump_json = matches.contains_id("json");
+                config.dump_json = matches.get_flag("json");
                 config.dump_locals = matches.get_count("locals").into();
 
                 #[cfg(target_os = "linux")]
@@ -428,13 +432,13 @@ impl Config {
                 config.python_program = matches
                     .get_many::<String>("python_program")
                     .map(|vals| vals.map(|v| v.to_owned()).collect());
-                config.gil_only = matches.contains_id("gil");
-                config.include_idle = matches.contains_id("idle");
+                config.gil_only = matches.get_flag("gil");
+                config.include_idle = matches.get_flag("idle");
             }
             _ => {}
         }
 
-        config.subprocesses = matches.contains_id("subprocesses");
+        config.subprocesses = matches.get_flag("subprocesses");
         config.command = subcommand.to_owned();
 
         // options that can be shared between subcommands
@@ -446,17 +450,17 @@ impl Config {
             }
         });
 
-        config.full_filenames = matches.contains_id("full_filenames");
+        config.full_filenames = matches.get_flag("full_filenames");
         if cfg!(feature = "unwind") {
-            config.native = matches.contains_id("native");
+            config.native = matches.get_flag("native");
         }
 
-        config.capture_output = config.command != "record" || matches.contains_id("capture");
+        config.capture_output = config.command != "record" || matches.get_flag("capture");
         if !config.capture_output {
             config.hide_progress = true;
         }
 
-        if matches.contains_id("nonblocking") {
+        if matches.get_flag("nonblocking") {
             // disable native profiling if invalidly asked for
             if config.native {
                 eprintln!("Can't get native stack traces with the --nonblocking option.");
@@ -521,8 +525,8 @@ mod tests {
 
         // missing the --pid argument should fail
         assert_eq!(
-            get_config("py-spy record -o foo").unwrap_err().kind,
-            clap::ErrorKind::MissingRequiredArgument
+            get_config("py-spy record -o foo").unwrap_err().kind(),
+            clap::error::ErrorKind::MissingRequiredArgument
         );
 
         // but should work when passed a python program
@@ -537,8 +541,8 @@ mod tests {
         assert_eq!(
             get_config("py-spy r -p 1234 -o foo -f unknown")
                 .unwrap_err()
-                .kind,
-            clap::ErrorKind::InvalidValue
+                .kind(),
+            clap::error::ErrorKind::InvalidValue
         );
 
         // test out overriding these params by setting flags
@@ -565,8 +569,8 @@ mod tests {
 
         // missing the --pid argument should fail
         assert_eq!(
-            get_config("py-spy dump").unwrap_err().kind,
-            clap::ErrorKind::MissingRequiredArgument
+            get_config("py-spy dump").unwrap_err().kind(),
+            clap::error::ErrorKind::MissingRequiredArgument
         );
     }
 
@@ -585,8 +589,8 @@ mod tests {
     #[test]
     fn test_parse_args() {
         assert_eq!(
-            get_config("py-spy dude").unwrap_err().kind,
-            clap::ErrorKind::UnrecognizedSubcommand
+            get_config("py-spy dude").unwrap_err().kind(),
+            clap::error::ErrorKind::InvalidSubcommand
         );
     }
 }
