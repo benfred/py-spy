@@ -37,7 +37,7 @@ pub mod coredump;
 mod cython;
 pub mod dump;
 #[cfg(feature = "unwind")]
-mod native_stack_trace;
+pub mod native_stack_trace;
 mod python_bindings;
 mod python_data_access;
 mod python_interpreters;
@@ -53,5 +53,7 @@ mod version;
 pub use config::Config;
 pub use python_spy::PythonSpy;
 pub use remoteprocess::Pid;
+#[cfg(feature = "unwind")]
+pub use remoteprocess::{Thread, Tid};
 pub use stack_trace::Frame;
 pub use stack_trace::StackTrace;
