@@ -298,6 +298,36 @@ pub fn get_python_version<P>(python_info: &PythonProcessInfo, process: &P) -> Re
 where
     P: ProcessMemory,
 {
+    // Try getting the Py_Version symbol (points to 32 bit encoded version)
+    if let Some(&addr) = python_info.get_symbol("Py_Version") {
+        let version: u32 = process
+            .copy_struct(addr as usize)
+            .context("Failed to copy Py_Version symbol")?;
+
+        // decode u32 version via the _Py_PACK_FULL_VERSION logic
+        let major: u64 = ((version >> 24) & 0xff).into();
+        let minor: u64 = ((version >> 16) & 0xff).into();
+        let patch: u64 = ((version >> 8) & 0xff).into();
+        let release_level = (version >> 4) & 0xf;
+        let release_serial = (version) & 0xf;
+        let release_flags = match release_level {
+            0xA => format!("a{}", release_serial),
+            0xB => format!("b{}", release_serial),
+            0xC => format!("rc{}", release_serial),
+            _ => "".to_owned(),
+        };
+
+        let version = Version {
+            major,
+            minor,
+            patch,
+            release_flags,
+            build_metadata: None,
+        };
+        info!("Got version {} from Py_Version symbol", version);
+        return Ok(version);
+    }
+
     // If possible, grab the sys.version string from the processes memory (mac osx).
     if let Some(&addr) = python_info
         .get_symbol("Py_GetVersion.version")
