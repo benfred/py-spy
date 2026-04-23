@@ -373,86 +373,20 @@ where
 {
     // get the address of the main PyInterpreterState object from loaded symbols if we can
     // (this tends to be faster than scanning through the bss section)
-    match version {
-        Version {
-            major: 3,
-            minor: 13..=14,
-            ..
-        } => {
-            if let Some(&pyruntime_addr) = python_info.get_symbol("_PyRuntime") {
-                // figure out the interpreters_head location using the debug_offsets
-                let addr = match version {
-                    Version {
-                        major: 3,
-                        minor: 14,
-                        ..
-                    } => {
-                        let debug_offsets: v3_14_0::_Py_DebugOffsets =
-                            process.copy_struct(pyruntime_addr as usize)?;
-                        process.copy_struct(
-                            pyruntime_addr as usize
-                                + debug_offsets.runtime_state.interpreters_head as usize,
-                        )?
-                    }
-                    _ => {
-                        let debug_offsets: v3_13_0::_Py_DebugOffsets =
-                            process.copy_struct(pyruntime_addr as usize)?;
-                        process.copy_struct(
-                            pyruntime_addr as usize
-                                + debug_offsets.runtime_state.interpreters_head as usize,
-                        )?
-                    }
-                };
-
-                // Make sure the interpreter addr is valid before returning
-                match check_interpreter_addresses(&[addr], &*python_info.maps, process, version) {
-                    Ok(addr) => return Ok(addr),
-                    Err(_) => {
-                        warn!(
-                            "Interpreter address from _PyRuntime symbol is invalid {:016x}",
-                            addr
-                        );
-                    }
-                };
-            }
+    match get_interpreter_address_from_symbols(python_info, process, version) {
+        Ok(addr) => {
+            // Check that the symbol address is valid before returning
+            match check_interpreter_addresses(&[addr], &*python_info.maps, process, version) {
+                Ok(addr) => return Ok(addr),
+                Err(_) => {
+                    warn!("Interpreter address from symbol is invalid {:016x}", addr);
+                }
+            };
         }
-        Version {
-            major: 3,
-            minor: 7..=12,
-            ..
-        } => {
-            if let Some(&addr) = python_info.get_symbol("_PyRuntime") {
-                let addr = process
-                    .copy_struct(addr as usize + pyruntime::get_interp_head_offset(version))?;
-
-                // Make sure the interpreter addr is valid before returning
-                match check_interpreter_addresses(&[addr], &*python_info.maps, process, version) {
-                    Ok(addr) => return Ok(addr),
-                    Err(_) => {
-                        warn!(
-                            "Interpreter address from _PyRuntime symbol is invalid {:016x}",
-                            addr
-                        );
-                    }
-                };
-            }
+        Err(err) => {
+            info!("Failed to get interpreter address from symbols {:?}, scanning BSS section from main binary", err)
         }
-        _ => {
-            if let Some(&addr) = python_info.get_symbol("interp_head") {
-                let addr = process.copy_struct(addr as usize)?;
-                match check_interpreter_addresses(&[addr], &*python_info.maps, process, version) {
-                    Ok(addr) => return Ok(addr),
-                    Err(_) => {
-                        warn!(
-                            "Interpreter address from interp_head symbol is invalid {:016x}",
-                            addr
-                        );
-                    }
-                };
-            }
-        }
-    };
-    info!("Failed to find runtime address from symbols, scanning BSS section from main binary");
+    }
 
     // try scanning the BSS section of the binary for things that might be the interpreterstate
     let err = if let Some(ref pb) = python_info.python_binary {
@@ -463,6 +397,7 @@ where
     } else {
         None
     };
+
     // Before giving up, try again if there is a libpython.so
     if let Some(ref lpb) = python_info.libpython_binary {
         info!("Failed to get interpreter from binary BSS, scanning libpython BSS");
@@ -473,6 +408,79 @@ where
     } else {
         err.expect("Both python and libpython are invalid.")
     }
+}
+
+// Gets the address of the main PyInterpreterState object from loaded symbols
+fn get_interpreter_address_from_symbols<P>(
+    python_info: &PythonProcessInfo,
+    process: &P,
+    version: &Version,
+) -> Result<usize, Error>
+where
+    P: ProcessMemory,
+{
+    match version {
+        Version {
+            major: 3,
+            minor: 13..=14,
+            ..
+        } => {
+            if let Some(&pyruntime_addr) = python_info.get_symbol("_PyRuntime") {
+                // figure out the interpreters_head location using the debug_offsets
+                match version {
+                    Version {
+                        major: 3,
+                        minor: 14,
+                        ..
+                    } => {
+                        let debug_offsets: v3_14_0::_Py_DebugOffsets =
+                            process.copy_struct(pyruntime_addr as usize)?;
+                        return process
+                            .copy_struct(
+                                pyruntime_addr as usize
+                                    + debug_offsets.runtime_state.interpreters_head as usize,
+                            )
+                            .context(
+                                "Failed to copy py_debug_offsets.runtime_state.interpreters_head",
+                            );
+                    }
+                    _ => {
+                        let debug_offsets: v3_13_0::_Py_DebugOffsets =
+                            process.copy_struct(pyruntime_addr as usize)?;
+                        return process
+                            .copy_struct(
+                                pyruntime_addr as usize
+                                    + debug_offsets.runtime_state.interpreters_head as usize,
+                            )
+                            .context(
+                                "Failed to copy py_debug_offsets.runtime_state.interpreters_head",
+                            );
+                    }
+                };
+            }
+        }
+        Version {
+            major: 3,
+            minor: 7..=12,
+            ..
+        } => {
+            if let Some(&addr) = python_info.get_symbol("_PyRuntime") {
+                return process
+                    .copy_struct(addr as usize + pyruntime::get_interp_head_offset(version))
+                    .context("Failed to copy interpreters_head");
+            }
+        }
+        _ => {
+            if let Some(&addr) = python_info.get_symbol("interp_head") {
+                return process
+                    .copy_struct(addr as usize)
+                    .context("Failed to copy interp_head");
+            }
+        }
+    };
+    return Err(format_err!(
+        "Failed to find _PyRuntime address from symbols"
+    ));
 }
 
 fn get_interpreter_address_from_binary<P>(
