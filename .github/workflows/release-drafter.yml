@@ -1,7 +1,7 @@
 # draft release notes with https://github.com/release-drafter/release-drafter
 name: Release Drafter
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
 
 on:
