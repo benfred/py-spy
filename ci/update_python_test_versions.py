@@ -7,7 +7,7 @@ import re
 
 _VERSIONS_URL = "https://raw.githubusercontent.com/actions/python-versions/main/versions-manifest.json"  # noqa
 
-_OSX_PYTHON_EXCLUSIONS = ["3.11.0", "3.12", "3.14.0", "3.14.1", "3.14.2", "3.14.3"]
+_OSX_PYTHON_EXCLUSIONS = []
 
 
 def parse_version(v):

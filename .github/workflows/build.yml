@@ -283,25 +283,13 @@ jobs:
           - os: windows-latest
             python-version: 3.10.20
           - os: macos-latest
-            python-version: 3.11.0
-          - os: macos-latest
             python-version: 3.11.15
           - os: windows-latest
             python-version: 3.11.15
           - os: macos-latest
-            python-version: 3.12.0
-          - os: macos-latest
             python-version: 3.12.13
           - os: windows-latest
             python-version: 3.12.13
-          - os: macos-latest
-            python-version: 3.14.0
-          - os: macos-latest
-            python-version: 3.14.1
-          - os: macos-latest
-            python-version: 3.14.2
-          - os: macos-latest
-            python-version: 3.14.3
 
     steps:
       - uses: actions/checkout@v6
