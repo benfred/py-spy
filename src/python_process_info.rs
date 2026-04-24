@@ -623,15 +623,6 @@ where
             major: 3, minor: 7, ..
         } => check::<v3_7_0::_is, P>(addrs, maps, process),
         Version {
-            major: 3,
-            minor: 8,
-            patch: 0,
-            ..
-        } => match version.release_flags.as_ref() {
-            "a1" | "a2" | "a3" => check::<v3_7_0::_is, P>(addrs, maps, process),
-            _ => check::<v3_8_0::_is, P>(addrs, maps, process),
-        },
-        Version {
             major: 3, minor: 8, ..
         } => check::<v3_8_0::_is, P>(addrs, maps, process),
         Version {

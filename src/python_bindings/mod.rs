@@ -171,17 +171,6 @@ pub mod pyruntime {
                 major: 3, minor: 7, ..
             } => Some(1480),
             Version {
-                major: 3,
-                minor: 8,
-                patch: 0,
-                ..
-            } => match version.release_flags.as_ref() {
-                "a1" => Some(1384),
-                "a2" => Some(840),
-                "a3" | "a4" => Some(1400),
-                _ => Some(1368),
-            },
-            Version {
                 major: 3, minor: 8, ..
             } => match version.build_metadata.as_deref() {
                 Some("cinder") => Some(1384),
@@ -223,17 +212,6 @@ pub mod pyruntime {
                 ..
             } => Some(1320),
             Version {
-                major: 3,
-                minor: 8,
-                patch: 0,
-                ..
-            } => match version.release_flags.as_ref() {
-                "a1" => Some(1312),
-                "a2" => Some(768),
-                "a3" | "a4" => Some(1328),
-                _ => Some(1296),
-            },
-            Version {
                 major: 3, minor: 8, ..
             } => Some(1296),
             Version {
@@ -265,17 +243,6 @@ pub mod pyruntime {
                 patch: 4..=7,
                 ..
             } => Some(1336),
-            Version {
-                major: 3,
-                minor: 8,
-                patch: 0,
-                ..
-            } => match version.release_flags.as_ref() {
-                "a1" => Some(1240),
-                "a2" => Some(696),
-                "a3" | "a4" => Some(1256),
-                _ => Some(1224),
-            },
             Version {
                 major: 3, minor: 8, ..
             } => Some(1224),

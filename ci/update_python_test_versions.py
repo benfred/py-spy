@@ -7,7 +7,7 @@ import re
 
 _VERSIONS_URL = "https://raw.githubusercontent.com/actions/python-versions/main/versions-manifest.json"  # noqa
 
-_OSX_PYTHON_EXCLUSIONS = ["3.12"]
+_OSX_PYTHON_EXCLUSIONS = []
 
 
 def parse_version(v):
@@ -100,7 +100,7 @@ def update_python_test_versions(force=False):
     exclusions = []
     for v in versions:
         # if we don't have a python version for the platform, skip it in GHA
-        # also, ignore python 3.12.* and 3.14.0 to 3.14.3 on OSX
+        # also, ignore python 3.12.* on OSX
         if ("darwin", "arm64") not in platforms[v] or any(
             v.startswith(pattern) for pattern in _OSX_PYTHON_EXCLUSIONS
         ):
