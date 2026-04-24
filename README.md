@@ -158,8 +158,40 @@ with subprocesses appearing as children of their parent processes.
 
 py-spy works by reading memory from a different python process, and this might not be allowed for security reasons depending on
 your OS and system settings. In many cases, running as a root user (with sudo or similar) gets around these security restrictions.
-OSX always requires running as root, but on Linux it depends on how you are launching py-spy and the system
-security settings.
+
+
+#### OSX
+
+OSX implements System Integrity Protection (SIP) that prevents py-spy from reading process memory (required for profiling).
+To lift the protection, either run py-spy as a root user (using sudo command) or codesign the py-spy binary with debugger 
+[entitlements](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.security.cs.debugger) (advanced).
+
+To sign the binary, you first need to create a certificate and add it to you system key chain. To do so, 
+follow the instructions [here](https://gist.github.com/gravitylow/fb595186ce6068537a6e9da6d8b5b96d) (only steps 1-9,
+ignore the rest, no need to restart).
+
+Then create an XML file `entitlements.xml` with this content:
+
+```
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.cs.debugger</key>
+    <true/>
+</dict>
+</plist>
+```
+
+Finally, run the following command:
+
+```
+sudo codesign --entitlements entitlements.xml -fs NAME_OF_CREATED_CERTIFICATE PATH_TO_PYSPY_BINARY
+```
+
+You may now run py-spy without sudo. You will be asked for your system admin credentials (only once per session).
+
+#### Linux
 
 On Linux the default configuration is to require root permissions when attaching to a process that isn't a child.
 For py-spy this means you can profile without root access by getting py-spy to create the process
@@ -213,6 +245,7 @@ There are a couple of different ways to deal with this:
  * You can install a different Python distribution. The built-in Python [will be removed](https://developer.apple.com/documentation/macos_release_notes/macos_catalina_10_15_release_notes) in a future OSX, and you probably want to migrate away from Python 2 anyways =).
  * You can use [virtualenv](https://virtualenv.pypa.io/en/stable/) to run the system python in an environment where SIP doesn't apply.
  * You can [disable System Integrity Protection](https://www.macworld.co.uk/how-to/mac/how-turn-off-mac-os-x-system-integrity-protection-rootless-3638975/).
+ * codesign py-spy binary with the debugger [entitlements](#OSX)
 
 ### How do I run py-spy in Docker?
 
