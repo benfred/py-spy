@@ -27,6 +27,38 @@ impl BinaryInfo {
     }
 }
 
+#[cfg(target_os = "macos")]
+fn get_mach_cpu_type() -> goblin::mach::cputype::CpuType {
+    let is_arm: i32 = 0;
+    let size: usize = std::mem::size_of_val(&is_arm);
+    unsafe {
+        let name = std::ffi::CString::new("hw.optional.arm64").expect("CString::new failed");
+        let ret = libc::sysctlbyname(
+            name.as_ptr() as *const i8,
+            &is_arm as *const _ as *mut _,
+            &size as *const _ as *mut _,
+            std::ptr::null_mut(),
+            0,
+        );
+        if ret != 0 {
+            // if the `hw.optional.arm64` key doesn't exist, its likely that we are running on an
+            // older x86_64 based intel mac
+            warn!("failed to call 'libc::sysctlbyname(\"hw.optional.arm64\",...' - assume running on x86_64 ");
+            return goblin::mach::cputype::CPU_TYPE_X86_64;
+        }
+    }
+    if is_arm == 1 {
+        goblin::mach::cputype::CPU_TYPE_ARM64
+    } else {
+        goblin::mach::cputype::CPU_TYPE_X86_64
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn get_mach_cpu_type() -> goblin::mach::cputype::CpuType {
+    goblin::mach::cputype::CPU_TYPE_ANY
+}
+
 /// Uses goblin to parse a binary file, returns information on symbols/bss/adjusted offset etc
 pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo, Error> {
     let offset = addr;
@@ -36,6 +68,10 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
     // Read in the filename
     let file = File::open(filename)?;
     let buffer = unsafe { Mmap::map(&file)? };
+
+    // for OSX, we could be running under rosetta (is compiled for x86_64, but running under
+    // arm64). check the currently running cpu type rather than relying on compile time flags
+    let mach_cputype = get_mach_cpu_type();
 
     // Use goblin to parse the binary
     match Object::parse(&buffer)? {
@@ -47,7 +83,7 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
                     let arch = fat
                         .iter_arches()
                         .find(|arch| match arch {
-                            Ok(arch) => arch.is_64(),
+                            Ok(arch) => arch.is_64() && arch.cputype() == mach_cputype,
                             Err(_) => false,
                         })
                         .ok_or_else(|| {
@@ -125,7 +161,7 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
                 .filter(|header| {
                     strtab
                         .get_at(header.sh_name)
-                        .map_or(true, |name| name == ".bss")
+                        .is_none_or(|name| name == ".bss")
                 })
                 // if we have multiple sections here, take the largest
                 .max_by_key(|header| header.sh_size)
@@ -150,9 +186,11 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
                     )
                 })?;
 
-            // p_vaddr may be larger than the map address in case when the header has an offset and
-            // the map address is relatively small. In this case we can default to 0.
-            let offset = offset.saturating_sub(program_header.p_vaddr);
+            // Align the virtual address offset, then subtract it from the offset
+            // to get real offset for symbol addresses in the file.
+            let aligned_vaddr =
+                program_header.p_vaddr - (program_header.p_vaddr % page_size::get() as u64);
+            let offset = offset.saturating_sub(aligned_vaddr);
 
             let mut bss_addr = 0;
             let mut bss_size = 0;
@@ -169,11 +207,10 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
                 bss_end = bss_header.sh_addr + bss_header.sh_size;
             }
 
-            let pyruntime_header = elf.section_headers.iter().find(|header| {
-                strtab
-                    .get_at(header.sh_name)
-                    .map_or(false, |name| name == ".PyRuntime")
-            });
+            let pyruntime_header = elf
+                .section_headers
+                .iter()
+                .find(|header| strtab.get_at(header.sh_name) == Some(".PyRuntime"));
 
             let mut pyruntime_addr = 0;
             let mut pyruntime_size = 0;

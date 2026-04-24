@@ -12,9 +12,7 @@ from shutil import which
 
 Frame = namedtuple("Frame", ["file", "name", "line", "col"])
 
-# disable gil checks on windows - just rely on active
-# (doesn't seem to be working quite right - TODO: investigate)
-GIL = ["--gil"] if not sys.platform.startswith("win") else []
+GIL = ["--gil"]
 
 PYSPY = which("py-spy")
 
@@ -47,7 +45,7 @@ class TestPyspy(unittest.TestCase):
             ]
             cmdline.extend(options or [])
             cmdline.extend(["--", sys.executable, script_name])
-            env = dict(os.environ, RUST_LOG="info")
+            env = dict(os.environ, RUST_LOG="info", RUST_BACKTRACE="1")
             subprocess.check_output(cmdline, env=env)
             with open(filename) as f:
                 profiles = json.load(f)
