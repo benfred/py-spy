@@ -635,3 +635,96 @@ fn test_dump_subprocesses_no_duplication() {
 
     let _ = child.0.kill();
 }
+
+#[cfg(not(target_os = "freebsd"))]
+#[test]
+fn test_dump_subprocesses_skips_non_python() {
+    #[cfg(target_os = "macos")]
+    {
+        if unsafe { libc::geteuid() } != 0 {
+            return;
+        }
+    }
+
+    use std::io::{BufRead, BufReader};
+
+    // Regression test for https://github.com/benfred/py-spy/issues/846:
+    // `dump --subprocesses` used to abort on the first non-Python child instead
+    // of skipping it and continuing with the rest of the tree.
+    console::set_colors_enabled(false);
+
+    let mut child = std::process::Command::new("python")
+        .arg("./tests/scripts/dump_subprocesses_non_python.py")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("failed to spawn parent script");
+
+    struct Killer(std::process::Child);
+    impl Drop for Killer {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+        }
+    }
+    let stdout = child.stdout.take().unwrap();
+    let mut child = Killer(child);
+
+    let mut parent_pid: Option<Pid> = None;
+    let mut non_python_pid: Option<Pid> = None;
+    let mut python_child_pid: Option<Pid> = None;
+    let reader = BufReader::new(stdout);
+    for line in reader.lines() {
+        let line = line.expect("failed to read from parent stdout");
+        if let Some(rest) = line.strip_prefix("PID_PARENT=") {
+            parent_pid = Some(rest.trim().parse().unwrap());
+        } else if let Some(rest) = line.strip_prefix("PID_NON_PYTHON=") {
+            non_python_pid = Some(rest.trim().parse().unwrap());
+        } else if let Some(rest) = line.strip_prefix("PID_PYTHON_CHILD=") {
+            python_child_pid = Some(rest.trim().parse().unwrap());
+        } else if line.trim() == "READY" {
+            break;
+        }
+    }
+    let parent_pid = parent_pid.expect("parent script never reported PID_PARENT");
+    let non_python_pid = non_python_pid.expect("parent script never reported PID_NON_PYTHON");
+    let python_child_pid =
+        python_child_pid.expect("parent script never reported PID_PYTHON_CHILD");
+
+    // Give the python child a moment to finish initialization.
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    let config = Config {
+        subprocesses: true,
+        ..Default::default()
+    };
+    let mut buf: Vec<u8> = Vec::new();
+    py_spy::dump::write_traces(&mut buf, parent_pid, &config, None)
+        .expect("write_traces should not fail when a child is non-Python");
+    let out = String::from_utf8(buf).expect("dump output was not utf-8");
+
+    let count_line_start =
+        |needle: &str| -> usize { out.lines().filter(|line| line.starts_with(needle)).count() };
+
+    assert_eq!(
+        count_line_start(&format!("Process {}:", parent_pid)),
+        1,
+        "expected parent process header once:\n{}",
+        out
+    );
+    assert_eq!(
+        count_line_start(&format!("Process {}:", python_child_pid)),
+        1,
+        "expected python child process header once:\n{}",
+        out
+    );
+    // The non-python sibling is logged via `warn!` (matching record/top) and so
+    // shouldn't appear in the dump output.
+    assert_eq!(
+        count_line_start(&format!("Process {}:", non_python_pid)),
+        0,
+        "non-python child should not appear in dump output:\n{}",
+        out
+    );
+
+    let _ = child.0.kill();
+}
