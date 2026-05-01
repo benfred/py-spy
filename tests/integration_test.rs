@@ -687,8 +687,7 @@ fn test_dump_subprocesses_skips_non_python() {
     }
     let parent_pid = parent_pid.expect("parent script never reported PID_PARENT");
     let non_python_pid = non_python_pid.expect("parent script never reported PID_NON_PYTHON");
-    let python_child_pid =
-        python_child_pid.expect("parent script never reported PID_PYTHON_CHILD");
+    let python_child_pid = python_child_pid.expect("parent script never reported PID_PYTHON_CHILD");
 
     // Give the python child a moment to finish initialization.
     std::thread::sleep(std::time::Duration::from_millis(500));
