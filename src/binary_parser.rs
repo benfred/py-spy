@@ -29,14 +29,14 @@ impl BinaryInfo {
 
 #[cfg(target_os = "macos")]
 fn get_mach_cpu_type() -> goblin::mach::cputype::CpuType {
-    let is_arm: i32 = 0;
-    let size: usize = std::mem::size_of_val(&is_arm);
+    let mut is_arm: i32 = 0;
+    let mut size: libc::size_t = size_of_val(&is_arm);
     unsafe {
         let name = std::ffi::CString::new("hw.optional.arm64").expect("CString::new failed");
         let ret = libc::sysctlbyname(
             name.as_ptr() as *const i8,
-            &is_arm as *const _ as *mut _,
-            &size as *const _ as *mut _,
+            &mut is_arm as *mut _ as *mut libc::c_void,
+            &mut size,
             std::ptr::null_mut(),
             0,
         );
