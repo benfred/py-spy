@@ -259,4 +259,16 @@ pub mod pyruntime {
             _ => None,
         }
     }
+
+    #[cfg(all(target_os = "linux", target_arch = "riscv64"))]
+    pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
+        match version {
+            Version {
+                major: 3,
+                minor: 11,
+                ..
+            } => Some(576),
+            _ => None,
+        }
+    }
 }
