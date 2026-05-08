@@ -468,6 +468,45 @@ where
             values.push(value);
         }
         format!("({})", values.join(", "))
+    } else if value_type_name == "set" {
+        // _setobject layout for fill,used,mask,table is the same from 2.7~3.15
+        let mask_ptr = addr + std::mem::size_of::<I::Object>() + 2 * std::mem::size_of::<usize>();
+        let table_ptr_ptr = addr + std::mem::size_of::<I::Object>() + 3 * std::mem::size_of::<usize>();
+
+        let mask: usize = process.copy_struct(mask_ptr)?;
+        let table_ptr: usize = process.copy_struct(table_ptr_ptr)?;
+        
+        let slots = mask + 1;
+        let key_ptr: usize;
+        let hash_ptr: usize;
+        if version.major == 2 || (version.major == 3 && version.minor < 4) {
+            // old versions have the hash first
+            hash_ptr = table_ptr;
+            key_ptr = table_ptr + std::mem::size_of::<usize>();
+        } else {
+            hash_ptr = table_ptr + std::mem::size_of::<usize>();
+            key_ptr = table_ptr;
+        }
+
+        let mut values = Vec::new();
+        let mut remaining = max_length - 2;
+        for i in 0..slots {
+            let hash: isize = process.copy_struct(hash_ptr + i * 2 * std::mem::size_of::<usize>())?;
+            if hash == 0 || hash == -1 {
+                // Unused slots are 0, Dummy slots are -1
+                continue;
+            }
+            let value_addr: *mut I::Object = process.copy_struct(key_ptr + i * 2 * std::mem::size_of::<usize>())?;
+            let value = format_variable::<I, P>(process, version, value_addr as usize, remaining)?;
+            remaining -= value.len() as isize + 2;
+            if remaining <= 5 {
+                values.push("...".to_owned());
+                break;
+            }
+            values.push(value);
+        }
+
+        format!("{{{}}}", values.join(", "))
     } else if value_type_name == "float" {
         let value =
             process.copy_pointer(addr as *const crate::python_bindings::v3_7_0::PyFloatObject)?;
