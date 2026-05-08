@@ -11,12 +11,13 @@ use remoteprocess::{Pid, Process, ProcessMemory, Tid};
 use crate::config::{Config, LockingStrategy};
 #[cfg(feature = "unwind")]
 use crate::native_stack_trace::NativeStack;
+use crate::obj_walk::{get_object_attribute, walk_gc};
 use crate::python_bindings::{
     v2_7_15, v3_10_0, v3_11_0, v3_12_0, v3_13_0, v3_14_0, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0,
     v3_9_5,
 };
 use crate::python_data_access::format_variable;
-use crate::python_interpreters::{InterpreterState, ThreadState};
+use crate::python_interpreters::{HasGcGenerations, InterpreterState, ThreadState};
 use crate::python_process_info::{
     get_interpreter_address, get_python_version, get_threadstate_address, PythonProcessInfo,
 };
@@ -370,6 +371,83 @@ impl PythonSpy {
                         || frame.filename.contains("gevent")
                         || frame.filename.contains("tornado")))
         }
+    }
+
+    pub fn print_objects(&self) -> Result<(), Error> {
+        match self.version {
+            Version {
+                major: 3, minor: 9, ..
+            } => self._print_objects::<v3_9_5::_is>(),
+            Version {
+                major: 3,
+                minor: 10,
+                ..
+            } => self._print_objects::<v3_10_0::_is>(),
+            Version {
+                major: 3,
+                minor: 11,
+                ..
+            } => self._print_objects::<v3_11_0::_is>(),
+            Version {
+                major: 3,
+                minor: 12,
+                ..
+            } => self._print_objects::<v3_12_0::_is>(),
+            Version {
+                major: 3,
+                minor: 13,
+                ..
+            } => self._print_objects::<v3_13_0::_is>(),
+            Version {
+                major: 3,
+                minor: 14,
+                ..
+            } => self._print_objects::<v3_14_0::_is>(),
+            _ => Err(format_err!(
+                "Unsupported version of Python: {}",
+                self.version
+            )),
+        }
+    }
+
+    fn _print_objects<I>(&self) -> Result<(), Error>
+    where
+        I: HasGcGenerations,
+    {
+        let (type_name, attrs): (Option<&str>, Vec<&str>) = match self.config.object_path.as_deref()
+        {
+            Some(s) => {
+                let mut parts = s.split('.');
+                let first = parts.next();
+                let rest = parts.collect();
+                (first, rest)
+            }
+            None => (None, Vec::new()),
+        };
+
+        let objects = walk_gc::<I, Process>(self.interpreter_address, type_name, &self.process)?;
+        println!("Found {} object(s)", objects.len());
+
+        if !attrs.is_empty() {
+            for obj in objects {
+                println!("<{} at 0x{:x}>:", type_name.unwrap(), obj);
+                match get_object_attribute::<I, Process>(obj, &attrs, &self.process, &self.version)
+                {
+                    Ok(attr) => println!("{}", attr),
+                    Err(err) => println!("{}", err),
+                }
+            }
+        } else {
+            for obj in objects {
+                if let Ok(formatted) =
+                    format_variable::<I, Process>(&self.process, &self.version, obj, 200)
+                {
+                    println!("{}", formatted);
+                }
+            }
+        }
+
+        Ok(())
     }
 
     #[cfg(windows)]

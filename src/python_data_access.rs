@@ -471,11 +471,12 @@ where
     } else if value_type_name == "set" {
         // _setobject layout for fill,used,mask,table is the same from 2.7~3.15
         let mask_ptr = addr + std::mem::size_of::<I::Object>() + 2 * std::mem::size_of::<usize>();
-        let table_ptr_ptr = addr + std::mem::size_of::<I::Object>() + 3 * std::mem::size_of::<usize>();
+        let table_ptr_ptr =
+            addr + std::mem::size_of::<I::Object>() + 3 * std::mem::size_of::<usize>();
 
         let mask: usize = process.copy_struct(mask_ptr)?;
         let table_ptr: usize = process.copy_struct(table_ptr_ptr)?;
-        
+
         let slots = mask + 1;
         let key_ptr: usize;
         let hash_ptr: usize;
@@ -491,12 +492,14 @@ where
         let mut values = Vec::new();
         let mut remaining = max_length - 2;
         for i in 0..slots {
-            let hash: isize = process.copy_struct(hash_ptr + i * 2 * std::mem::size_of::<usize>())?;
+            let hash: isize =
+                process.copy_struct(hash_ptr + i * 2 * std::mem::size_of::<usize>())?;
             if hash == 0 || hash == -1 {
                 // Unused slots are 0, Dummy slots are -1
                 continue;
             }
-            let value_addr: *mut I::Object = process.copy_struct(key_ptr + i * 2 * std::mem::size_of::<usize>())?;
+            let value_addr: *mut I::Object =
+                process.copy_struct(key_ptr + i * 2 * std::mem::size_of::<usize>())?;
             let value = format_variable::<I, P>(process, version, value_addr as usize, remaining)?;
             remaining -= value.len() as isize + 2;
             if remaining <= 5 {
