@@ -61,6 +61,8 @@ pub struct Config {
     pub refresh_seconds: f64,
     #[doc(hidden)]
     pub core_filename: Option<String>,
+    #[doc(hidden)]
+    pub object_path: Option<String>,
 }
 
 #[allow(non_camel_case_types)]
@@ -135,6 +137,7 @@ impl Default for Config {
             lineno: LineNo::LastInstruction,
             refresh_seconds: 1.0,
             core_filename: None,
+            object_path: None,
         }
     }
 }
@@ -331,6 +334,26 @@ impl Config {
                 .action(ArgAction::SetTrue))
             .arg(subprocesses.clone());
 
+        let objects = Command::new("objects")
+            .about("Dumps objects for a target program to stdout")
+            .arg(
+                Arg::new("core")
+                    .short('c')
+                    .long("core")
+                    .help("Filename of coredump to display python objects from")
+                    .value_name("core")
+                    .action(ArgAction::Set),
+            )
+            .arg(
+                Arg::new("objectpath")
+                    .long("objectpath")
+                    .help("Name of a type or path of an attribute, e.g., MyType._history")
+                    .value_name("objectpath")
+                    .action(ArgAction::Set),
+            )
+            .arg(subprocesses.clone())
+            .arg(pid.clone().required_unless_present("core"));
+
         let completions = Command::new("completions")
             .about("Generate shell completions")
             .hide(true)
@@ -353,6 +376,8 @@ impl Config {
         let top = top.arg(nonblocking.clone());
         #[cfg(not(target_os = "freebsd"))]
         let dump = dump.arg(nonblocking.clone());
+        #[cfg(not(target_os = "freebsd"))]
+        let objects = objects.arg(nonblocking.clone());
 
         let styles = Styles::styled()
             .header(AnsiColor::Yellow.on_default())
@@ -370,6 +395,7 @@ impl Config {
             .subcommand(record)
             .subcommand(top)
             .subcommand(dump)
+            .subcommand(objects)
             .subcommand(completions);
         let matches = app.clone().try_get_matches_from(args)?;
         debug!("Command line args: {:?}", matches);
@@ -379,7 +405,11 @@ impl Config {
         let (subcommand, matches) = matches.subcommand().unwrap();
 
         // Check if `--native` was used on an unsupported platform
-        if subcommand != "completions" && !cfg!(feature = "unwind") && matches.get_flag("native") {
+        if subcommand != "completions"
+            && subcommand != "objects"
+            && !cfg!(feature = "unwind")
+            && matches.get_flag("native")
+        {
             eprintln!(
                 "Collecting stack traces from native extensions (`--native`) is not supported on your platform."
             );
@@ -425,6 +455,10 @@ impl Config {
                     config.core_filename = matches.get_one("core").cloned();
                 }
             }
+            "objects" => {
+                config.core_filename = matches.get_one("core").cloned();
+                config.object_path = matches.get_one("objectpath").cloned();
+            }
             "completions" => {
                 let shell = matches.get_one::<clap_complete::Shell>("shell").unwrap();
                 let app_name = app.get_name().to_string();
@@ -457,7 +491,9 @@ impl Config {
             }
         });
 
-        config.full_filenames = matches.get_flag("full_filenames");
+        if subcommand != "objects" {
+            config.full_filenames = matches.get_flag("full_filenames");
+        }
         if cfg!(feature = "unwind") {
             config.native = matches.get_flag("native");
         }

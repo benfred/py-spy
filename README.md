@@ -38,8 +38,8 @@ can be installed with ```apk add py-spy --update-cache --repository http://dl-3.
 ## Usage
 
 py-spy works from the command line and takes either the PID of the program you want to sample from
-or the command line of the python program you want to run. py-spy has three subcommands
-```record```, ```top``` and ```dump```:
+or the command line of the python program you want to run. py-spy has four subcommands
+```record```, ```top```, ```dump``` and ```objects```:
 
 ### record
 
@@ -94,6 +94,25 @@ console:
 This is useful for the case where you just need a single call stack to figure out where your
 python program is hung on. This command also has the ability to print out the local variables
 associated with each stack frame by setting the ```--locals``` flag.
+
+### objects
+
+py-spy has limited support for object introspection (available for 3.9+). Objects must be
+user/library-defined and must be reachable by the GC. `--objectpath` can be used for filtering
+by specifying a type name followed by one or more attributes that will be walked.
+
+```bash
+# Print all GC-reachable objects
+py-spy objects --pid 12345
+# Print value attribute of all objects of type Foo
+py-spy objects --pid 12345 --objectpath Foo.value
+# Print url attribute found in config attribute of all objects of type Foo
+py-spy objects --pid 12345 --objectpath Foo.config.url
+# Print all dicts
+py-spy objects --pid 12345 --objectpath dict
+# Inspect a core dump instead of live process
+py-spy objects -c core.elf --objectpath dict
+```
 
 ## Frequently Asked Questions
 

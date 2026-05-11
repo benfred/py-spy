@@ -31,6 +31,21 @@ pub trait InterpreterState: Copy {
     fn modules_ptr_ptr(interpreter_address: usize) -> *const *const Self::Object;
 }
 
+pub trait HasGcGenerations: InterpreterState {
+    type Generation: 'static;
+    type GcHead: GcHead;
+
+    fn gc_generations(interpreter_address: usize) -> &'static [Self::Generation; 3];
+    fn generation_head_addr(gen: &Self::Generation) -> *const Self::GcHead;
+}
+
+pub trait GcHead: Copy {
+    type Object: Object;
+
+    fn next(&self) -> *mut Self;
+    fn obj_addr(&self, self_address: usize) -> usize;
+}
+
 pub trait ThreadState: Copy {
     type FrameObject: FrameObject;
     type InterpreterState: InterpreterState;
@@ -426,6 +441,84 @@ macro_rules! Python3Impl {
     };
 }
 
+// GcHead for 3.9~3.13 (before incremental GC)
+macro_rules! GcHeadNoMaskingImpl {
+    ($py: ident) => {
+        impl GcHead for $py::PyGC_Head {
+            type Object = $py::PyObject;
+            fn next(&self) -> *mut Self {
+                self._gc_next as *mut Self
+            }
+            fn obj_addr(&self, self_address: usize) -> usize {
+                self_address + std::mem::size_of::<Self>()
+            }
+        }
+    };
+}
+
+// GcHead for 3.14+ (after incremental GC)
+macro_rules! GcHeadMaskingImpl {
+    ($py: ident) => {
+        impl GcHead for $py::PyGC_Head {
+            type Object = $py::PyObject;
+            fn next(&self) -> *mut Self {
+                const MASK: usize = !0b11; // -1 << 2
+                (self._gc_next & MASK) as *mut Self
+            }
+            fn obj_addr(&self, self_address: usize) -> usize {
+                self_address + std::mem::size_of::<Self>()
+            }
+        }
+    };
+}
+
+// Python 3.9~3.13
+macro_rules! HasGcGenerationsFlatImpl {
+    ($py: ident) => {
+        impl HasGcGenerations for $py::PyInterpreterState {
+            type Generation = $py::gc_generation;
+            type GcHead = $py::PyGC_Head;
+
+            fn gc_generations(interpreter_address: usize) -> &'static [Self::Generation; 3] {
+                unsafe {
+                    &*((interpreter_address
+                        + std::mem::offset_of!(Self, gc)
+                        + std::mem::offset_of!($py::_gc_runtime_state, generations))
+                        as *const [Self::Generation; 3])
+                }
+            }
+
+            fn generation_head_addr(gen: &Self::Generation) -> *const Self::GcHead {
+                &gen.head
+            }
+        }
+    };
+}
+
+// Python 3.14+
+macro_rules! HasGcGenerationsYoungImpl {
+    ($py: ident) => {
+        impl HasGcGenerations for $py::PyInterpreterState {
+            type Generation = $py::gc_generation;
+            type GcHead = $py::PyGC_Head;
+
+            fn gc_generations(interpreter_address: usize) -> &'static [Self::Generation; 3] {
+                // This is a hack that assumes "young" is followed directly by "old" [;2]
+                unsafe {
+                    &*((interpreter_address
+                        + std::mem::offset_of!(Self, gc)
+                        + std::mem::offset_of!($py::_gc_runtime_state, young))
+                        as *const [Self::Generation; 3])
+                }
+            }
+
+            fn generation_head_addr(gen: &Self::Generation) -> *const Self::GcHead {
+                &gen.head
+            }
+        }
+    };
+}
+
 // Python 3.14
 Python3Impl!(v3_14_0);
 
@@ -510,6 +603,9 @@ impl TypeObject for v3_14_0::PyTypeObject {
 
 CompactCodeObjectImpl!(v3_14_0, PyBytesObject, PyUnicodeObject);
 
+HasGcGenerationsYoungImpl!(v3_14_0);
+GcHeadMaskingImpl!(v3_14_0);
+
 // Python 3.13
 Python3Impl!(v3_13_0);
 
@@ -593,6 +689,9 @@ impl TypeObject for v3_13_0::PyTypeObject {
 }
 
 CompactCodeObjectImpl!(v3_13_0, PyBytesObject, PyUnicodeObject);
+
+HasGcGenerationsFlatImpl!(v3_13_0);
+GcHeadNoMaskingImpl!(v3_13_0);
 
 // Python 3.12
 // TODO: this shares some similarities with python 3.11, we should refactor to a common macro
@@ -685,6 +784,9 @@ impl TypeObject for v3_12_0::PyTypeObject {
 
 CompactCodeObjectImpl!(v3_12_0, PyBytesObject, PyUnicodeObject);
 
+HasGcGenerationsFlatImpl!(v3_12_0);
+GcHeadNoMaskingImpl!(v3_12_0);
+
 // Python 3.11
 // Python3.11 is sufficiently different from previous versions that we can't use the macros above
 // to generate implementations of these traits.
@@ -773,6 +875,9 @@ impl TypeObject for v3_11_0::PyTypeObject {
 
 CompactCodeObjectImpl!(v3_11_0, PyBytesObject, PyUnicodeObject);
 
+HasGcGenerationsFlatImpl!(v3_11_0);
+GcHeadNoMaskingImpl!(v3_11_0);
+
 // Python 3.10
 Python3Impl!(v3_10_0);
 PythonCommonImpl!(v3_10_0, PyUnicodeObject);
@@ -836,10 +941,15 @@ impl CodeObject for v3_10_0::PyCodeObject {
     }
 }
 
+HasGcGenerationsFlatImpl!(v3_10_0);
+GcHeadNoMaskingImpl!(v3_10_0);
+
 // Python 3.9
 PythonCommonImpl!(v3_9_5, PyUnicodeObject);
 PythonCodeObjectImpl!(v3_9_5, PyBytesObject, PyUnicodeObject);
 Python3Impl!(v3_9_5);
+HasGcGenerationsFlatImpl!(v3_9_5);
+GcHeadNoMaskingImpl!(v3_9_5);
 
 // Python 3.8
 PythonCommonImpl!(v3_8_0, PyUnicodeObject);

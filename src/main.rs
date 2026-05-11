@@ -15,6 +15,7 @@ mod dump;
 mod flamegraph;
 #[cfg(feature = "unwind")]
 mod native_stack_trace;
+mod obj_walk;
 mod python_bindings;
 mod python_data_access;
 mod python_interpreters;
@@ -371,6 +372,10 @@ fn run_spy_command(pid: remoteprocess::Pid, config: &config::Config) -> Result<(
         "dump" => {
             dump::print_traces(pid, config, None)?;
         }
+        "objects" => {
+            let process = python_spy::PythonSpy::new(pid, config)?;
+            process.print_objects()?;
+        }
         "record" => {
             record_samples(pid, config)?;
         }
@@ -401,8 +406,18 @@ fn pyspy_main() -> Result<(), Error> {
     {
         if let Some(ref core_filename) = config.core_filename {
             let core = coredump::PythonCoreDump::new(std::path::Path::new(&core_filename))?;
-            let traces = core.get_stack(&config)?;
-            return core.print_traces(&traces, &config);
+            match config.command.as_ref() {
+                "dump" => {
+                    let traces = core.get_stack(&config)?;
+                    return core.print_traces(&traces, &config);
+                }
+                "objects" => {
+                    return core.print_objects(&config);
+                }
+                _ => {
+                    return Err(format_err!("Unknown command {}", config.command));
+                }
+            }
         }
     }
 
