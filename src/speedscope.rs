@@ -99,7 +99,8 @@ struct Frame {
     name: String,
     file: Option<String>,
     line: Option<u32>,
-    col: Option<u32>,
+    // col is optional, and not written by py-spy
+    // col: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -185,7 +186,6 @@ impl Frame {
             } else {
                 None
             },
-            col: None,
         }
     }
 }
