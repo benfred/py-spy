@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use anyhow::{Context, Error};
 
 use crate::python_bindings::{
-    v3_10_0, v3_11_0, v3_12_0, v3_13_0, v3_14_0, v3_6_6, v3_7_0, v3_8_0, v3_9_5,
+    pyruntime, v3_10_0, v3_11_0, v3_12_0, v3_13_0, v3_14_0, v3_6_6, v3_7_0, v3_8_0, v3_9_5,
 };
 use crate::python_data_access::{copy_long, copy_string, DictIterator, PY_TPFLAGS_MANAGED_DICT};
 use crate::python_interpreters::{InterpreterState, Object, TypeObject};
@@ -21,7 +21,9 @@ pub fn thread_names_from_interpreter<I: InterpreterState, P: ProcessMemory>(
     process: &P,
     version: &Version,
 ) -> Result<HashMap<u64, String>, Error> {
-    let modules_ptr_ptr = I::modules_ptr_ptr(interpreter_address);
+    let pyruntime_addr = interpreter_address - pyruntime::get_interp_head_offset(version);
+    let debug_offsets: I::DebugOffsets = process.copy_struct(pyruntime_addr)?;
+    let modules_ptr_ptr = I::modules_ptr_ptr(interpreter_address, pyruntime_addr, debug_offsets);
     let modules: *const I::Object = process
         .copy_pointer(modules_ptr_ptr)
         .context("Failed to copy modules PyObject")?;
