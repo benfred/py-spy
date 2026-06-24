@@ -164,7 +164,27 @@ impl PythonProcessInfo {
 
             let mut libpython_binary: Option<BinaryInfo> = None;
 
-            #[cfg(not(target_os = "linux"))]
+            // On macOS the dyld layout can map small executable stubs of a
+            // dylib at lower addresses than its real __TEXT segment (seen with
+            // PyInstaller onedir bundles), so the first executable map is NOT
+            // necessarily the image base. parse_binary slides every symbol and
+            // section by the base address we pass it, so picking the wrong map
+            // makes every read land on garbage — e.g. Py_Version reads as 0,
+            // producing a bogus "0.0.0" version, and the BSS/_PyRuntime lookups
+            // fail too. The real image base is the map whose start holds the
+            // Mach-O header, so probe each executable map for the magic and
+            // prefer that one; fall back to the first map if none match.
+            #[cfg(target_os = "macos")]
+            let libpython_option = libmaps
+                .iter()
+                .find(|m| {
+                    matches!(
+                        process.copy_struct::<u32>(m.start()),
+                        Ok(0xfeed_facf) | Ok(0xcffa_edfe) | Ok(0xfeed_face) | Ok(0xcefa_edfe)
+                    )
+                })
+                .or_else(|| libmaps.first());
+            #[cfg(all(not(target_os = "linux"), not(target_os = "macos")))]
             let libpython_option = if !libmaps.is_empty() {
                 Some(&libmaps[0])
             } else {
