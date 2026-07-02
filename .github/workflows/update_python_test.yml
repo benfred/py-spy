@@ -1,4 +1,7 @@
 name: Update Python Test Versions
+permissions:
+  contents: write
+  pull-requests: write
 on:
   workflow_dispatch:
   schedule:
@@ -7,10 +10,10 @@ jobs:
   update-dep:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           ssh-key: ${{ secrets.SSH_PRIVATE_KEY }}
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: 3.9
       - name: Install
@@ -20,7 +23,7 @@ jobs:
       - name: Format results
         run: npx prettier --write ".github/workflows/update_python_test.yml"
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           commit-message: Update tested python versions
           title: Update tested python versions

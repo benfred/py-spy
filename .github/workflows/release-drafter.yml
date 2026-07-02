@@ -1,5 +1,8 @@
 # draft release notes with https://github.com/release-drafter/release-drafter
 name: Release Drafter
+permissions:
+  contents: write
+  pull-requests: write
 
 on:
   push:
@@ -12,6 +15,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # Drafts your next Release notes as Pull Requests are merged into "master"
-      - uses: release-drafter/release-drafter@v6
+      - uses: release-drafter/release-drafter@v7
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

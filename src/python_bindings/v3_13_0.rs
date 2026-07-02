@@ -909,7 +909,12 @@ impl Default for PyBaseExceptionObject {
         unsafe { ::std::mem::zeroed() }
     }
 }
+
+#[cfg(target_pointer_width = "64")]
 pub type digit = u32;
+#[cfg(target_pointer_width = "32")]
+pub type digit = u16;
+
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct _PyLongValue {

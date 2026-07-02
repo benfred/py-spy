@@ -2,7 +2,9 @@ use std::collections::HashMap;
 
 use anyhow::{Context, Error};
 
-use crate::python_bindings::{v3_10_0, v3_11_0, v3_12_0, v3_13_0, v3_6_6, v3_7_0, v3_8_0, v3_9_5};
+use crate::python_bindings::{
+    v3_10_0, v3_11_0, v3_12_0, v3_13_0, v3_14_0, v3_6_6, v3_7_0, v3_8_0, v3_9_5,
+};
 use crate::python_data_access::{copy_long, copy_string, DictIterator, PY_TPFLAGS_MANAGED_DICT};
 use crate::python_interpreters::{InterpreterState, Object, TypeObject};
 use crate::python_spy::PythonSpy;
@@ -124,6 +126,11 @@ pub fn thread_name_lookup(process: &PythonSpy) -> Option<HashMap<u64, String>> {
             minor: 13,
             ..
         } => _thread_name_lookup::<v3_13_0::_is>(process),
+        Version {
+            major: 3,
+            minor: 14,
+            ..
+        } => _thread_name_lookup::<v3_14_0::_is>(process),
         _ => return None,
     };
     err.ok()

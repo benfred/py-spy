@@ -9,7 +9,7 @@ py-spy is extremely low overhead: it is written in Rust for speed and doesn't ru
 in the same process as the profiled Python program. This means py-spy is safe to use against production Python code.
 
 py-spy works on Linux, OSX, Windows and FreeBSD, and supports profiling all recent versions of the CPython
-interpreter (versions 2.3-2.7 and 3.3-3.13).
+interpreter (versions 2.3-2.7 and 3.3-3.14).
 
 ## Installation
 
@@ -143,7 +143,7 @@ for more information.
 | i686    |       |         |     |         |
 | x86-64  | yes   | yes     |     |         |
 | ARM     | yes   |         |     |         |
-| Aarch64 |       |         |     |         |
+| Aarch64 | yes   |         |     |         |
 
 ### How can I profile subprocesses?
 
