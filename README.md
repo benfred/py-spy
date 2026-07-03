@@ -23,10 +23,10 @@ You can also download prebuilt binaries from the [GitHub Releases
 Page](https://github.com/benfred/py-spy/releases).
 
 If you're a Rust user, py-spy can also be installed with: ```cargo install py-spy```. Note this
-builds py-spy from source and requires `libunwind` on Linux and Window, e.g., 
+builds py-spy from source and requires `libunwind` on Linux and Window, e.g.,
 `apt install libunwind-dev`.
 
-On macOS, [py-spy is in Homebrew](https://formulae.brew.sh/formula/py-spy#default) and 
+On macOS, [py-spy is in Homebrew](https://formulae.brew.sh/formula/py-spy#default) and
 can be installed with ```brew install py-spy```.
 
 On Arch Linux, [py-spy is in AUR](https://aur.archlinux.org/packages/py-spy/) and can be
@@ -181,23 +181,24 @@ There are some limitations with this approach though that may cause idle threads
 marked as active. First off, we have to get this thread activity information before pausing the
 program, because getting this from a paused program will cause it to always return that this is
 idle. This means there is a potential race condition, where we get the thread activity and
-then the thread is in a different state when we get the stack trace. Querying the OS for thread
-activity also isn't implemented yet for FreeBSD and i686/ARM processors on Linux. On Windows,
-calls that are blocked on IO also won't be marked as idle yet, for instance when reading input
-from stdin. Finally, on some Linux calls the ptrace attach that we are using may cause idle threads
-to wake up momentarily, causing false positives when reading from procfs. For these reasons, 
-we also have a heuristic fallback that marks known certain known calls in
-python as being idle. 
+then the thread is in a different state when we get the stack trace. In cases where the process
+exits before the program can be paused, the call to pause the program will time out, and py-spy
+will gracefully exit. Querying the OS for thread activity also isn't implemented yet for
+FreeBSD and i686/ARM processors on Linux. On Windows, calls that are blocked on IO also won't
+be marked as idle yet, for instance when reading input from stdin. Finally, on some Linux calls
+the ptrace attach that we are using may cause idle threads to wake up momentarily, causing
+false positives when reading from procfs. For these reasons, we also have a heuristic fallback
+that marks known certain known calls in python as being idle.
 
 You can disable this functionality by setting the ```--idle``` flag, which
-will include frames that py-spy considers idle.  
+will include frames that py-spy considers idle.
 
 ### How does GIL detection work?
 
 We get GIL activity by looking at the threadid value pointed to by the ```_PyThreadState_Current``` symbol
 for Python 3.6 and earlier and by figuring out the equivalent from the ```_PyRuntime``` struct in
 Python 3.7 and later. These symbols might not be included in your python distribution, which will
-cause resolving which thread holds on to the GIL to fail. Current GIL usage is also shown in the 
+cause resolving which thread holds on to the GIL to fail. Current GIL usage is also shown in the
 ```top``` view as %GIL.
 
 Passing the ```--gil``` flag will only include traces for threads that are holding on to the
@@ -233,7 +234,7 @@ your_service:
 Note that you'll need to restart the docker container in order for this setting to take effect.
 
 You can also use py-spy from the Host OS to profile a running process running inside the docker
-container. 
+container.
 
 ### How do I run py-spy in Kubernetes?
 
