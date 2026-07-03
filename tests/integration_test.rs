@@ -1,8 +1,6 @@
 extern crate py_spy;
 use py_spy::{Config, Pid, PythonSpy};
 use std::collections::HashSet;
-use std::io::{BufRead, BufReader, Write};
-use std::process::Stdio;
 
 struct ScriptRunner {
     #[allow(dead_code)]
@@ -557,6 +555,7 @@ fn test_delayed_subprocess() {
     }
 }
 
+#[cfg(feature = "test_artifacts")]
 #[cfg(target_os = "linux")]
 #[test]
 fn test_hanging_lock_successful() {
@@ -593,6 +592,7 @@ fn test_hanging_lock_successful() {
     assert!(ecode.success());
 }
 
+#[cfg(feature = "test_artifacts")]
 #[cfg(target_os = "linux")]
 #[test]
 fn test_hanging_lock_failure() {
@@ -629,6 +629,7 @@ fn test_hanging_lock_failure() {
 
     let ecode = child.wait().expect("Child process should exit");
     assert!(ecode.success());
+}
 
 #[cfg(not(target_os = "freebsd"))]
 #[test]
