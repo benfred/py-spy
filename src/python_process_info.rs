@@ -393,6 +393,31 @@ where
     ))
 }
 
+pub fn is_python_free_threaded<P>(
+    python_info: &PythonProcessInfo,
+    process: &P,
+    version: &Version,
+) -> bool
+where
+    P: ProcessMemory,
+{
+    match version {
+        Version {
+            major: 3,
+            minor: 14,
+            ..
+        } => python_info
+            .get_symbol("_PyRuntime")
+            .and_then(|&addr| {
+                process
+                    .copy_struct::<v3_14_0::_Py_DebugOffsets>(addr as usize)
+                    .ok()
+            })
+            .is_some_and(|debug_offsets| debug_offsets.free_threaded != 0),
+        _ => false,
+    }
+}
+
 pub fn get_interpreter_address<P>(
     python_info: &PythonProcessInfo,
     process: &P,
@@ -817,7 +842,7 @@ pub fn get_windows_python_symbols(
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 pub fn is_python_lib(pathname: &str) -> bool {
     lazy_static! {
-        static ref RE: Regex = Regex::new(r"/libpython\d.\d\d?(m|d|u)?.so").unwrap();
+        static ref RE: Regex = Regex::new(r"/libpython\d.\d\d?(m|d|t|u)?.so").unwrap();
     }
     RE.is_match(pathname)
 }
@@ -825,7 +850,7 @@ pub fn is_python_lib(pathname: &str) -> bool {
 #[cfg(target_os = "macos")]
 pub fn is_python_lib(pathname: &str) -> bool {
     lazy_static! {
-        static ref RE: Regex = Regex::new(r"/libpython\d.\d\d?(m|d|u)?.(dylib|so)$").unwrap();
+        static ref RE: Regex = Regex::new(r"/libpython\d.\d\d?(m|d|t|u)?.(dylib|so)$").unwrap();
     }
     RE.is_match(pathname) || is_python_framework(pathname)
 }
@@ -878,6 +903,7 @@ mod tests {
         assert!(is_python_lib("./libpython2.7.so"));
         assert!(is_python_lib("/usr/lib/libpython3.4d.so"));
         assert!(is_python_lib("/usr/local/lib/libpython3.8m.so"));
+        assert!(is_python_lib("/opt/python314t/lib/libpython3.14t.so.1.0"));
         assert!(is_python_lib("/usr/lib/libpython2.7u.so"));
 
         // don't blindly match libraries with python in the name (boost_python etc)

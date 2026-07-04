@@ -17,8 +17,10 @@ use crate::python_bindings::{
 };
 use crate::python_data_access::format_variable;
 use crate::python_interpreters::{InterpreterState, ThreadState};
+use crate::python_interpreters_3_14t as v3_14t;
 use crate::python_process_info::{
-    get_interpreter_address, get_python_version, get_threadstate_address, PythonProcessInfo,
+    get_interpreter_address, get_python_version, get_threadstate_address, is_python_free_threaded,
+    PythonProcessInfo,
 };
 use crate::python_threading::thread_name_lookup;
 use crate::stack_trace::{get_gil_threadid, get_stack_trace, StackTrace};
@@ -29,6 +31,7 @@ pub struct PythonSpy {
     pub pid: Pid,
     pub process: Process,
     pub version: Version,
+    pub free_threaded: bool,
     pub interpreter_address: usize,
     pub threadstate_address: usize,
     pub config: Config,
@@ -58,6 +61,15 @@ impl PythonSpy {
 
         let version = get_python_version(&python_info, &process)?;
         info!("python version {} detected", version);
+        let free_threaded = is_python_free_threaded(&python_info, &process, &version);
+        if free_threaded {
+            info!("free-threaded python build detected");
+            if config.gil_only {
+                return Err(format_err!(
+                    "--gil is not supported for free-threaded Python builds"
+                ));
+            }
+        }
 
         let interpreter_address = get_interpreter_address(&python_info, &process, &version)?;
         info!("Found interpreter at 0x{:016x}", interpreter_address);
@@ -86,6 +98,7 @@ impl PythonSpy {
             pid,
             process,
             version,
+            free_threaded,
             interpreter_address,
             threadstate_address,
             #[cfg(feature = "unwind")]
@@ -181,6 +194,11 @@ impl PythonSpy {
                 major: 3,
                 minor: 14,
                 ..
+            } if self.free_threaded => self._get_stack_traces::<v3_14t::PyInterpreterState>(),
+            Version {
+                major: 3,
+                minor: 14,
+                ..
             } => self._get_stack_traces::<v3_14_0::_is>(),
             _ => Err(format_err!(
                 "Unsupported version of Python: {}",
@@ -226,8 +244,19 @@ impl PythonSpy {
             .context("Failed to copy PyThreadState head pointer")?;
 
         // get the threadid of the gil if appropriate
-        let gil_thread_id = get_gil_threadid::<I, Process>(self.threadstate_address, &self.process)
-            .context("failed to get gil_thread_id")?;
+        let gil_thread_id =
+            match get_gil_threadid::<I, Process>(self.threadstate_address, &self.process) {
+                Ok(thread_id) => thread_id,
+                Err(err) if self.config.gil_only => {
+                    return Err(err).context("failed to get gil_thread_id")
+                }
+                Err(err) => {
+                    warn!(
+                        "failed to get gil_thread_id, continuing without GIL ownership data: {err}"
+                    );
+                    0
+                }
+            };
 
         let mut traces = Vec::new();
         let mut threads = threads_head;
