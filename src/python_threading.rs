@@ -93,6 +93,10 @@ fn _thread_name_lookup<I: InterpreterState>(
 // processing we only handle py3.6+ right now, and this doesn't work at all if the
 // threading module isn't imported in the target program
 pub fn thread_name_lookup(process: &PythonSpy) -> Option<HashMap<u64, String>> {
+    if process.free_threaded {
+        return None;
+    }
+
     let err = match process.version {
         Version {
             major: 3, minor: 6, ..

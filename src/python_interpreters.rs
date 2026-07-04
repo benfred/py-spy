@@ -112,6 +112,16 @@ pub trait TypeObject: Copy {
     fn flags(&self) -> usize;
 }
 
+pub(crate) fn stackref_as_object(bits: usize, tag_bits: usize) -> usize {
+    bits & !tag_bits
+}
+
+pub(crate) fn is_py314_entry_frame_owner(owner: ::std::os::raw::c_char) -> bool {
+    const FRAME_OWNED_BY_INTERPRETER: ::std::os::raw::c_char = 3;
+    const FRAME_OWNED_BY_CSTACK: ::std::os::raw::c_char = 4;
+    owner == FRAME_OWNED_BY_INTERPRETER || owner == FRAME_OWNED_BY_CSTACK
+}
+
 /// This macro provides a common impl for PyThreadState/PyFrameObject/PyCodeObject traits
 /// (this code is identical across python versions, we are only abstracting the struct layouts here).
 /// String handling changes substantially between python versions, and is handled separately.
@@ -473,19 +483,17 @@ impl ThreadState for v3_14_0::PyThreadState {
 impl FrameObject for v3_14_0::_PyInterpreterFrame {
     type CodeObject = v3_14_0::PyCodeObject;
     fn code(&self) -> *mut Self::CodeObject {
-        unsafe { self.f_executable.bits as *mut v3_14_0::PyCodeObject }
+        unsafe { stackref_as_object(self.f_executable.bits, 1) as *mut v3_14_0::PyCodeObject }
     }
     fn lasti(&self) -> i32 {
-        let co_code = unsafe { self.f_executable.bits as *const u8 };
+        let co_code = unsafe { stackref_as_object(self.f_executable.bits, 1) as *const u8 };
         unsafe { (self.instr_ptr as *const u8).offset_from(co_code) as i32 }
     }
     fn back(&self) -> *mut Self {
         self.previous
     }
     fn is_entry(&self) -> bool {
-        // https://github.com/python/cpython/pull/108036#issuecomment-1684458828
-        const FRAME_OWNED_BY_CSTACK: ::std::os::raw::c_char = 3;
-        self.owner == FRAME_OWNED_BY_CSTACK
+        is_py314_entry_frame_owner(self.owner)
     }
 }
 
