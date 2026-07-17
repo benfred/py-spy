@@ -167,6 +167,27 @@ fn test_thread_names() {
 }
 
 #[test]
+fn test_skip_thread_names() {
+    #[cfg(target_os = "macos")]
+    {
+        // We need root permissions here to run this on OSX
+        if unsafe { libc::geteuid() } != 0 {
+            return;
+        }
+    }
+    let config = Config {
+        collect_thread_names: false,
+        include_idle: true,
+        ..Default::default()
+    };
+    let mut runner = TestRunner::new(config, "./tests/scripts/thread_names.py");
+
+    let traces = runner.spy.get_stack_traces().unwrap();
+    assert_eq!(traces.len(), 11);
+    assert!(traces.iter().all(|trace| trace.thread_name.is_none()));
+}
+
+#[test]
 fn test_recursive() {
     #[cfg(target_os = "macos")]
     {
