@@ -31,6 +31,35 @@ pub trait InterpreterState: Copy {
     fn modules_ptr_ptr(interpreter_address: usize) -> *const *const Self::Object;
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct InterpreterStateOffsets {
+    pub threads_head: usize,
+    pub imports_modules: usize,
+    pub ceval_gil: usize,
+}
+
+pub fn threadstate_ptr_ptr<I: InterpreterState>(
+    interpreter_address: usize,
+    offsets: Option<InterpreterStateOffsets>,
+) -> *const *const I::ThreadState {
+    match offsets {
+        Some(offsets) => {
+            (interpreter_address + offsets.threads_head) as *const *const I::ThreadState
+        }
+        None => I::threadstate_ptr_ptr(interpreter_address),
+    }
+}
+
+pub fn modules_ptr_ptr<I: InterpreterState>(
+    interpreter_address: usize,
+    offsets: Option<InterpreterStateOffsets>,
+) -> *const *const I::Object {
+    match offsets {
+        Some(offsets) => (interpreter_address + offsets.imports_modules) as *const *const I::Object,
+        None => I::modules_ptr_ptr(interpreter_address),
+    }
+}
+
 pub trait ThreadState: Copy {
     type FrameObject: FrameObject;
     type InterpreterState: InterpreterState;
@@ -916,6 +945,25 @@ impl TupleObject for v2_7_15::PyTupleObject {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_runtime_interpreter_state_offsets() {
+        let interpreter_address = 0x1000;
+        let offsets = InterpreterStateOffsets {
+            threads_head: 7600,
+            imports_modules: 7688,
+            ceval_gil: 7720,
+        };
+
+        let threads = threadstate_ptr_ptr::<v3_14_0::_is>(interpreter_address, Some(offsets));
+        let modules = modules_ptr_ptr::<v3_14_0::_is>(interpreter_address, Some(offsets));
+
+        assert_eq!(threads as usize, interpreter_address + offsets.threads_head);
+        assert_eq!(
+            modules as usize,
+            interpreter_address + offsets.imports_modules
+        );
+    }
 
     #[test]
     fn test_py3_11_line_numbers() {
