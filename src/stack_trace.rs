@@ -8,7 +8,8 @@ use serde_derive::Serialize;
 use crate::config::{Config, LineNo};
 use crate::python_data_access::{copy_bytes, copy_string};
 use crate::python_interpreters::{
-    CodeObject, FrameObject, InterpreterState, ThreadState, TupleObject,
+    threadstate_ptr_ptr, CodeObject, FrameObject, InterpreterState, InterpreterStateOffsets,
+    ThreadState, TupleObject,
 };
 
 /// Call stack for a single python thread
@@ -69,6 +70,7 @@ pub struct ProcessInfo {
 }
 
 /// Given an InterpreterState, this function returns a vector of stack traces for each thread
+#[allow(dead_code)]
 pub fn get_stack_traces<I, P>(
     interpreter_address: usize,
     process: &P,
@@ -79,9 +81,30 @@ where
     I: InterpreterState,
     P: ProcessMemory,
 {
+    get_stack_traces_with_offsets::<I, P>(
+        interpreter_address,
+        None,
+        process,
+        threadstate_address,
+        config,
+    )
+}
+
+pub(crate) fn get_stack_traces_with_offsets<I, P>(
+    interpreter_address: usize,
+    interpreter_state_offsets: Option<InterpreterStateOffsets>,
+    process: &P,
+    threadstate_address: usize,
+    config: Option<&Config>,
+) -> Result<Vec<StackTrace>, Error>
+where
+    I: InterpreterState,
+    P: ProcessMemory,
+{
     let gil_thread_id = get_gil_threadid::<I, P>(threadstate_address, process)?;
 
-    let threadstate_ptr_ptr = I::threadstate_ptr_ptr(interpreter_address);
+    let threadstate_ptr_ptr =
+        threadstate_ptr_ptr::<I>(interpreter_address, interpreter_state_offsets);
     let mut threads: *const I::ThreadState = process
         .copy_struct(threadstate_ptr_ptr as usize)
         .context("Failed to copy PyThreadState head pointer")?;
