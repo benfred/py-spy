@@ -1,7 +1,10 @@
 py-spy: Sampling profiler for Python programs
 =====
-[![Build Status](https://github.com/benfred/py-spy/workflows/Build/badge.svg?branch=master)](https://github.com/benfred/py-spy/actions?query=branch%3Amaster)
-[![FreeBSD Build Status](https://api.cirrus-ci.com/github/benfred/py-spy.svg)](https://cirrus-ci.com/github/benfred/py-spy)
+[![Build Status](https://github.com/wuurrd/py-spy/workflows/Build/badge.svg?branch=master)](https://github.com/wuurrd/py-spy/actions?query=branch%3Amaster)
+
+> This fork adds read-only inspection of live asyncio tasks, including their
+> suspended frames and creation tracebacks. The upstream project is
+> [benfred/py-spy](https://github.com/benfred/py-spy).
 
 py-spy is a sampling profiler for Python programs. It lets you visualize what your Python
 program is spending time on without restarting the program or modifying the code in any way.
@@ -12,6 +15,18 @@ py-spy works on Linux, OSX, Windows and FreeBSD, and supports profiling all rece
 interpreter (versions 2.3-2.7 and 3.3-3.14).
 
 ## Installation
+
+To build this fork with asyncio task inspection:
+
+```bash
+git clone https://github.com/wuurrd/py-spy.git
+cd py-spy
+cargo build --release
+./target/release/py-spy dump --asyncio --pid 12345
+```
+
+The packages and binaries below are maintained by the upstream project and do
+not include this fork's asyncio additions.
 
 Prebuilt binary wheels can be installed from PyPI with:
 
@@ -94,6 +109,25 @@ console:
 This is useful for the case where you just need a single call stack to figure out where your
 python program is hung on. This command also has the ability to print out the local variables
 associated with each stack frame by setting the ```--locals``` flag.
+
+#### Asyncio tasks
+
+This fork can also inspect every live asyncio task without running code in the
+target process:
+
+```bash
+py-spy dump --asyncio --pid 12345
+```
+
+The additional `Asyncio Tasks` section includes each task's id, name, state,
+the frame where its coroutine is currently running or suspended, and its
+creation traceback when available. CPython only records creation tracebacks
+for tasks created while asyncio debug mode is enabled (for example with
+`PYTHONASYNCIODEBUG=1`, `asyncio.run(..., debug=True)`, or
+`loop.set_debug(True)`). It works with CPython 3.7 through 3.14 and can be
+combined with `--locals`. With `--asyncio --json`, the output is an object
+containing `threads` and `asyncio_tasks`; JSON output without `--asyncio`
+retains py-spy's original array format.
 
 ## Frequently Asked Questions
 

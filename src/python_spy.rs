@@ -8,6 +8,7 @@ use std::path::Path;
 use anyhow::{Context, Error, Result};
 use remoteprocess::{Pid, Process, ProcessMemory, Tid};
 
+use crate::asyncio::{tasks_from_interpreter, AsyncioDebugOffsets, AsyncioTask};
 use crate::config::{Config, LockingStrategy};
 #[cfg(feature = "unwind")]
 use crate::native_stack_trace::NativeStack;
@@ -37,6 +38,8 @@ pub struct PythonSpy {
     pub short_filenames: HashMap<String, Option<String>>,
     pub python_thread_ids: HashMap<u64, Tid>,
     pub python_thread_names: HashMap<u64, String>,
+    python_debug_offsets: Option<v3_14_0::_Py_DebugOffsets>,
+    asyncio_debug_offsets: Option<AsyncioDebugOffsets>,
     #[cfg(target_os = "linux")]
     pub dockerized: bool,
 }
@@ -71,6 +74,36 @@ impl PythonSpy {
             config,
         )?;
 
+        let python_debug_offsets = if version.major == 3 && version.minor == 14 {
+            python_info
+                .get_symbol("_PyRuntime")
+                .and_then(|address| {
+                    process
+                        .copy_struct::<v3_14_0::_Py_DebugOffsets>(*address as usize)
+                        .ok()
+                })
+                .filter(|offsets| {
+                    offsets.cookie
+                        == [
+                            b'x' as i8, b'd' as i8, b'e' as i8, b'b' as i8, b'u' as i8, b'g' as i8,
+                            b'p' as i8, b'y' as i8,
+                        ]
+                })
+        } else {
+            None
+        };
+        let asyncio_debug_offsets = python_info
+            .asyncio_debug_address
+            .and_then(|address| {
+                process
+                    .copy_struct::<AsyncioDebugOffsets>(address as usize)
+                    .ok()
+            })
+            .filter(AsyncioDebugOffsets::is_sane);
+
+        #[cfg(target_os = "linux")]
+        let dockerized = python_info.dockerized;
+
         #[cfg(feature = "unwind")]
         let native = if config.native {
             Some(NativeStack::new(
@@ -91,11 +124,13 @@ impl PythonSpy {
             #[cfg(feature = "unwind")]
             native,
             #[cfg(target_os = "linux")]
-            dockerized: python_info.dockerized,
+            dockerized,
             config: config.clone(),
             short_filenames: HashMap::new(),
             python_thread_ids: HashMap::new(),
             python_thread_names: HashMap::new(),
+            python_debug_offsets,
+            asyncio_debug_offsets,
         })
     }
 
@@ -187,6 +222,93 @@ impl PythonSpy {
                 self.version
             )),
         }
+    }
+
+    /// Gets every live asyncio task and the frame at which its coroutine is
+    /// currently running or suspended. This never executes code in the target.
+    pub fn get_asyncio_tasks(&mut self) -> Result<Vec<AsyncioTask>, Error> {
+        match self.version {
+            Version {
+                major: 3, minor: 7, ..
+            } => self._get_asyncio_tasks::<v3_7_0::_is>(),
+            Version {
+                major: 3, minor: 8, ..
+            } => self._get_asyncio_tasks::<v3_8_0::_is>(),
+            Version {
+                major: 3, minor: 9, ..
+            } => self._get_asyncio_tasks::<v3_9_5::_is>(),
+            Version {
+                major: 3,
+                minor: 10,
+                ..
+            } => self._get_asyncio_tasks::<v3_10_0::_is>(),
+            Version {
+                major: 3,
+                minor: 11,
+                ..
+            } => self._get_asyncio_tasks::<v3_11_0::_is>(),
+            Version {
+                major: 3,
+                minor: 12,
+                ..
+            } => self._get_asyncio_tasks::<v3_12_0::_is>(),
+            Version {
+                major: 3,
+                minor: 13,
+                ..
+            } => self._get_asyncio_tasks::<v3_13_0::_is>(),
+            Version {
+                major: 3,
+                minor: 14,
+                ..
+            } => self._get_asyncio_tasks::<v3_14_0::_is>(),
+            _ => Err(format_err!(
+                "asyncio task inspection requires CPython 3.7 through 3.14 (found {})",
+                self.version
+            )),
+        }
+    }
+
+    fn _get_asyncio_tasks<I: InterpreterState>(&mut self) -> Result<Vec<AsyncioTask>, Error> {
+        let _lock = if self.config.blocking == LockingStrategy::Lock {
+            Some(self.process.lock().context("Failed to suspend process")?)
+        } else {
+            None
+        };
+
+        let mut tasks = tasks_from_interpreter::<I, Process>(
+            self.interpreter_address,
+            &self.process,
+            &self.version,
+            self.config.dump_locals > 0,
+            self.config.lineno,
+            self.python_debug_offsets.as_ref(),
+            self.asyncio_debug_offsets.as_ref(),
+        )?;
+
+        for task in &mut tasks {
+            if let Some(frames) = task.creation_traceback.as_mut() {
+                for frame in frames {
+                    frame.short_filename = self.shorten_filename(&frame.filename);
+                }
+            }
+            for frame in &mut task.frames {
+                frame.short_filename = self.shorten_filename(&frame.filename);
+                if let Some(locals) = frame.locals.as_mut() {
+                    let max_length = (128 * self.config.dump_locals) as isize;
+                    for local in locals {
+                        let repr = format_variable::<I, Process>(
+                            &self.process,
+                            &self.version,
+                            local.addr,
+                            max_length,
+                        );
+                        local.repr = Some(repr.unwrap_or_else(|_| "?".to_owned()));
+                    }
+                }
+            }
+        }
+        Ok(tasks)
     }
 
     // implementation of get_stack_traces, where we have a type for the InterpreterState
