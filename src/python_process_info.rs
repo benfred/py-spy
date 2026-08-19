@@ -72,21 +72,32 @@ impl PythonProcessInfo {
         // parse the main python binary
         let (python_binary, python_filename) = {
             // Get the memory address for the executable by matching against virtual memory maps
-            let map = maps.iter().find(|m| {
-                if let Some(pathname) = m.filename() {
-                    if let Some(pathname) = pathname.to_str() {
-                        #[cfg(not(windows))]
-                        {
-                            return is_python_bin(pathname) && m.is_exec();
-                        }
-                        #[cfg(windows)]
-                        {
-                            return is_python_bin(pathname);
+            let binary_maps: Vec<_> = maps
+                .iter()
+                .filter(|m| {
+                    if let Some(pathname) = m.filename() {
+                        if let Some(pathname) = pathname.to_str() {
+                            #[cfg(not(windows))]
+                            {
+                                return is_python_bin(pathname) && m.is_exec();
+                            }
+                            #[cfg(windows)]
+                            {
+                                return is_python_bin(pathname);
+                            }
                         }
                     }
-                }
-                false
-            });
+                    false
+                })
+                .collect();
+
+            // Statically linked libffi >= 3.4 re-mmaps a page of the executable at an
+            // arbitrary address for its static trampolines; take the mapping with the
+            // lowest file offset to get the real text segment (like libpython below).
+            #[cfg(target_os = "linux")]
+            let map = binary_maps.iter().min_by_key(|m| m.offset).copied();
+            #[cfg(not(target_os = "linux"))]
+            let map = binary_maps.first().copied();
 
             let map = match map {
                 Some(map) => map,
