@@ -44,7 +44,8 @@ jobs:
         run: cargo build --release --verbose --lib --no-default-features
       - uses: actions/setup-python@v6
         with:
-          python-version: 3.11
+          # Windows on arm64 has no CPython builds before 3.11
+          python-version: ${{ matrix.os == 'windows-11-arm' && '3.11' || '3.9' }}
       - name: Install optional numpy dependency
         run: pip install numpy>=2
       - name: Test
