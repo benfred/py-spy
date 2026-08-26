@@ -111,6 +111,10 @@ def update_python_test_versions(force=False):
             exclusions.append("          - os: windows-latest\n")
             exclusions.append(f"            python-version: {v}\n")
 
+        if ("win32", "arm64") not in platforms[v]:
+            exclusions.append("          - os: windows-11-arm\n")
+            exclusions.append(f"            python-version: {v}\n")
+
         if ("linux", "x64") not in platforms[v]:
             exclusions.append("          - os: ubuntu-22.04\n")
             exclusions.append(f"            python-version: {v}\n")
