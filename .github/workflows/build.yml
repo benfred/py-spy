@@ -31,23 +31,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest, windows-11-arm, macos-latest]
     steps:
       - uses: actions/checkout@v6
       - uses: Swatinem/rust-cache@v2
       - name: Install Dependencies
         run: sudo apt install libunwind-dev
         if: runner.os == 'Linux'
-      - uses: actions/setup-python@v6
-        with:
-          python-version: 3.9
       - name: Build
         run: cargo build --release --verbose --examples
       - name: Build library
         run: cargo build --release --verbose --lib --no-default-features
       - uses: actions/setup-python@v6
         with:
-          python-version: 3.9
+          # Windows on arm64 has no CPython builds before 3.11
+          python-version: ${{ matrix.os == 'windows-11-arm' && '3.11' || '3.9' }}
       - name: Install optional numpy dependency
         run: pip install numpy>=2
       - name: Test
@@ -86,7 +84,7 @@ jobs:
       - name: Upload Windows Wheels
         uses: actions/upload-artifact@v7
         with:
-          name: wheels-windows
+          name: wheels-${{ matrix.os }}
           path: dist
         if: runner.os == 'Windows'
       - name: Upload Macos Wheels
@@ -225,11 +223,20 @@ jobs:
             3.14.3,
             3.14.4,
           ]
-        os: [ubuntu-22.04, macos-latest, windows-latest, ubuntu-22.04-arm]
+        os:
+          [
+            ubuntu-22.04,
+            macos-latest,
+            windows-latest,
+            windows-11-arm,
+            ubuntu-22.04-arm,
+          ]
         # some versions of python can't be tested on GHA with osx because of SIP:
         exclude:
           - os: macos-latest
             python-version: 3.6.7
+          - os: windows-11-arm
+            python-version: 3.6.7
           - os: ubuntu-22.04
             python-version: 3.6.7
           - os: ubuntu-22.04-arm
@@ -238,11 +245,15 @@ jobs:
             python-version: 3.6.15
           - os: windows-latest
             python-version: 3.6.15
+          - os: windows-11-arm
+            python-version: 3.6.15
           - os: ubuntu-22.04
             python-version: 3.6.15
           - os: ubuntu-22.04-arm
             python-version: 3.6.15
           - os: macos-latest
+            python-version: 3.7.1
+          - os: windows-11-arm
             python-version: 3.7.1
           - os: ubuntu-22.04
             python-version: 3.7.1
@@ -252,9 +263,13 @@ jobs:
             python-version: 3.7.17
           - os: windows-latest
             python-version: 3.7.17
+          - os: windows-11-arm
+            python-version: 3.7.17
           - os: ubuntu-22.04-arm
             python-version: 3.7.17
           - os: macos-latest
+            python-version: 3.8.0
+          - os: windows-11-arm
             python-version: 3.8.0
           - os: ubuntu-22.04
             python-version: 3.8.0
@@ -264,7 +279,11 @@ jobs:
             python-version: 3.8.18
           - os: windows-latest
             python-version: 3.8.18
+          - os: windows-11-arm
+            python-version: 3.8.18
           - os: macos-latest
+            python-version: 3.9.0
+          - os: windows-11-arm
             python-version: 3.9.0
           - os: ubuntu-22.04
             python-version: 3.9.0
@@ -274,7 +293,11 @@ jobs:
             python-version: 3.9.25
           - os: windows-latest
             python-version: 3.9.25
+          - os: windows-11-arm
+            python-version: 3.9.25
           - os: macos-latest
+            python-version: 3.10.0
+          - os: windows-11-arm
             python-version: 3.10.0
           - os: ubuntu-22.04
             python-version: 3.10.0
@@ -283,14 +306,20 @@ jobs:
           - os: macos-latest
             python-version: 3.10.20
           - os: windows-latest
+            python-version: 3.10.20
+          - os: windows-11-arm
             python-version: 3.10.20
           - os: macos-latest
             python-version: 3.11.15
           - os: windows-latest
+            python-version: 3.11.15
+          - os: windows-11-arm
             python-version: 3.11.15
           - os: macos-latest
             python-version: 3.12.13
           - os: windows-latest
+            python-version: 3.12.13
+          - os: windows-11-arm
             python-version: 3.12.13
 
     steps:
@@ -299,6 +328,18 @@ jobs:
         with:
           pattern: wheels-*
           merge-multiple: true
+      # The windows-11-arm runner includes a few versions of Python, and the
+      # installer downloaded by actions/setup-python does not cleanly remove
+      # all registry entries, so the leftover newer install blocks any older
+      # patch release. See actions/setup-python#1267.
+      - name: Remove Python registry entries
+        run: |
+          . ./ci/remove_python_registry_entries.ps1
+          Remove-RegistryEntries -Architecture arm64 -MajorVersion 3 -MinorVersion 12
+          Remove-RegistryEntries -Architecture arm64 -MajorVersion 3 -MinorVersion 13
+          Remove-RegistryEntries -Architecture arm64 -MajorVersion 3 -MinorVersion 14
+        if: matrix.os == 'windows-11-arm'
+        continue-on-error: true
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
