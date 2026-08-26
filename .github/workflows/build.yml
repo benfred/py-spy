@@ -328,6 +328,18 @@ jobs:
         with:
           pattern: wheels-*
           merge-multiple: true
+      # The windows-11-arm runner includes a few versions of Python, and the
+      # installer downloaded by actions/setup-python does not cleanly remove
+      # all registry entries, so the leftover newer install blocks any older
+      # patch release. See actions/setup-python#1267.
+      - name: Remove Python registry entries
+        run: |
+          . ./ci/remove_python_registry_entries.ps1
+          Remove-RegistryEntries -Architecture arm64 -MajorVersion 3 -MinorVersion 12
+          Remove-RegistryEntries -Architecture arm64 -MajorVersion 3 -MinorVersion 13
+          Remove-RegistryEntries -Architecture arm64 -MajorVersion 3 -MinorVersion 14
+        if: matrix.os == 'windows-11-arm'
+        continue-on-error: true
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
