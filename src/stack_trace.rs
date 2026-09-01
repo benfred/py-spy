@@ -120,16 +120,40 @@ where
     T: ThreadState,
     P: ProcessMemory,
 {
-    // TODO: just return frames here? everything else probably should be returned out of scope
-    let mut frames = Vec::new();
-
     // python 3.11+ has an extra level of indirection to get the Frame from the threadstate
     let mut frame_address = thread.frame_address();
     if let Some(addr) = frame_address {
         frame_address = Some(process.copy_struct(addr)?);
     }
 
-    let mut frame_ptr = thread.frame(frame_address);
+    let frame_ptr = thread.frame(frame_address);
+    let frames = get_stack_frames(frame_ptr, process, copy_locals, lineno)?;
+
+    Ok(StackTrace {
+        pid: 0,
+        frames,
+        thread_id: thread.thread_id(),
+        thread_name: None,
+        owns_gil: false,
+        active: true,
+        os_thread_id: thread.native_thread_id(),
+        process_info: None,
+    })
+}
+
+/// Gets Python frames starting from an arbitrary frame pointer. This is used for
+/// suspended coroutine frames as well as regular thread stacks.
+pub(crate) fn get_stack_frames<F, P>(
+    mut frame_ptr: *mut F,
+    process: &P,
+    copy_locals: bool,
+    lineno: LineNo,
+) -> Result<Vec<Frame>, Error>
+where
+    F: FrameObject,
+    P: ProcessMemory,
+{
+    let mut frames = Vec::new();
 
     // We are iterating in reverse, i.e. from last call to first call.
     // Since Python 3.12, there are shim frames inserted before a block
@@ -233,16 +257,7 @@ where
     // First frame is always a shim
     set_last_frame_as_shim_entry(&mut frames);
 
-    Ok(StackTrace {
-        pid: 0,
-        frames,
-        thread_id: thread.thread_id(),
-        thread_name: None,
-        owns_gil: false,
-        active: true,
-        os_thread_id: thread.native_thread_id(),
-        process_info: None,
-    })
+    Ok(frames)
 }
 
 impl StackTrace {

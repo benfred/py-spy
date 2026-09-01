@@ -5,7 +5,7 @@ use console::{style, Term};
 
 use crate::config::Config;
 use crate::python_spy::PythonSpy;
-use crate::stack_trace::StackTrace;
+use crate::stack_trace::{Frame, StackTrace};
 
 use remoteprocess::Pid;
 
@@ -26,7 +26,18 @@ pub fn write_traces<W: Write>(
         let traces = process
             .get_stack_traces()
             .context("Failed to get stack traces")?;
-        writeln!(out, "{}", serde_json::to_string_pretty(&traces)?)?;
+        if config.dump_asyncio {
+            let tasks = process
+                .get_asyncio_tasks()
+                .context("Failed to get asyncio tasks")?;
+            let output = serde_json::json!({
+                "threads": traces,
+                "asyncio_tasks": tasks,
+            });
+            writeln!(out, "{}", serde_json::to_string_pretty(&output)?)?;
+        } else {
+            writeln!(out, "{}", serde_json::to_string_pretty(&traces)?)?;
+        }
         return Ok(());
     }
 
@@ -59,6 +70,36 @@ pub fn write_traces<W: Write>(
         .context("Failed to get stack traces")?;
     for trace in traces.iter().rev() {
         write_trace(out, trace, true)?;
+    }
+
+    if config.dump_asyncio {
+        let tasks = process
+            .get_asyncio_tasks()
+            .context("Failed to get asyncio tasks")?;
+        writeln!(out, "\nAsyncio Tasks ({})", tasks.len())?;
+        for task in &tasks {
+            let name = task
+                .name
+                .as_ref()
+                .map(|name| format!(" \"{name}\""))
+                .unwrap_or_default();
+            writeln!(
+                out,
+                "Task {}{} ({})",
+                style(&task.task_id).bold().yellow(),
+                name,
+                task.state
+            )?;
+            for frame in &task.frames {
+                write_frame(out, frame)?;
+            }
+            if let Some(frames) = &task.creation_traceback {
+                writeln!(out, "    Created at:")?;
+                for frame in frames {
+                    write_frame_indented(out, frame, "        ")?;
+                }
+            }
+        }
     }
 
     if config.subprocesses {
@@ -121,42 +162,53 @@ pub fn write_trace<W: Write>(
     };
 
     for frame in &trace.frames {
-        let filename = match &frame.short_filename {
-            Some(f) => f,
-            None => &frame.filename,
-        };
-        if frame.line != 0 {
-            writeln!(
-                out,
-                "    {} ({}:{})",
-                style(&frame.name).green(),
-                style(&filename).cyan(),
-                style(frame.line).dim()
-            )?;
-        } else {
-            writeln!(
-                out,
-                "    {} ({})",
-                style(&frame.name).green(),
-                style(&filename).cyan()
-            )?;
-        }
+        write_frame(out, frame)?;
+    }
+    Ok(())
+}
 
-        if let Some(locals) = &frame.locals {
-            let mut shown_args = false;
-            let mut shown_locals = false;
-            for local in locals {
-                if local.arg && !shown_args {
-                    writeln!(out, "        {}", style("Arguments:").dim())?;
-                    shown_args = true;
-                } else if !local.arg && !shown_locals {
-                    writeln!(out, "        {}", style("Locals:").dim())?;
-                    shown_locals = true;
-                }
+fn write_frame<W: Write>(out: &mut W, frame: &Frame) -> Result<(), Error> {
+    write_frame_indented(out, frame, "    ")
+}
 
-                let repr = local.repr.as_deref().unwrap_or("?");
-                writeln!(out, "            {}: {}", local.name, repr)?;
+fn write_frame_indented<W: Write>(out: &mut W, frame: &Frame, indent: &str) -> Result<(), Error> {
+    let filename = match &frame.short_filename {
+        Some(f) => f,
+        None => &frame.filename,
+    };
+    if frame.line != 0 {
+        writeln!(
+            out,
+            "{}{} ({}:{})",
+            indent,
+            style(&frame.name).green(),
+            style(&filename).cyan(),
+            style(frame.line).dim()
+        )?;
+    } else {
+        writeln!(
+            out,
+            "{}{} ({})",
+            indent,
+            style(&frame.name).green(),
+            style(&filename).cyan()
+        )?;
+    }
+
+    if let Some(locals) = &frame.locals {
+        let mut shown_args = false;
+        let mut shown_locals = false;
+        for local in locals {
+            if local.arg && !shown_args {
+                writeln!(out, "{}    {}", indent, style("Arguments:").dim())?;
+                shown_args = true;
+            } else if !local.arg && !shown_locals {
+                writeln!(out, "{}    {}", indent, style("Locals:").dim())?;
+                shown_locals = true;
             }
+
+            let repr = local.repr.as_deref().unwrap_or("?");
+            writeln!(out, "{}        {}: {}", indent, local.name, repr)?;
         }
     }
     Ok(())

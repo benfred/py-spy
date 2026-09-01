@@ -167,6 +167,45 @@ fn test_thread_names() {
 }
 
 #[test]
+fn test_asyncio_tasks() {
+    #[cfg(target_os = "macos")]
+    {
+        // We need root permissions here to read another process on macOS.
+        if unsafe { libc::geteuid() } != 0 {
+            return;
+        }
+    }
+
+    let mut runner = TestRunner::new(Config::default(), "./tests/scripts/asyncio_tasks.py");
+    if runner.spy.version.major != 3 || runner.spy.version.minor < 7 {
+        return;
+    }
+
+    let tasks = runner.spy.get_asyncio_tasks().unwrap();
+    let named: std::collections::HashMap<_, _> = tasks
+        .iter()
+        .filter_map(|task| task.name.as_ref().map(|name| (name.as_str(), task)))
+        .collect();
+
+    let nested = named.get("nested-worker").expect("missing nested-worker");
+    assert_eq!(nested.state, "pending");
+    assert_eq!(nested.frames[0].name, "nested_worker");
+    assert_eq!(nested.frames[0].line, 9);
+    let creation_traceback = nested
+        .creation_traceback
+        .as_ref()
+        .expect("missing nested-worker creation traceback");
+    assert!(creation_traceback
+        .iter()
+        .any(|frame| frame.name == "main" && frame.line == 15));
+
+    let sleeping = named.get("sleep-worker").expect("missing sleep-worker");
+    assert_eq!(sleeping.state, "pending");
+    assert_eq!(sleeping.frames[0].name, "sleep");
+    assert!(sleeping.creation_traceback.is_some());
+}
+
+#[test]
 fn test_recursive() {
     #[cfg(target_os = "macos")]
     {
