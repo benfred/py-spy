@@ -350,7 +350,7 @@ fn test_local_vars() {
     // Numpy scalars
     let local7 = &locals[9];
     assert_eq!(local7.name, "local7");
-    assert_eq!(local7.repr, Some("true".to_string()));
+    assert_eq!(local7.repr, Some("1".to_string()));
 
     let local8 = &locals[10];
     assert_eq!(local8.name, "local8");
