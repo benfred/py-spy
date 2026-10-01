@@ -286,6 +286,10 @@ impl PythonSpy {
             self.asyncio_debug_offsets.as_ref(),
         )?;
 
+        if self.config.dump_asyncio_hide_finished {
+            tasks.retain(|task| task.state != "finished");
+        }
+
         for task in &mut tasks {
             if let Some(frames) = task.creation_traceback.as_mut() {
                 for frame in frames {

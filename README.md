@@ -119,6 +119,12 @@ target process:
 py-spy dump --asyncio --pid 12345
 ```
 
+To omit tasks that have already finished:
+
+```bash
+py-spy dump --asyncio --asyncio-hide-finished --pid 12345
+```
+
 The additional `Asyncio Tasks` section includes each task's id, name, state,
 the frame where its coroutine is currently running or suspended, and its
 creation traceback when available. CPython only records creation tracebacks

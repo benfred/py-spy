@@ -197,12 +197,21 @@ fn test_asyncio_tasks() {
         .expect("missing nested-worker creation traceback");
     assert!(creation_traceback
         .iter()
-        .any(|frame| frame.name == "main" && frame.line == 15));
+        .any(|frame| frame.name == "main" && frame.line == 19));
 
     let sleeping = named.get("sleep-worker").expect("missing sleep-worker");
     assert_eq!(sleeping.state, "pending");
     assert_eq!(sleeping.frames[0].name, "sleep");
     assert!(sleeping.creation_traceback.is_some());
+
+    let finished = named
+        .get("finished-worker")
+        .expect("missing finished-worker");
+    assert_eq!(finished.state, "finished");
+
+    runner.spy.config.dump_asyncio_hide_finished = true;
+    let filtered_tasks = runner.spy.get_asyncio_tasks().unwrap();
+    assert!(filtered_tasks.iter().all(|task| task.state != "finished"));
 }
 
 #[test]
