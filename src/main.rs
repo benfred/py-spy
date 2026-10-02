@@ -455,10 +455,15 @@ fn pyspy_main() -> Result<(), Error> {
 
         // check exit code of subprocess
         std::thread::sleep(Duration::from_millis(1));
-        let success = match command.try_wait()? {
-            Some(exit) => exit.success(),
-            // if process hasn't finished, assume success
-            None => true,
+        let success = match command.try_wait() {
+            Ok(Some(exit)) => exit.success(),
+            // If the process hasn't finished, assume success. An Err here means the
+            // child has already been reaped (e.g. by the ptrace sampler once the
+            // process exited on its own), so there is no exit status left to read.
+            // Treat it as success instead of failing the whole run with
+            // "No child process (os error 10)".
+            // See https://github.com/benfred/py-spy/issues/759
+            Ok(None) | Err(_) => true,
         };
 
         // if we failed for any reason, dump out stderr from child process here
