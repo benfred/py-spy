@@ -54,6 +54,10 @@ pub struct Config {
     #[doc(hidden)]
     pub dump_locals: u64,
     #[doc(hidden)]
+    pub dump_asyncio: bool,
+    #[doc(hidden)]
+    pub dump_asyncio_hide_finished: bool,
+    #[doc(hidden)]
     pub full_filenames: bool,
     #[doc(hidden)]
     pub lineno: LineNo,
@@ -130,6 +134,8 @@ impl Default for Config {
             capture_output: true,
             dump_json: false,
             dump_locals: 0,
+            dump_asyncio: false,
+            dump_asyncio_hide_finished: false,
             subprocesses: false,
             full_filenames: false,
             lineno: LineNo::LastInstruction,
@@ -329,6 +335,15 @@ impl Config {
                 .long("json")
                 .help("Format output as JSON")
                 .action(ArgAction::SetTrue))
+            .arg(Arg::new("asyncio")
+                .long("asyncio")
+                .help("Also dump live asyncio tasks, suspended frames, and creation tracebacks")
+                .action(ArgAction::SetTrue))
+            .arg(Arg::new("asyncio-hide-finished")
+                .long("asyncio-hide-finished")
+                .help("Hide finished tasks from the asyncio task dump")
+                .requires("asyncio")
+                .action(ArgAction::SetTrue))
             .arg(subprocesses.clone());
 
         let completions = Command::new("completions")
@@ -419,6 +434,8 @@ impl Config {
             "dump" => {
                 config.dump_json = matches.get_flag("json");
                 config.dump_locals = matches.get_count("locals").into();
+                config.dump_asyncio = matches.get_flag("asyncio");
+                config.dump_asyncio_hide_finished = matches.get_flag("asyncio-hide-finished");
 
                 #[cfg(target_os = "linux")]
                 {
@@ -571,6 +588,22 @@ mod tests {
         let config = get_config("py-spy dump --pid 1234").unwrap();
         assert_eq!(config.pid, Some(1234));
         assert_eq!(config.command, String::from("dump"));
+        assert!(!config.dump_asyncio);
+
+        let asyncio_config = get_config("py-spy dump --asyncio --pid 1234").unwrap();
+        assert!(asyncio_config.dump_asyncio);
+        assert!(!asyncio_config.dump_asyncio_hide_finished);
+
+        let filtered_config =
+            get_config("py-spy dump --asyncio --asyncio-hide-finished --pid 1234").unwrap();
+        assert!(filtered_config.dump_asyncio_hide_finished);
+
+        assert_eq!(
+            get_config("py-spy dump --asyncio-hide-finished --pid 1234")
+                .unwrap_err()
+                .kind(),
+            clap::error::ErrorKind::MissingRequiredArgument
+        );
 
         // short version
         let short_config = get_config("py-spy d -p 1234").unwrap();

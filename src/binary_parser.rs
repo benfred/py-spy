@@ -127,6 +127,12 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
                             }
                         }
                     }
+
+                    if name == "AsyncioDebug" {
+                        if let Some(addr) = section.addr.checked_add(offset) {
+                            symbols.insert("AsyncioDebug".to_owned(), addr);
+                        }
+                    }
                 }
             }
 
@@ -221,6 +227,16 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
                 }
             }
 
+            if let Some(header) = elf
+                .section_headers
+                .iter()
+                .find(|header| strtab.get_at(header.sh_name) == Some(".AsyncioDebug"))
+            {
+                if let Some(addr) = header.sh_addr.checked_add(offset) {
+                    symbols.insert("AsyncioDebug".to_owned(), addr);
+                }
+            }
+
             for sym in elf.syms.iter() {
                 // Skip undefined symbols.
                 if sym.st_shndx == goblin::elf::section_header::SHN_UNDEF as usize {
@@ -307,6 +323,10 @@ pub fn parse_binary(filename: &Path, addr: u64, size: u64) -> Result<BinaryInfo,
                             pyruntime_addr = addr;
                             pyruntime_size = u64::from(section.virtual_size);
                         }
+                    }
+                } else if section.name.starts_with(b"AsyncioD") {
+                    if let Some(addr) = offset.checked_add(section.virtual_address as u64) {
+                        symbols.insert("AsyncioDebug".to_owned(), addr);
                     }
                 }
             }

@@ -33,6 +33,8 @@ pub struct PythonProcessInfo {
     pub libpython_binary: Option<BinaryInfo>,
     pub maps: Box<dyn ContainsAddr>,
     pub python_filename: std::path::PathBuf,
+    /// Address of CPython 3.14's AsyncioDebug section, when _asyncio is loaded.
+    pub asyncio_debug_address: Option<u64>,
     #[cfg(target_os = "linux")]
     pub dockerized: bool,
 }
@@ -259,6 +261,45 @@ impl PythonProcessInfo {
             _ => python_binary.ok(),
         };
 
+        // Python 3.14 publishes task and task-list offsets in a dedicated
+        // section of the dynamically loaded _asyncio extension. Locate it so
+        // out-of-process inspection remains stable across patch releases.
+        let asyncio_debug_address = python_binary
+            .as_ref()
+            .and_then(|binary| binary.symbols.get("AsyncioDebug"))
+            .or_else(|| {
+                libpython_binary
+                    .as_ref()
+                    .and_then(|binary| binary.symbols.get("AsyncioDebug"))
+            })
+            .copied()
+            .or_else(|| {
+                maps.iter()
+                    .filter(|map| map.is_exec())
+                    .filter_map(|map| map.filename().map(|filename| (map, filename)))
+                    .find_map(|(map, filename)| {
+                        let basename = filename.file_name()?.to_str()?;
+                        if !basename.starts_with("_asyncio.") {
+                            return None;
+                        }
+
+                        #[cfg(target_os = "linux")]
+                        let parse_filename = std::path::PathBuf::from(format!(
+                            "/proc/{}/root{}",
+                            process.pid,
+                            filename.display()
+                        ));
+                        #[cfg(not(target_os = "linux"))]
+                        let parse_filename = filename.to_path_buf();
+
+                        parse_binary(&parse_filename, map.start() as u64, map.size() as u64)
+                            .ok()?
+                            .symbols
+                            .get("AsyncioDebug")
+                            .copied()
+                    })
+            });
+
         #[cfg(target_os = "linux")]
         let dockerized = is_dockerized(process.pid).unwrap_or(false);
 
@@ -267,6 +308,7 @@ impl PythonProcessInfo {
             libpython_binary,
             maps: Box::new(maps),
             python_filename,
+            asyncio_debug_address,
             #[cfg(target_os = "linux")]
             dockerized,
         })

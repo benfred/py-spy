@@ -3,6 +3,7 @@ extern crate anyhow;
 #[macro_use]
 extern crate log;
 
+mod asyncio;
 mod binary_parser;
 mod chrometrace;
 mod config;
@@ -400,6 +401,11 @@ fn pyspy_main() -> Result<(), Error> {
     #[cfg(target_os = "linux")]
     {
         if let Some(ref core_filename) = config.core_filename {
+            if config.dump_asyncio {
+                return Err(format_err!(
+                    "--asyncio currently supports live processes, not core dumps"
+                ));
+            }
             let core = coredump::PythonCoreDump::new(std::path::Path::new(&core_filename))?;
             let traces = core.get_stack(&config)?;
             return core.print_traces(&traces, &config);

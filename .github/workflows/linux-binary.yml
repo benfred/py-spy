@@ -1,0 +1,27 @@
+name: Linux Binary
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    tags:
+      - v*
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    # ponytail: 22.04 for an older glibc baseline, so the binary runs on more distros
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release --target=x86_64-unknown-linux-gnu
+      - uses: actions/upload-artifact@v7
+        with:
+          name: py-spy-x86_64-unknown-linux-gnu
+          path: target/x86_64-unknown-linux-gnu/release/py-spy

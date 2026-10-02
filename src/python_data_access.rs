@@ -1,5 +1,5 @@
 #![allow(clippy::unnecessary_cast)]
-use anyhow::Error;
+use anyhow::{Context, Error};
 
 use crate::python_bindings::v3_13_0;
 use crate::python_interpreters::{
@@ -8,6 +8,24 @@ use crate::python_interpreters::{
 use crate::utils::offset_of;
 use crate::version::Version;
 use remoteprocess::ProcessMemory;
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct SetObjectHeader {
+    ob_refcnt: isize,
+    ob_type: usize,
+    fill: isize,
+    used: isize,
+    mask: isize,
+    table: usize,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct SetEntry {
+    key: usize,
+    hash: isize,
+}
 
 /// Copies a string from a target process. Attempts to handle unicode differences, which mostly seems to be working
 pub fn copy_string<T: StringObject, P: ProcessMemory>(
@@ -151,6 +169,25 @@ pub struct DictIterator<'a, P: 'a> {
     values: usize,
 }
 
+fn dict_entries_address(
+    keys_addr: usize,
+    log2_index_bytes: u8,
+    keys_header_size: usize,
+    entries: isize,
+) -> Result<(usize, usize), Error> {
+    if log2_index_bytes > 32 || entries < 0 || entries > (1 << 24) {
+        return Err(format_err!(
+            "Invalid dict metadata: dk_log2_index_bytes={log2_index_bytes}, dk_nentries={entries}"
+        ));
+    }
+    let index_bytes = 1usize << log2_index_bytes;
+    let address = keys_addr
+        .checked_add(index_bytes)
+        .and_then(|addr| addr.checked_add(keys_header_size))
+        .ok_or_else(|| format_err!("Dictionary entries address overflow"))?;
+    Ok((address, entries as usize))
+}
+
 impl<'a, P: ProcessMemory> DictIterator<'a, P> {
     pub fn from_managed_dict(
         process: &'a P,
@@ -178,14 +215,27 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
         }
 
         if values_addr != 0 {
-            let ht_cached_keys = if version.major == 3 && version.minor >= 12 {
-                let ht: crate::python_bindings::v3_12_0::PyHeapTypeObject =
-                    process.copy_struct(tp_addr)?;
-                ht.ht_cached_keys as usize
-            } else {
-                let ht: crate::python_bindings::v3_11_0::PyHeapTypeObject =
-                    process.copy_struct(tp_addr)?;
-                ht.ht_cached_keys as usize
+            let ht_cached_keys = match (version.major, version.minor) {
+                (3, 14) => {
+                    let ht: crate::python_bindings::v3_14_0::PyHeapTypeObject =
+                        process.copy_struct(tp_addr)?;
+                    ht.ht_cached_keys as usize
+                }
+                (3, 13) => {
+                    let ht: crate::python_bindings::v3_13_0::PyHeapTypeObject =
+                        process.copy_struct(tp_addr)?;
+                    ht.ht_cached_keys as usize
+                }
+                (3, 12) => {
+                    let ht: crate::python_bindings::v3_12_0::PyHeapTypeObject =
+                        process.copy_struct(tp_addr)?;
+                    ht.ht_cached_keys as usize
+                }
+                _ => {
+                    let ht: crate::python_bindings::v3_11_0::PyHeapTypeObject =
+                        process.copy_struct(tp_addr)?;
+                    ht.ht_cached_keys as usize
+                }
             };
 
             // handle inline values in py3.13+
@@ -201,15 +251,18 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
             let keys: crate::python_bindings::v3_12_0::PyDictKeysObject =
                 process.copy_struct(ht_cached_keys as usize)?;
 
-            let entries_addr = ht_cached_keys as usize
-                + (1 << keys.dk_log2_index_bytes)
-                + std::mem::size_of_val(&keys);
+            let (entries_addr, entries) = dict_entries_address(
+                ht_cached_keys,
+                keys.dk_log2_index_bytes,
+                std::mem::size_of_val(&keys),
+                keys.dk_nentries,
+            )?;
             Ok(DictIterator {
                 process,
                 entries_addr,
                 index: 0,
                 kind: keys.dk_kind,
-                entries: keys.dk_nentries as usize,
+                entries,
                 values: values_addr,
             })
         } else if dict_addr != 0 {
@@ -227,22 +280,50 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
         match version {
             Version {
                 major: 3,
-                minor: 11..=14,
+                minor: 14,
                 ..
             } => {
-                let dict: crate::python_bindings::v3_11_0::PyDictObject =
+                let dict: crate::python_bindings::v3_14_0::PyDictObject =
                     process.copy_struct(addr)?;
-                let keys = process.copy_pointer(dict.ma_keys)?;
-
-                let entries_addr = dict.ma_keys as usize
-                    + (1 << keys.dk_log2_index_bytes)
-                    + std::mem::size_of_val(&keys);
+                let keys: crate::python_bindings::v3_11_0::_dictkeysobject =
+                    process.copy_struct(dict.ma_keys as usize)?;
+                let (entries_addr, entries) = dict_entries_address(
+                    dict.ma_keys as usize,
+                    keys.dk_log2_index_bytes,
+                    std::mem::size_of_val(&keys),
+                    keys.dk_nentries,
+                )
+                .with_context(|| format!("Invalid Python 3.14 dict at 0x{addr:x}"))?;
                 Ok(DictIterator {
                     process,
                     entries_addr,
                     index: 0,
                     kind: keys.dk_kind,
-                    entries: keys.dk_nentries as usize,
+                    entries,
+                    values: dict.ma_values as usize,
+                })
+            }
+            Version {
+                major: 3,
+                minor: 11..=13,
+                ..
+            } => {
+                let dict: crate::python_bindings::v3_11_0::PyDictObject =
+                    process.copy_struct(addr)?;
+                let keys = process.copy_pointer(dict.ma_keys)?;
+                let (entries_addr, entries) = dict_entries_address(
+                    dict.ma_keys as usize,
+                    keys.dk_log2_index_bytes,
+                    std::mem::size_of_val(&keys),
+                    keys.dk_nentries,
+                )
+                .with_context(|| format!("Invalid Python dict at 0x{addr:x}"))?;
+                Ok(DictIterator {
+                    process,
+                    entries_addr,
+                    index: 0,
+                    kind: keys.dk_kind,
+                    entries,
                     values: dict.ma_values as usize,
                 })
             }
@@ -342,6 +423,55 @@ impl<'a, P: ProcessMemory> Iterator for DictIterator<'a, P> {
     }
 }
 
+/// Allows iteration of a Python set without executing code in the target process.
+/// The portion of PySetObject used here is stable across all supported CPython 3.x
+/// versions.
+pub struct SetIterator<'a, P: 'a> {
+    process: &'a P,
+    table: usize,
+    index: usize,
+    entries: usize,
+}
+
+impl<'a, P: ProcessMemory> SetIterator<'a, P> {
+    pub fn from(process: &'a P, addr: usize) -> Result<SetIterator<'a, P>, Error> {
+        let set: SetObjectHeader = process.copy_struct(addr)?;
+        if set.mask < 0 || set.mask > (1 << 24) || set.used < 0 || set.used > set.mask + 1 {
+            return Err(format_err!(
+                "Invalid set metadata at 0x{addr:x}: used={}, mask={}",
+                set.used,
+                set.mask
+            ));
+        }
+        if set.table == 0 {
+            return Err(format_err!("Set at 0x{addr:x} has a null table"));
+        }
+        Ok(SetIterator {
+            process,
+            table: set.table,
+            index: 0,
+            entries: set.mask as usize + 1,
+        })
+    }
+}
+
+impl<'a, P: ProcessMemory> Iterator for SetIterator<'a, P> {
+    type Item = Result<usize, Error>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.index < self.entries {
+            let addr = self.table + self.index * std::mem::size_of::<SetEntry>();
+            self.index += 1;
+            match self.process.copy_struct::<SetEntry>(addr) {
+                Ok(entry) if entry.key != 0 && entry.hash != -1 => return Some(Ok(entry.key)),
+                Ok(_) => continue,
+                Err(err) => return Some(Err(err.into())),
+            }
+        }
+        None
+    }
+}
+
 pub const PY_TPFLAGS_INLINE_VALUES: usize = 1 << 2;
 pub const PY_TPFLAGS_MANAGED_DICT: usize = 1 << 4;
 const PY_TPFLAGS_INT_SUBCLASS: usize = 1 << 23;
@@ -351,6 +481,19 @@ const PY_TPFLAGS_TUPLE_SUBCLASS: usize = 1 << 26;
 const PY_TPFLAGS_BYTES_SUBCLASS: usize = 1 << 27;
 const PY_TPFLAGS_STRING_SUBCLASS: usize = 1 << 28;
 const PY_TPFLAGS_DICT_SUBCLASS: usize = 1 << 29;
+
+/// Returns the CPython type name for an object in the target process.
+pub fn copy_type_name<I, P>(process: &P, addr: usize) -> Result<String, Error>
+where
+    I: InterpreterState,
+    P: ProcessMemory,
+{
+    let value: I::Object = process.copy_struct(addr)?;
+    let value_type = process.copy_pointer(value.ob_type())?;
+    let bytes = process.copy(value_type.name() as usize, 128)?;
+    let length = bytes.iter().position(|&x| x == 0).unwrap_or(bytes.len());
+    Ok(std::str::from_utf8(&bytes[..length])?.to_owned())
+}
 
 /// Converts a python variable in the other process to a human readable string
 pub fn format_variable<I, P>(
@@ -373,13 +516,8 @@ where
     let value_type = process.copy_pointer(value.ob_type())?;
 
     // get the typename (truncating to 128 bytes if longer)
-    let max_type_len = 128;
-    let value_type_name = process.copy(value_type.name() as usize, max_type_len)?;
-    let length = value_type_name
-        .iter()
-        .position(|&x| x == 0)
-        .unwrap_or(max_type_len);
-    let value_type_name = std::str::from_utf8(&value_type_name[..length])?;
+    let value_type_name = copy_type_name::<I, P>(process, addr)?;
+    let value_type_name = value_type_name.as_str();
 
     let format_int = |value: i64| {
         if value_type_name == "bool" {

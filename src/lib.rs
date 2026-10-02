@@ -29,6 +29,7 @@ extern crate anyhow;
 #[macro_use]
 extern crate log;
 
+pub mod asyncio;
 pub mod binary_parser;
 pub mod config;
 #[cfg(all(target_os = "linux", feature = "cli"))]
@@ -51,6 +52,7 @@ pub mod timer;
 mod utils;
 mod version;
 
+pub use asyncio::AsyncioTask;
 pub use config::Config;
 pub use python_spy::PythonSpy;
 pub use remoteprocess::Pid;

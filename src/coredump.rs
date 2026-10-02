@@ -236,6 +236,7 @@ impl PythonCoreDump {
             maps: Box::new(core.maps.clone()),
             python_filename,
             dockerized: false,
+            asyncio_debug_address: None, // ponytail: no asyncio task dumps from coredumps
         };
 
         let version =
