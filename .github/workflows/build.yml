@@ -1,4 +1,7 @@
 name: Build
+permissions:
+  contents: read
+  pull-requests: write
 
 on:
   workflow_dispatch:
@@ -16,8 +19,8 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: 3.11
       - uses: pre-commit/action@v3.0.1
@@ -28,21 +31,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest, windows-11-arm, macos-latest]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: Swatinem/rust-cache@v2
       - name: Install Dependencies
         run: sudo apt install libunwind-dev
         if: runner.os == 'Linux'
-      - uses: actions/setup-python@v6
-        with:
-          python-version: 3.9
       - name: Build
         run: cargo build --release --verbose --examples
-      - uses: actions/setup-python@v6
+      - name: Build library
+        run: cargo build --release --verbose --lib --no-default-features
+      - uses: actions/setup-python@v7
         with:
-          python-version: 3.9
+          # Windows on arm64 has no CPython builds before 3.11
+          python-version: ${{ matrix.os == 'windows-11-arm' && '3.11' || '3.9' }}
       - name: Install optional numpy dependency
         run: pip install numpy>=2
       - name: Test
@@ -81,7 +84,7 @@ jobs:
       - name: Upload Windows Wheels
         uses: actions/upload-artifact@v7
         with:
-          name: wheels-windows
+          name: wheels-${{ matrix.os }}
           path: dist
         if: runner.os == 'Windows'
       - name: Upload Macos Wheels
@@ -110,20 +113,20 @@ jobs:
         RUSTUP_HOME: /root/.rustup
         CARGO_HOME: /root/.cargo
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: Swatinem/rust-cache@v2
       - name: Build
         run: |
           python3 -m pip install --upgrade maturin
           maturin build --release -o dist --target ${{ matrix.target }} --features unwind
           maturin sdist -o dist
-        if: ${{ matrix.target == 'armv7-unknown-linux-musleabihf' || matrix.target == 'x86_64-unknown-linux-musl'}}
+        if: ${{ matrix.target != 'i686-unknown-linux-musl' }}
       - name: Build
         run: |
           python3 -m pip install --upgrade maturin
           maturin build --release -o dist --target ${{ matrix.target }}
           maturin sdist -o dist
-        if: ${{ matrix.target == 'i686-unknown-linux-musl' || matrix.target == 'aarch64-unknown-linux-musl'}}
+        if: ${{ matrix.target == 'i686-unknown-linux-musl' }}
       - name: Rename Wheels
         run: |
           python3 -c "import shutil; import glob; wheels = glob.glob('dist/*.whl'); [shutil.move(wheel, wheel.replace('py3', 'py2.py3')) for wheel in wheels if 'py2' not in wheel]"
@@ -142,7 +145,7 @@ jobs:
         box:
           - freebsd-14
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Display CPU info
         run: lscpu
       - name: Install VM tools
@@ -220,11 +223,20 @@ jobs:
             3.14.3,
             3.14.4,
           ]
-        os: [ubuntu-22.04, macos-latest, windows-latest, ubuntu-22.04-arm]
+        os:
+          [
+            ubuntu-22.04,
+            macos-latest,
+            windows-latest,
+            windows-11-arm,
+            ubuntu-22.04-arm,
+          ]
         # some versions of python can't be tested on GHA with osx because of SIP:
         exclude:
           - os: macos-latest
             python-version: 3.6.7
+          - os: windows-11-arm
+            python-version: 3.6.7
           - os: ubuntu-22.04
             python-version: 3.6.7
           - os: ubuntu-22.04-arm
@@ -233,11 +245,15 @@ jobs:
             python-version: 3.6.15
           - os: windows-latest
             python-version: 3.6.15
+          - os: windows-11-arm
+            python-version: 3.6.15
           - os: ubuntu-22.04
             python-version: 3.6.15
           - os: ubuntu-22.04-arm
             python-version: 3.6.15
           - os: macos-latest
+            python-version: 3.7.1
+          - os: windows-11-arm
             python-version: 3.7.1
           - os: ubuntu-22.04
             python-version: 3.7.1
@@ -247,9 +263,13 @@ jobs:
             python-version: 3.7.17
           - os: windows-latest
             python-version: 3.7.17
+          - os: windows-11-arm
+            python-version: 3.7.17
           - os: ubuntu-22.04-arm
             python-version: 3.7.17
           - os: macos-latest
+            python-version: 3.8.0
+          - os: windows-11-arm
             python-version: 3.8.0
           - os: ubuntu-22.04
             python-version: 3.8.0
@@ -259,7 +279,11 @@ jobs:
             python-version: 3.8.18
           - os: windows-latest
             python-version: 3.8.18
+          - os: windows-11-arm
+            python-version: 3.8.18
           - os: macos-latest
+            python-version: 3.9.0
+          - os: windows-11-arm
             python-version: 3.9.0
           - os: ubuntu-22.04
             python-version: 3.9.0
@@ -269,7 +293,11 @@ jobs:
             python-version: 3.9.25
           - os: windows-latest
             python-version: 3.9.25
+          - os: windows-11-arm
+            python-version: 3.9.25
           - os: macos-latest
+            python-version: 3.10.0
+          - os: windows-11-arm
             python-version: 3.10.0
           - os: ubuntu-22.04
             python-version: 3.10.0
@@ -279,34 +307,40 @@ jobs:
             python-version: 3.10.20
           - os: windows-latest
             python-version: 3.10.20
-          - os: macos-latest
-            python-version: 3.11.0
+          - os: windows-11-arm
+            python-version: 3.10.20
           - os: macos-latest
             python-version: 3.11.15
           - os: windows-latest
             python-version: 3.11.15
-          - os: macos-latest
-            python-version: 3.12.0
+          - os: windows-11-arm
+            python-version: 3.11.15
           - os: macos-latest
             python-version: 3.12.13
           - os: windows-latest
             python-version: 3.12.13
-          - os: macos-latest
-            python-version: 3.14.0
-          - os: macos-latest
-            python-version: 3.14.1
-          - os: macos-latest
-            python-version: 3.14.2
-          - os: macos-latest
-            python-version: 3.14.3
+          - os: windows-11-arm
+            python-version: 3.12.13
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
           pattern: wheels-*
           merge-multiple: true
-      - uses: actions/setup-python@v6
+      # The windows-11-arm runner includes a few versions of Python, and the
+      # installer downloaded by actions/setup-python does not cleanly remove
+      # all registry entries, so the leftover newer install blocks any older
+      # patch release. See actions/setup-python#1267.
+      - name: Remove Python registry entries
+        run: |
+          . ./ci/remove_python_registry_entries.ps1
+          Remove-RegistryEntries -Architecture arm64 -MajorVersion 3 -MinorVersion 12
+          Remove-RegistryEntries -Architecture arm64 -MajorVersion 3 -MinorVersion 13
+          Remove-RegistryEntries -Architecture arm64 -MajorVersion 3 -MinorVersion 14
+        if: matrix.os == 'windows-11-arm'
+        continue-on-error: true
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install wheel
@@ -346,6 +380,8 @@ jobs:
     runs-on: ubuntu-latest
     if: "startsWith(github.ref, 'refs/tags/')"
     needs: [test-wheels]
+    permissions:
+      contents: write
     steps:
       - uses: actions/download-artifact@v8
         with:
@@ -359,7 +395,7 @@ jobs:
       - name: Install Dependencies
         run: sudo apt install libunwind-dev
         if: runner.os == 'Linux'
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: 3.9
       - name: Push to PyPi
@@ -370,7 +406,7 @@ jobs:
           pip install --upgrade wheel pip setuptools twine
           twine upload *
           rm *
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Push to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

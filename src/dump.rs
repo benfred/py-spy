@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use anyhow::{Context, Error};
 use console::{style, Term};
 
@@ -8,64 +10,91 @@ use crate::stack_trace::StackTrace;
 use remoteprocess::Pid;
 
 pub fn print_traces(pid: Pid, config: &Config, parent: Option<Pid>) -> Result<(), Error> {
+    let stdout = std::io::stdout();
+    let mut out = stdout.lock();
+    write_traces(&mut out, pid, config, parent)
+}
+
+pub fn write_traces<W: Write>(
+    out: &mut W,
+    pid: Pid,
+    config: &Config,
+    parent: Option<Pid>,
+) -> Result<(), Error> {
     let mut process = PythonSpy::new(pid, config)?;
     if config.dump_json {
         let traces = process
             .get_stack_traces()
             .context("Failed to get stack traces")?;
-        println!("{}", serde_json::to_string_pretty(&traces)?);
+        writeln!(out, "{}", serde_json::to_string_pretty(&traces)?)?;
         return Ok(());
     }
 
-    println!(
+    writeln!(
+        out,
         "Process {}: {}",
         style(process.pid).bold().yellow(),
         process.process.cmdline()?.join(" ")
-    );
+    )?;
 
-    println!(
+    writeln!(
+        out,
         "Python v{} ({})",
         style(&process.version).bold(),
         style(process.process.exe()?).dim()
-    );
+    )?;
 
     if let Some(parentpid) = parent {
         let parentprocess = remoteprocess::Process::new(parentpid)?;
-        println!(
+        writeln!(
+            out,
             "Parent Process {}: {}",
             style(parentpid).bold().yellow(),
             parentprocess.cmdline()?.join(" ")
-        );
+        )?;
     }
-    println!();
+    writeln!(out)?;
     let traces = process
         .get_stack_traces()
         .context("Failed to get stack traces")?;
     for trace in traces.iter().rev() {
-        print_trace(trace, true);
-        if config.subprocesses {
-            for (childpid, parentpid) in process
-                .process
-                .child_processes()
-                .expect("failed to get subprocesses")
-            {
-                let term = Term::stdout();
-                let (_, width) = term.size();
+        write_trace(out, trace, true)?;
+    }
 
-                println!("\n{}", &style("-".repeat(width as usize)).dim());
-                // child_processes() returns the whole process tree, since we're recursing here
-                // though we could end up printing grandchild processes multiple times. Limit down
-                // to just once
-                if parentpid == pid {
-                    print_traces(childpid, config, Some(parentpid))?;
-                }
+    if config.subprocesses {
+        for (childpid, parentpid) in process
+            .process
+            .child_processes()
+            .expect("failed to get subprocesses")
+        {
+            let term = Term::stdout();
+            let (_, width) = term.size();
+
+            writeln!(out, "\n{}", &style("-".repeat(width as usize)).dim())?;
+            // child_processes() returns the whole process tree, since we're recursing here
+            // though we could end up printing grandchild processes multiple times. Limit down
+            // to just once
+            if parentpid == pid {
+                write_traces(out, childpid, config, Some(parentpid))?;
             }
         }
     }
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
 pub fn print_trace(trace: &StackTrace, include_activity: bool) {
+    let stdout = std::io::stdout();
+    let mut out = stdout.lock();
+    // Swallow write errors here to preserve the old println! behaviour.
+    let _ = write_trace(&mut out, trace, include_activity);
+}
+
+pub fn write_trace<W: Write>(
+    out: &mut W,
+    trace: &StackTrace,
+    include_activity: bool,
+) -> Result<(), Error> {
     let thread_id = trace.format_threadid();
 
     let status = if include_activity {
@@ -78,15 +107,16 @@ pub fn print_trace(trace: &StackTrace, include_activity: bool) {
 
     match trace.thread_name.as_ref() {
         Some(name) => {
-            println!(
+            writeln!(
+                out,
                 "Thread {}{}: \"{}\"",
                 style(thread_id).bold().yellow(),
                 status,
                 name
-            );
+            )?;
         }
         None => {
-            println!("Thread {}{}", style(thread_id).bold().yellow(), status);
+            writeln!(out, "Thread {}{}", style(thread_id).bold().yellow(), status)?;
         }
     };
 
@@ -96,18 +126,20 @@ pub fn print_trace(trace: &StackTrace, include_activity: bool) {
             None => &frame.filename,
         };
         if frame.line != 0 {
-            println!(
+            writeln!(
+                out,
                 "    {} ({}:{})",
                 style(&frame.name).green(),
                 style(&filename).cyan(),
                 style(frame.line).dim()
-            );
+            )?;
         } else {
-            println!(
+            writeln!(
+                out,
                 "    {} ({})",
                 style(&frame.name).green(),
                 style(&filename).cyan()
-            );
+            )?;
         }
 
         if let Some(locals) = &frame.locals {
@@ -115,16 +147,17 @@ pub fn print_trace(trace: &StackTrace, include_activity: bool) {
             let mut shown_locals = false;
             for local in locals {
                 if local.arg && !shown_args {
-                    println!("        {}", style("Arguments:").dim());
+                    writeln!(out, "        {}", style("Arguments:").dim())?;
                     shown_args = true;
                 } else if !local.arg && !shown_locals {
-                    println!("        {}", style("Locals:").dim());
+                    writeln!(out, "        {}", style("Locals:").dim())?;
                     shown_locals = true;
                 }
 
                 let repr = local.repr.as_deref().unwrap_or("?");
-                println!("            {}: {}", local.name, repr);
+                writeln!(out, "            {}: {}", local.name, repr)?;
             }
         }
     }
+    Ok(())
 }

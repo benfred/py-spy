@@ -285,8 +285,11 @@ impl PythonSpy {
                 trace.os_thread_id = os_thread_id.map(|id| id as u64);
             }
 
-            trace.thread_name =
-                self._get_python_thread_name(&mut did_thread_name_lookup, python_thread_id);
+            trace.thread_name = if self.config.collect_thread_names {
+                self._get_python_thread_name(&mut did_thread_name_lookup, python_thread_id)
+            } else {
+                None
+            };
             trace.owns_gil = owns_gil;
             trace.pid = self.process.pid;
 
@@ -520,6 +523,8 @@ impl PythonSpy {
             let possible_threadid = cursor.bx();
             #[cfg(target_arch = "arm")]
             let possible_threadid = cursor.r5();
+            #[cfg(target_arch = "aarch64")]
+            let possible_threadid = unsafe { cursor.register(19) };
             if let Ok(reg) = possible_threadid {
                 if reg != 0 && threadids.contains(&reg) {
                     pthread_id = reg;

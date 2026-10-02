@@ -143,7 +143,7 @@ for more information.
 | i686    |       |         |     |         |
 | x86-64  | yes   | yes     |     |         |
 | ARM     | yes   |         |     |         |
-| Aarch64 |       |         |     |         |
+| Aarch64 | yes   |         |     |         |
 
 ### How can I profile subprocesses?
 

@@ -40,7 +40,7 @@ use config::{Config, FileFormat, RecordDuration};
 use console_viewer::ConsoleViewer;
 use stack_trace::{Frame, StackTrace};
 
-use chrono::{Local, SecondsFormat};
+use chrono::Local;
 
 #[cfg(unix)]
 fn permission_denied(err: &Error) -> bool {
@@ -130,6 +130,31 @@ impl Recorder for RawFlamegraph {
     }
 }
 
+fn output_filename(config: &Config) -> Result<String, Error> {
+    let filename = match config.filename.clone() {
+        Some(filename) => filename,
+        None => {
+            let ext = match config.format.as_ref() {
+                Some(FileFormat::flamegraph) => "svg",
+                Some(FileFormat::speedscope) => "json",
+                Some(FileFormat::raw) => "txt",
+                Some(FileFormat::chrometrace) => "json",
+                None => return Err(format_err!("A file format is required to record samples")),
+            };
+            let local_time = Local::now().format("%Y-%m-%dT%H-%M-%S%z");
+            let name = match config.python_program.as_ref() {
+                Some(prog) => prog[0].to_string(),
+                None => match config.pid.as_ref() {
+                    Some(pid) => pid.to_string(),
+                    None => String::from("unknown"),
+                },
+            };
+            format!("{name}-{local_time}.{ext}")
+        }
+    };
+    Ok(filename)
+}
+
 fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error> {
     let mut output: Box<dyn Recorder> = match config.format {
         Some(FileFormat::flamegraph) => {
@@ -145,27 +170,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
         None => return Err(format_err!("A file format is required to record samples")),
     };
 
-    let filename = match config.filename.clone() {
-        Some(filename) => filename,
-        None => {
-            let ext = match config.format.as_ref() {
-                Some(FileFormat::flamegraph) => "svg",
-                Some(FileFormat::speedscope) => "json",
-                Some(FileFormat::raw) => "txt",
-                Some(FileFormat::chrometrace) => "json",
-                None => return Err(format_err!("A file format is required to record samples")),
-            };
-            let local_time = Local::now().to_rfc3339_opts(SecondsFormat::Secs, true);
-            let name = match config.python_program.as_ref() {
-                Some(prog) => prog[0].to_string(),
-                None => match config.pid.as_ref() {
-                    Some(pid) => pid.to_string(),
-                    None => String::from("unknown"),
-                },
-            };
-            format!("{name}-{local_time}.{ext}")
-        }
-    };
+    let filename = output_filename(config)?;
 
     let sampler = sampler::Sampler::new(pid, config)?;
 
@@ -450,10 +455,15 @@ fn pyspy_main() -> Result<(), Error> {
 
         // check exit code of subprocess
         std::thread::sleep(Duration::from_millis(1));
-        let success = match command.try_wait()? {
-            Some(exit) => exit.success(),
-            // if process hasn't finished, assume success
-            None => true,
+        let success = match command.try_wait() {
+            Ok(Some(exit)) => exit.success(),
+            // If the process hasn't finished, assume success. An Err here means the
+            // child has already been reaped (e.g. by the ptrace sampler once the
+            // process exited on its own), so there is no exit status left to read.
+            // Treat it as success instead of failing the whole run with
+            // "No child process (os error 10)".
+            // See https://github.com/benfred/py-spy/issues/759
+            Ok(None) | Err(_) => true,
         };
 
         // if we failed for any reason, dump out stderr from child process here
@@ -509,12 +519,75 @@ fn main() {
             }
         }
 
-        eprintln!("Error: {err}");
-        for (i, suberror) in err.chain().enumerate() {
-            if i > 0 {
-                eprintln!("Reason: {suberror}");
-            }
-        }
+        eprintln!("Error: {:?}", err);
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod filename_tests {
+    use super::*;
+
+    #[test]
+    fn default_output_filename_has_no_colons() {
+        for format in [
+            FileFormat::flamegraph,
+            FileFormat::raw,
+            FileFormat::speedscope,
+            FileFormat::chrometrace,
+        ] {
+            let config = Config {
+                pid: Some(123),
+                format: Some(format),
+                ..Default::default()
+            };
+            let filename = output_filename(&config).unwrap();
+            assert!(
+                !filename.contains(':'),
+                "invalid output filename: {filename}"
+            );
+            assert!(filename.starts_with("123-"));
+            let extension = match format {
+                FileFormat::flamegraph => ".svg",
+                FileFormat::raw => ".txt",
+                FileFormat::speedscope | FileFormat::chrometrace => ".json",
+            };
+            assert!(filename.ends_with(extension));
+            let timestamp = filename
+                .strip_prefix("123-")
+                .unwrap()
+                .strip_suffix(extension)
+                .unwrap();
+            chrono::DateTime::parse_from_str(timestamp, "%Y-%m-%dT%H-%M-%S%z")
+                .expect("filename includes a date, time and timezone offset");
+        }
+    }
+
+    #[test]
+    fn default_output_filename_uses_program_name() {
+        let config = Config {
+            python_program: Some(vec!["python3".to_owned(), "script.py".to_owned()]),
+            format: Some(FileFormat::raw),
+            ..Default::default()
+        };
+        let filename = output_filename(&config).unwrap();
+        assert!(filename.starts_with("python3-"));
+        assert!(
+            !filename.contains(':'),
+            "invalid output filename: {filename}"
+        );
+        assert!(filename.ends_with(".txt"));
+    }
+
+    #[test]
+    fn explicit_output_filename_is_unchanged() {
+        let config = Config {
+            filename: Some("profiles/custom:name.json".to_owned()),
+            ..Default::default()
+        };
+        assert_eq!(
+            output_filename(&config).unwrap(),
+            "profiles/custom:name.json"
+        );
     }
 }

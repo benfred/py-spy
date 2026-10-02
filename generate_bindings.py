@@ -120,6 +120,7 @@ def extract_bindings(cpython_path, version, configure=False):
         cat Include/internal/pycore_interp.h >> bindgen_input.h
         cat Include/internal/pycore_dict.h >> bindgen_input.h
         cat Include/internal/pycore_frame.h >> bindgen_input.h
+        cat Include/internal/pycore_pystate.h >> bindgen_input.h
 
         bindgen  bindgen_input.h -o bindgen_output.rs \
             --with-derive-default \
@@ -139,6 +140,7 @@ def extract_bindings(cpython_path, version, configure=False):
             --allowlist-type PyFloatObject \
             --allowlist-type PyDictObject \
             --allowlist-type PyDictKeysObject \
+            --allowlist-type PyDictKeyEntry \
             --allowlist-type PyDictUnicodeEntry \
             --allowlist-type PyObject \
             --allowlist-type PyTypeObject \
@@ -204,6 +206,7 @@ if __name__ == "__main__":
 
     if args.all:
         versions = [
+            "v3.14.0",
             "v3.13.0",
             "v3.12.0",
             "v3.11.0",
@@ -215,7 +218,6 @@ if __name__ == "__main__":
             "v3.5.5",
             "v3.4.8",
             "v3.3.7",
-            "v3.2.6",
             "v2.7.15",
         ]
     else:
