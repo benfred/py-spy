@@ -140,7 +140,13 @@ where
         }
     };
 
+    let mut visited = 0;
     while !frame_ptr.is_null() {
+        visited += 1;
+        if visited > 4096 {
+            return Err(format_err!("Max frame recursion depth reached"));
+        }
+
         let frame = process
             .copy_pointer(frame_ptr)
             .context("Failed to copy PyFrameObject")?;
@@ -223,9 +229,6 @@ where
             is_entry,
             is_shim_entry: false,
         });
-        if frames.len() > 4096 {
-            return Err(format_err!("Max frame recursion depth reached"));
-        }
 
         frame_ptr = frame.back();
     }
