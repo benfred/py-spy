@@ -164,7 +164,27 @@ impl PythonProcessInfo {
 
             let mut libpython_binary: Option<BinaryInfo> = None;
 
-            #[cfg(not(target_os = "linux"))]
+            // On macOS the dyld layout can map small executable stubs of a
+            // dylib at lower addresses than its real __TEXT segment (seen with
+            // PyInstaller onedir bundles), so the first executable map is NOT
+            // necessarily the image base. parse_binary slides every symbol and
+            // section by the base address we pass it, so picking the wrong map
+            // makes every read land on garbage — e.g. Py_Version reads as 0,
+            // producing a bogus "0.0.0" version, and the BSS/_PyRuntime lookups
+            // fail too. The real image base is the map whose start holds the
+            // Mach-O header, so probe each executable map for the magic and
+            // prefer that one; fall back to the first map if none match.
+            #[cfg(target_os = "macos")]
+            let libpython_option = libmaps
+                .iter()
+                .find(|m| {
+                    matches!(
+                        process.copy_struct::<u32>(m.start()),
+                        Ok(0xfeed_facf) | Ok(0xcffa_edfe) | Ok(0xfeed_face) | Ok(0xcefa_edfe)
+                    )
+                })
+                .or_else(|| libmaps.first());
+            #[cfg(all(not(target_os = "linux"), not(target_os = "macos")))]
             let libpython_option = if !libmaps.is_empty() {
                 Some(&libmaps[0])
             } else {
@@ -298,34 +318,51 @@ pub fn get_python_version<P>(python_info: &PythonProcessInfo, process: &P) -> Re
 where
     P: ProcessMemory,
 {
-    // Try getting the Py_Version symbol (points to 32 bit encoded version)
+    // Try getting the Py_Version symbol (points to 32 bit encoded version).
+    // We deliberately tolerate failure here and fall through to the other
+    // detection strategies below: if the symbol address is misresolved the
+    // read yields zeros, which would otherwise produce a bogus "0.0.0" and
+    // abort version detection entirely. A plausible decode short-circuits;
+    // anything else defers to the sys.version string scan.
     if let Some(&addr) = python_info.get_symbol("Py_Version") {
-        let version: u32 = process
-            .copy_struct(addr as usize)
-            .context("Failed to copy Py_Version symbol")?;
+        match process.copy_struct::<u32>(addr as usize) {
+            Ok(version) => {
+                // decode u32 version via the _Py_PACK_FULL_VERSION logic
+                let major: u64 = ((version >> 24) & 0xff).into();
+                let minor: u64 = ((version >> 16) & 0xff).into();
+                let patch: u64 = ((version >> 8) & 0xff).into();
+                let release_level = (version >> 4) & 0xf;
+                let release_serial = (version) & 0xf;
+                let release_flags = match release_level {
+                    0xA => format!("a{}", release_serial),
+                    0xB => format!("b{}", release_serial),
+                    0xC => format!("rc{}", release_serial),
+                    _ => "".to_owned(),
+                };
 
-        // decode u32 version via the _Py_PACK_FULL_VERSION logic
-        let major: u64 = ((version >> 24) & 0xff).into();
-        let minor: u64 = ((version >> 16) & 0xff).into();
-        let patch: u64 = ((version >> 8) & 0xff).into();
-        let release_level = (version >> 4) & 0xf;
-        let release_serial = (version) & 0xf;
-        let release_flags = match release_level {
-            0xA => format!("a{}", release_serial),
-            0xB => format!("b{}", release_serial),
-            0xC => format!("rc{}", release_serial),
-            _ => "".to_owned(),
-        };
-
-        let version = Version {
-            major,
-            minor,
-            patch,
-            release_flags,
-            build_metadata: None,
-        };
-        info!("Got version {} from Py_Version symbol", version);
-        return Ok(version);
+                let version = Version {
+                    major,
+                    minor,
+                    patch,
+                    release_flags,
+                    build_metadata: None,
+                };
+                // Only trust a decode that names a Python major version we
+                // could actually support. major==0 is the tell-tale of a
+                // misresolved symbol address (see comment above).
+                if major == 2 || major == 3 {
+                    info!("Got version {} from Py_Version symbol", version);
+                    return Ok(version);
+                }
+                info!(
+                    "Py_Version symbol decoded to implausible version {}, ignoring and falling back",
+                    version
+                );
+            }
+            Err(err) => {
+                info!("Failed to read Py_Version symbol ({}), falling back", err);
+            }
+        }
     }
 
     // If possible, grab the sys.version string from the processes memory (mac osx).
