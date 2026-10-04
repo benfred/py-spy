@@ -37,6 +37,14 @@ pub struct PythonProcessInfo {
     pub dockerized: bool,
 }
 
+/// Holds addresses and offsets for structures inside a target python process
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct PythonProcessLayout {
+    pub interpreter_address: usize,
+    pub threadstate_address: usize,
+    pub imports_modules_address: usize,
+}
+
 impl PythonProcessInfo {
     pub fn new(process: &remoteprocess::Process) -> Result<PythonProcessInfo, Error> {
         let filename = process
@@ -430,268 +438,515 @@ where
     ))
 }
 
-pub fn get_interpreter_address<P>(
-    python_info: &PythonProcessInfo,
-    process: &P,
-    version: &Version,
-) -> Result<usize, Error>
-where
-    P: ProcessMemory,
-{
-    // get the address of the main PyInterpreterState object from loaded symbols if we can
-    // (this tends to be faster than scanning through the bss section)
-    match get_interpreter_address_from_symbols(python_info, process, version) {
-        Ok(addr) => {
-            // Check that the symbol address is valid before returning
-            match check_interpreter_addresses(&[addr], &*python_info.maps, process, version) {
-                Ok(addr) => return Ok(addr),
-                Err(_) => {
-                    warn!("Interpreter address from symbol is invalid {:016x}", addr);
-                }
-            };
+/// Dispatches to various templatized function calls taking a InterpreterState,
+/// by matching the an input Version struct
+macro_rules! dispatch_by_version {
+    ($version: ident, $function: ident, $($args:tt)*) => {
+        match $version {
+            Version {
+                major: 2, minor: 3..=7, ..
+            } => $function::<v2_7_15::_is, P>($($args)*),
+            Version {
+                major: 3, minor: 3, ..
+            } => $function::<v3_3_7::_is, P>($($args)*),
+            Version {
+                major: 3, minor: 4..=5, ..
+            } => $function::<v3_5_5::_is, P>($($args)*),
+            Version {
+                major: 3, minor: 6, ..
+            } => $function::<v3_6_6::_is, P>($($args)*),
+            Version {
+                major: 3, minor: 7, ..
+            } => $function::<v3_7_0::_is, P>($($args)*),
+            Version {
+                major: 3, minor: 8, ..
+            } => $function::<v3_8_0::_is, P>($($args)*),
+            Version {
+                major: 3, minor: 9, ..
+            } => $function::<v3_9_5::_is, P>($($args)*),
+            Version { major: 3, minor: 10, ..
+            } => $function::<v3_10_0::_is, P>($($args)*),
+            Version {
+                major: 3, minor: 11, ..
+            } => $function::<v3_11_0::_is, P>($($args)*),
+            Version {
+                major: 3,
+                minor: 12,
+                ..
+            } => $function::<v3_12_0::_is, P>($($args)*),
+            Version {
+                major: 3,
+                minor: 13,
+                ..
+            } => $function::<v3_13_0::_is, P>($($args)*),
+            Version {
+                major: 3,
+                minor: 14,
+                ..
+            } => $function::<v3_14_0::_is, P>($($args)*),
+            _ => Err(format_err!("Unsupported version of Python: {}", $version)),
         }
-        Err(err) => {
-            info!("Failed to get interpreter address from symbols {:?}, scanning BSS section from main binary", err)
-        }
-    }
-
-    // try scanning the BSS section of the binary for things that might be the interpreterstate
-    let err = if let Some(ref pb) = python_info.python_binary {
-        match get_interpreter_address_from_binary(pb, &*python_info.maps, process, version) {
-            Ok(addr) => return Ok(addr),
-            err => Some(err),
-        }
-    } else {
-        None
-    };
-
-    // Before giving up, try again if there is a libpython.so
-    if let Some(ref lpb) = python_info.libpython_binary {
-        info!("Failed to get interpreter from binary BSS, scanning libpython BSS");
-        match get_interpreter_address_from_binary(lpb, &*python_info.maps, process, version) {
-            Ok(addr) => Ok(addr),
-            lib_err => err.unwrap_or(lib_err),
-        }
-    } else {
-        err.expect("Both python and libpython are invalid.")
     }
 }
 
-// Gets the address of the main PyInterpreterState object from loaded symbols
-fn get_interpreter_address_from_symbols<P>(
+impl PythonProcessLayout {
+    /// Loads addresses and offsets from a target python process. These addresses include
+    /// the address of the python interpreter, the address of which thread holds the GIL,
+    /// and the address of the imports module etc.  These addresseses are loaded
+    /// using symbols if available, and if not available this falls back to scanning the
+    /// memory inside the target python process for a valid interpreter.
+    ///
+    /// Currently the set of addresses held here is fairly minimal, but the plan is to flesh
+    /// this out with other offsets from the Py_DebugOffsets table in the target python process
+    /// - which should lessen the dependency on the bindgen generated structs in src/python_bindings
+    pub fn new<P>(
+        python_info: &PythonProcessInfo,
+        process: &P,
+        version: &Version,
+        config: &Config,
+    ) -> Result<PythonProcessLayout, Error>
+    where
+        P: ProcessMemory,
+    {
+        // get the address of the main PyInterpreterState object from loaded symbols if we can
+        // (this tends to be faster than scanning through the bss section)
+        match PythonProcessLayout::from_symbols(python_info, process, version, config) {
+            Ok(addr) => {
+                // Check that the symbol address is valid before returning by attempting to load a stack trace
+                match dispatch_by_version!(
+                    version,
+                    get_stack_traces,
+                    addr.interpreter_address,
+                    process,
+                    addr.threadstate_address,
+                    None
+                ) {
+                    Ok(_) => {
+                        return Ok(addr);
+                    }
+                    Err(_) => {
+                        warn!(
+                            "Interpreter address from symbol is invalid {:016x}",
+                            addr.interpreter_address
+                        );
+                    }
+                };
+            }
+            Err(err) => {
+                info!("Failed to get interpreter address from symbols {:?}, scanning BSS section from main binary", err)
+            }
+        }
+
+        // If we can't load up the symbols, try scanning the python and libpython binaries
+        PythonProcessLayout::from_binaries(python_info, process, version, config)
+    }
+
+    // initializes a new PythonProcessLayout from loaded symbols
+    fn from_symbols<P>(
+        python_info: &PythonProcessInfo,
+        process: &P,
+        version: &Version,
+        config: &Config,
+    ) -> Result<PythonProcessLayout, Error>
+    where
+        P: ProcessMemory,
+    {
+        match version {
+            Version {
+                major: 3,
+                minor: 13..=14,
+                ..
+            } => {
+                if let Some(&pyruntime_addr) = python_info.get_symbol("_PyRuntime") {
+                    return PythonProcessLayout::from_debug_offsets(
+                        pyruntime_addr as usize,
+                        process,
+                        version,
+                        config,
+                    );
+                }
+            }
+            Version {
+                major: 3,
+                minor: 7..=12,
+                ..
+            } => {
+                if let Some(&addr) = python_info.get_symbol("_PyRuntime") {
+                    let interpreter_address = process
+                        .copy_struct(addr as usize + pyruntime::get_interp_head_offset(version))
+                        .context("Failed to copy interpreters_head")?;
+                    return PythonProcessLayout::from_interpreter_address(
+                        interpreter_address,
+                        python_info,
+                        process,
+                        version,
+                        config,
+                    );
+                }
+            }
+            _ => {
+                if let Some(&addr) = python_info.get_symbol("interp_head") {
+                    let interpreter_address = process
+                        .copy_struct(addr as usize)
+                        .context("Failed to copy interp_head")?;
+                    return PythonProcessLayout::from_interpreter_address(
+                        interpreter_address,
+                        python_info,
+                        process,
+                        version,
+                        config,
+                    );
+                }
+            }
+        };
+        return Err(format_err!(
+            "Failed to find _PyRuntime address from symbols"
+        ));
+    }
+
+    // initializes a new PythonProcessLayout from scanning the BSS section of the python executable
+    // or the libpython shared library
+    fn from_binaries<P>(
+        python_info: &PythonProcessInfo,
+        process: &P,
+        version: &Version,
+        config: &Config,
+    ) -> Result<PythonProcessLayout, Error>
+    where
+        P: ProcessMemory,
+    {
+        // try scanning the BSS section of the binary for things that might be the interpreterstate
+        let err = if let Some(ref pb) = python_info.python_binary {
+            match PythonProcessLayout::from_binary(pb, python_info, process, version, config) {
+                Ok(addr) => return Ok(addr),
+                err => Some(err),
+            }
+        } else {
+            None
+        };
+
+        // Before giving up, try again if there is a libpython.so
+        if let Some(ref lpb) = python_info.libpython_binary {
+            info!("Failed to get interpreter from binary BSS, scanning libpython BSS");
+            match PythonProcessLayout::from_binary(lpb, python_info, process, version, config) {
+                Ok(addr) => Ok(addr),
+                lib_err => err.unwrap_or(lib_err),
+            }
+        } else {
+            err.expect("Both python and libpython are invalid.")
+        }
+    }
+
+    fn from_binary<P>(
+        binary: &BinaryInfo,
+        python_info: &PythonProcessInfo,
+        process: &P,
+        version: &Version,
+        config: &Config,
+    ) -> Result<PythonProcessLayout, Error>
+    where
+        P: ProcessMemory,
+    {
+        // First check the pyruntime section it was found
+        if binary.pyruntime_addr != 0 {
+            if let Ok(addr) = scan_memory(
+                binary.pyruntime_addr,
+                binary.pyruntime_size,
+                python_info,
+                process,
+                version,
+                config,
+            ) {
+                return Ok(addr);
+            }
+        }
+
+        // We're going to scan the BSS/data section for things, and try to narrowly scan things that
+        // look like pointers to PyinterpreterState
+        scan_memory(
+            binary.bss_addr,
+            binary.bss_size,
+            python_info,
+            process,
+            version,
+            config,
+        )
+    }
+
+    /// Loads up addresses from the interpreter_address -  used for python versions 3.12 or older
+    fn from_interpreter_address<P>(
+        interpreter_address: usize,
+        python_info: &PythonProcessInfo,
+        process: &P,
+        version: &Version,
+        config: &Config,
+    ) -> Result<PythonProcessLayout, Error>
+    where
+        P: ProcessMemory,
+    {
+        // getting the imports_module address from the generated PyInterpreterState bindings
+        // depends on the version of python
+        fn get_imports_modules_address<I, P>(interpreter_address: usize) -> Result<usize, Error>
+        where
+            I: InterpreterState,
+            P: ProcessMemory,
+        {
+            Ok(I::modules_ptr_ptr(interpreter_address) as usize)
+        }
+
+        Ok(PythonProcessLayout {
+            interpreter_address,
+            threadstate_address: get_threadstate_address::<P>(
+                interpreter_address,
+                python_info,
+                process,
+                version,
+                config,
+            )?,
+            imports_modules_address: dispatch_by_version!(
+                version,
+                get_imports_modules_address,
+                interpreter_address
+            )?,
+        })
+    }
+
+    /// Loads up addresses from the location of a Py_DebugOffsets structure - used for python 3.13+
+    fn from_debug_offsets<P>(
+        pyruntime_addr: usize,
+        process: &P,
+        version: &Version,
+        config: &Config,
+    ) -> Result<PythonProcessLayout, Error>
+    where
+        P: ProcessMemory,
+    {
+        // Use a macro to duck type over different Py_DebugOffsets, which have different layouts
+        // between versions of python so can't be used interchangeably
+        macro_rules! get_addresses {
+            ($py: ident) => {{
+                let offsets: $py::_Py_DebugOffsets = process.copy_struct(pyruntime_addr)?;
+                let interpreter_address = process
+                    .copy_struct(pyruntime_addr + offsets.runtime_state.interpreters_head as usize)
+                    .context("Failed to copy py_debugoffsets.runtime_state.interpreters_head")?;
+
+                let gil_ptr = interpreter_address + offsets.interpreter_state.ceval_gil as usize;
+                let threadstate_address: usize = match process.copy_struct(gil_ptr) {
+                    Ok(gil) => gil,
+                    Err(_) => {
+                        error_if_gil(config, version, "failed to copy gil address")?;
+                        0
+                    }
+                };
+                let imports_modules_address =
+                    interpreter_address + offsets.interpreter_state.imports_modules as usize;
+
+                Ok(PythonProcessLayout {
+                    interpreter_address,
+                    threadstate_address,
+                    imports_modules_address,
+                })
+            }};
+        }
+
+        match version {
+            Version {
+                major: 3,
+                minor: 14,
+                ..
+            } => get_addresses!(v3_14_0),
+            Version {
+                major: 3,
+                minor: 13,
+                ..
+            } => get_addresses!(v3_13_0),
+            _ => {
+                // shouldn't happen
+                Err(format_err!(
+                    "Unsupported version {:?} for Py_DebugOffsets",
+                    version
+                ))
+            }
+        }
+    }
+}
+
+// Checks whether a block of memory (from BSS/.data etc) contains pointers that are pointing
+// to a valid PyInterpreterState, and returns the PythonProcessLayout if found
+fn scan_memory<P>(
+    addr: u64,
+    size: u64,
     python_info: &PythonProcessInfo,
     process: &P,
     version: &Version,
-) -> Result<usize, Error>
+    config: &Config,
+) -> Result<PythonProcessLayout, Error>
 where
     P: ProcessMemory,
 {
     match version {
         Version {
             major: 3,
-            minor: 13..=14,
+            minor: 13..,
             ..
         } => {
-            if let Some(&pyruntime_addr) = python_info.get_symbol("_PyRuntime") {
-                // figure out the interpreters_head location using the debug_offsets
-                match version {
-                    Version {
-                        major: 3,
-                        minor: 14,
-                        ..
-                    } => {
-                        let debug_offsets: v3_14_0::_Py_DebugOffsets =
-                            process.copy_struct(pyruntime_addr as usize)?;
-                        return process
-                            .copy_struct(
-                                pyruntime_addr as usize
-                                    + debug_offsets.runtime_state.interpreters_head as usize,
-                            )
-                            .context(
-                                "Failed to copy py_debug_offsets.runtime_state.interpreters_head",
-                            );
-                    }
-                    _ => {
-                        let debug_offsets: v3_13_0::_Py_DebugOffsets =
-                            process.copy_struct(pyruntime_addr as usize)?;
-                        return process
-                            .copy_struct(
-                                pyruntime_addr as usize
-                                    + debug_offsets.runtime_state.interpreters_head as usize,
-                            )
-                            .context(
-                                "Failed to copy py_debug_offsets.runtime_state.interpreters_head",
-                            );
-                    }
-                };
-            }
-        }
-        Version {
-            major: 3,
-            minor: 7..=12,
-            ..
-        } => {
-            if let Some(&addr) = python_info.get_symbol("_PyRuntime") {
-                return process
-                    .copy_struct(addr as usize + pyruntime::get_interp_head_offset(version))
-                    .context("Failed to copy interpreters_head");
-            }
+            dispatch_by_version!(
+                version,
+                scan_memory_for_debug_offsets,
+                addr,
+                size,
+                process,
+                version,
+                config
+            )
         }
         _ => {
-            if let Some(&addr) = python_info.get_symbol("interp_head") {
-                return process
-                    .copy_struct(addr as usize)
-                    .context("Failed to copy interp_head");
-            }
-        }
-    };
-    return Err(format_err!(
-        "Failed to find _PyRuntime address from symbols"
-    ));
-}
-
-fn get_interpreter_address_from_binary<P>(
-    binary: &BinaryInfo,
-    maps: &dyn ContainsAddr,
-    process: &P,
-    version: &Version,
-) -> Result<usize, Error>
-where
-    P: ProcessMemory,
-{
-    // First check the pyruntime section it was found
-    if binary.pyruntime_addr != 0 {
-        let bss = process.copy(
-            binary.pyruntime_addr as usize,
-            binary.pyruntime_size as usize,
-        )?;
-        #[allow(clippy::cast_ptr_alignment)]
-        let addrs = unsafe {
-            slice::from_raw_parts(bss.as_ptr() as *const usize, bss.len() / size_of::<usize>())
-        };
-        if let Ok(addr) = check_interpreter_addresses(addrs, maps, process, version) {
-            return Ok(addr);
+            dispatch_by_version!(
+                version,
+                scan_memory_for_python_interpreter,
+                addr,
+                size,
+                python_info,
+                process,
+                version,
+                config
+            )
         }
     }
+}
 
-    // We're going to scan the BSS/data section for things, and try to narrowly scan things that
-    // look like pointers to PyinterpreterState
-    let bss = process.copy(binary.bss_addr as usize, binary.bss_size as usize)?;
-
+// scans memory in the target process looking for a Py_DebugOffsets structure
+fn scan_memory_for_debug_offsets<I, P>(
+    start_addr: u64,
+    size: u64,
+    process: &P,
+    version: &Version,
+    config: &Config,
+) -> Result<PythonProcessLayout, Error>
+where
+    I: InterpreterState,
+    P: ProcessMemory,
+{
+    // Copy the memory
+    let bss = process.copy(start_addr as usize, size as usize)?;
     #[allow(clippy::cast_ptr_alignment)]
     let addrs = unsafe {
         slice::from_raw_parts(bss.as_ptr() as *const usize, bss.len() / size_of::<usize>())
     };
-    check_interpreter_addresses(addrs, maps, process, version)
-}
 
-// Checks whether a block of memory (from BSS/.data etc) contains pointers that are pointing
-// to a valid PyInterpreterState
-fn check_interpreter_addresses<P>(
-    addrs: &[usize],
-    maps: &dyn ContainsAddr,
-    process: &P,
-    version: &Version,
-) -> Result<usize, Error>
-where
-    P: ProcessMemory,
-{
-    // This function does all the work, but needs a type of the interpreter
-    fn check<I, P>(addrs: &[usize], maps: &dyn ContainsAddr, process: &P) -> Result<usize, Error>
-    where
-        I: InterpreterState,
-        P: ProcessMemory,
-    {
-        for &addr in addrs {
-            if maps.contains_addr(addr) {
-                // get the pythreadstate pointer from the interpreter object, and if it is also
-                // a valid pointer then load it up.
-                let threadstate_ptr_ptr = I::threadstate_ptr_ptr(addr);
-                let maybe_threads = process
-                    .copy_struct(threadstate_ptr_ptr as usize)
-                    .context("Failed to copy PyThreadState head pointer");
+    // b'xdebugpy' is the byte pattern found at the start of _Py_DebugOffset structures,
+    #[cfg(target_pointer_width = "64")]
+    let cookie = u64::from_le_bytes(*b"xdebugpy") as usize;
 
-                let threads: *const I::ThreadState = match maybe_threads {
-                    Ok(threads) => threads,
-                    Err(_) => continue,
-                };
+    #[cfg(target_pointer_width = "32")]
+    let cookie = u32::from_le_bytes(*b"xdeb") as usize;
 
-                if maps.contains_addr(threads as usize) {
-                    // If the threadstate points back to the interpreter like we expect, then
-                    // this is almost certainly the address of the intrepreter
-                    let thread = match process.copy_pointer(threads) {
-                        Ok(thread) => thread,
-                        Err(_) => continue,
-                    };
+    for (index, &addr) in addrs.iter().enumerate() {
+        if addr == cookie {
+            let pyruntime_address = (index * size_of::<usize>()) + start_addr as usize;
+            let address_book = match PythonProcessLayout::from_debug_offsets(
+                pyruntime_address,
+                process,
+                version,
+                &config,
+            ) {
+                Ok(address_book) => address_book,
+                Err(_) => continue,
+            };
 
-                    // as a final sanity check, try getting the stack_traces, and only return if this works
-                    if thread.interp() as usize == addr
-                        && get_stack_traces::<I, P>(addr, process, 0, None).is_ok()
-                    {
-                        return Ok(addr);
-                    }
-                }
+            // as a final sanity check, make sure we can get the stack trace before returning success
+            if get_stack_traces::<I, P>(
+                address_book.interpreter_address,
+                process,
+                address_book.threadstate_address,
+                None,
+            )
+            .is_ok()
+            {
+                return Ok(address_book);
             }
         }
-        Err(format_err!(
-            "Failed to find a python interpreter in the .data section"
-        ))
+    }
+    Err(format_err!(
+        "Failed to find a python interpreter in the .data section"
+    ))
+}
+
+// Scans memory looking for valid python interpreters (for older versions of python that don't have a Py_DebugOffsets)
+fn scan_memory_for_python_interpreter<I, P>(
+    start_addr: u64,
+    size: u64,
+    python_info: &PythonProcessInfo,
+    process: &P,
+    version: &Version,
+    config: &Config,
+) -> Result<PythonProcessLayout, Error>
+where
+    I: InterpreterState,
+    P: ProcessMemory,
+{
+    let bss = process.copy(start_addr as usize, size as usize)?;
+    #[allow(clippy::cast_ptr_alignment)]
+    let addrs = unsafe {
+        slice::from_raw_parts(bss.as_ptr() as *const usize, bss.len() / size_of::<usize>())
+    };
+
+    for &addr in addrs {
+        if python_info.maps.contains_addr(addr) {
+            // get the pythreadstate pointer from the interpreter object, and if it is also
+            // a valid pointer then load it up.
+            let threadstate_ptr_ptr = I::threadstate_ptr_ptr(addr);
+            let maybe_threads = process
+                .copy_struct(threadstate_ptr_ptr as usize)
+                .context("Failed to copy PyThreadState head pointer");
+
+            let threads: *const I::ThreadState = match maybe_threads {
+                Ok(threads) => threads,
+                Err(_) => continue,
+            };
+
+            if !python_info.maps.contains_addr(threads as usize) {
+                continue;
+            }
+
+            // If the threadstate points back to the interpreter like we expect, then
+            // this is almost certainly the address of the intrepreter
+            let thread = match process.copy_pointer(threads) {
+                Ok(thread) => thread,
+                Err(_) => continue,
+            };
+            if thread.interp() as usize != addr {
+                continue;
+            }
+
+            let layout = match PythonProcessLayout::from_interpreter_address(
+                addr,
+                python_info,
+                process,
+                version,
+                &config,
+            ) {
+                Ok(layout) => layout,
+                Err(_) => continue,
+            };
+
+            // as a final sanity check, try getting the stack_traces, and only return if this works
+            if get_stack_traces::<I, P>(
+                layout.interpreter_address,
+                process,
+                layout.threadstate_address,
+                None,
+            )
+            .is_ok()
+            {
+                return Ok(layout);
+            }
+        }
     }
 
-    // different versions have different layouts, check as appropriate
-    match version {
-        Version {
-            major: 2,
-            minor: 3..=7,
-            ..
-        } => check::<v2_7_15::_is, P>(addrs, maps, process),
-        Version {
-            major: 3, minor: 3, ..
-        } => check::<v3_3_7::_is, P>(addrs, maps, process),
-        Version {
-            major: 3,
-            minor: 4..=5,
-            ..
-        } => check::<v3_5_5::_is, P>(addrs, maps, process),
-        Version {
-            major: 3, minor: 6, ..
-        } => check::<v3_6_6::_is, P>(addrs, maps, process),
-        Version {
-            major: 3, minor: 7, ..
-        } => check::<v3_7_0::_is, P>(addrs, maps, process),
-        Version {
-            major: 3, minor: 8, ..
-        } => check::<v3_8_0::_is, P>(addrs, maps, process),
-        Version {
-            major: 3, minor: 9, ..
-        } => check::<v3_9_5::_is, P>(addrs, maps, process),
-        Version {
-            major: 3,
-            minor: 10,
-            ..
-        } => check::<v3_10_0::_is, P>(addrs, maps, process),
-        Version {
-            major: 3,
-            minor: 11,
-            ..
-        } => check::<v3_11_0::_is, P>(addrs, maps, process),
-        Version {
-            major: 3,
-            minor: 12,
-            ..
-        } => check::<v3_12_0::_is, P>(addrs, maps, process),
-        Version {
-            major: 3,
-            minor: 13,
-            ..
-        } => check::<v3_13_0::_is, P>(addrs, maps, process),
-        Version {
-            major: 3,
-            minor: 14,
-            ..
-        } => check::<v3_14_0::_is, P>(addrs, maps, process),
-        _ => Err(format_err!("Unsupported version of Python: {}", version)),
-    }
+    Err(format_err!(
+        "Failed to find a python interpreter in the .data section"
+    ))
 }
 
 pub fn get_threadstate_address<P>(
@@ -711,7 +966,13 @@ where
             ..
         } => {
             let gil_ptr = interpreter_address + std::mem::offset_of!(v3_13_0::_is, ceval.gil);
-            process.copy_struct::<usize>(gil_ptr)?
+            match process.copy_struct::<usize>(gil_ptr) {
+                Ok(gil) => gil,
+                Err(_) => {
+                    error_if_gil(config, version, "failed to copy gil address")?;
+                    0
+                }
+            }
         }
         Version {
             major: 3,
@@ -719,8 +980,13 @@ where
             ..
         } => {
             let gil_ptr = interpreter_address + std::mem::offset_of!(v3_12_0::_is, ceval.gil);
-            let gil: usize = process.copy_struct(gil_ptr)?;
-            gil
+            match process.copy_struct::<usize>(gil_ptr) {
+                Ok(gil) => gil,
+                Err(_) => {
+                    error_if_gil(config, version, "failed to copy gil address")?;
+                    0
+                }
+            }
         }
         Version {
             major: 3,

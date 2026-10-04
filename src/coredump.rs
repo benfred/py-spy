@@ -21,8 +21,7 @@ use crate::python_bindings::{
 use crate::python_data_access::format_variable;
 use crate::python_interpreters::InterpreterState;
 use crate::python_process_info::{
-    get_interpreter_address, get_python_version, get_threadstate_address, is_python_lib,
-    ContainsAddr, PythonProcessInfo,
+    get_python_version, is_python_lib, ContainsAddr, PythonProcessInfo, PythonProcessLayout,
 };
 use crate::python_threading::thread_names_from_interpreter;
 use crate::stack_trace::{get_stack_traces, StackTrace};
@@ -180,8 +179,7 @@ impl ProcessMemory for CoreDump {
 pub struct PythonCoreDump {
     core: CoreDump,
     version: Version,
-    interpreter_address: usize,
-    threadstate_address: usize,
+    addresses: PythonProcessLayout,
 }
 
 impl PythonCoreDump {
@@ -242,20 +240,23 @@ impl PythonCoreDump {
             get_python_version(&python_info, &core).context("failed to get python version")?;
         info!("Got python version {}", version);
 
-        let interpreter_address = get_interpreter_address(&python_info, &core, &version)?;
-        info!("Found interpreter at 0x{:016x}", interpreter_address);
+        let config = Config::default();
+        let addresses = PythonProcessLayout::new(&python_info, &core, &version, &config)?;
 
         // lets us figure out which thread has the GIL
-        let config = Config::default();
-        let threadstate_address =
-            get_threadstate_address(interpreter_address, &python_info, &core, &version, &config)?;
-        info!("found threadstate at 0x{:016x}", threadstate_address);
+        info!(
+            "found interpreter at 0x{:016x}",
+            addresses.interpreter_address
+        );
+        info!(
+            "found threadstate at 0x{:016x}",
+            addresses.threadstate_address
+        );
 
         Ok(PythonCoreDump {
             core,
             version,
-            interpreter_address,
-            threadstate_address,
+            addresses,
         })
     }
 
@@ -333,13 +334,14 @@ impl PythonCoreDump {
 
     fn _get_stack<I: InterpreterState>(&self, config: &Config) -> Result<Vec<StackTrace>, Error> {
         let mut traces = get_stack_traces::<I, CoreDump>(
-            self.interpreter_address,
+            self.addresses.interpreter_address,
             &self.core,
-            self.threadstate_address,
+            self.addresses.threadstate_address,
             Some(config),
         )?;
+
         let thread_names = thread_names_from_interpreter::<I, CoreDump>(
-            self.interpreter_address,
+            &self.addresses,
             &self.core,
             &self.version,
         )
@@ -471,11 +473,15 @@ mod test {
             release_flags: "".to_owned(),
             build_metadata: None,
         };
+        let addresses = PythonProcessLayout {
+            interpreter_address: 0x000055a8293dbe20,
+            threadstate_address: 0x000055a82745fe18,
+            imports_modules_address: 0,
+        };
         let python_core = PythonCoreDump {
             core,
             version,
-            interpreter_address: 0x000055a8293dbe20,
-            threadstate_address: 0x000055a82745fe18,
+            addresses,
         };
 
         let config = Config::default();
