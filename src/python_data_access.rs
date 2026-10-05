@@ -489,7 +489,8 @@ where
         "None".to_owned()
     } else if value_type_name.starts_with("numpy.") {
         match value_type_name {
-            "numpy.bool" => format_obval::<bool, P>(addr, process)?,
+            // u8, not bool: any byte value is possible, and bool would be UB
+            "numpy.bool" => format_obval::<u8, P>(addr, process)?,
             "numpy.uint8" => format_obval::<u8, P>(addr, process)?,
             "numpy.uint16" => format_obval::<u16, P>(addr, process)?,
             "numpy.uint32" => format_obval::<u32, P>(addr, process)?,
