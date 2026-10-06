@@ -212,10 +212,65 @@ impl PythonSpy {
         // activity status from the OS (otherwise each thread would report being inactive always).
         // This has the potential for race conditions (in that the thread activity could change
         // between getting the status and locking the thread, but seems unavoidable right now
-        let _lock = if self.config.blocking == LockingStrategy::Lock {
-            Some(self.process.lock().context("Failed to suspend process")?)
-        } else {
-            None
+        //
+        // We only need the *Python* threads stopped to read a consistent interpreter snapshot;
+        // the native worker threads (e.g. torch's OpenMP/CUDA pool, which can add 100+ threads)
+        // have no PyThreadState and never touch the interpreter, so stopping them is pure
+        // overhead. ptrace-stopping that many threads on every sample freezes the target for so
+        // long that sampling itself stalls the program (at high rates the process never runs
+        // again). So we pre-scan the PyThreadState list and, once we know the python -> OS thread
+        // mapping for every one of them, lock only those threads. If the list contains a thread we
+        // haven't mapped yet (first sample, or a thread that just spawned), fall back to locking
+        // everything so the mapping can be resolved below.
+        //
+        // The variants are only ever held for their Drop side effect (detaching from the
+        // threads), which the dead_code lint can't see.
+        #[allow(dead_code)]
+        enum LockGuard {
+            All(remoteprocess::Lock),
+            Python(Vec<remoteprocess::ThreadLock>),
+        }
+
+        // Racy pre-scan of the python thread ids, used only to decide what to lock. The list is
+        // re-read below (under the lock) for the actual stack traces.
+        let all_threads_known = {
+            let threadstate_ptr_ptr = I::threadstate_ptr_ptr(self.interpreter_address);
+            let mut threads_head = self
+                .process
+                .copy_pointer(threadstate_ptr_ptr)
+                .context("Failed to copy PyThreadState head pointer")?;
+            let mut ids = Vec::new();
+            while !threads_head.is_null() {
+                let thread = self
+                    .process
+                    .copy_pointer(threads_head)
+                    .context("Failed to copy PyThreadState")?;
+                ids.push(thread.thread_id());
+                threads_head = thread.next();
+            }
+            !ids.is_empty() && ids.iter().all(|id| self.python_thread_ids.contains_key(id))
+        };
+
+        let _lock = match self.config.blocking {
+            LockingStrategy::Lock => {
+                if all_threads_known {
+                    let mut locks = Vec::with_capacity(self.python_thread_ids.len());
+                    for &tid in self.python_thread_ids.values() {
+                        if let Ok(lock) =
+                            remoteprocess::Thread::new(tid).and_then(|thread| thread.lock())
+                        {
+                            locks.push(lock);
+                        }
+                        // Ignore threads that exit while we try to lock them.
+                    }
+                    LockGuard::Python(locks)
+                } else {
+                    LockGuard::All(self.process.lock().context("Failed to suspend process")?)
+                }
+            }
+            LockingStrategy::NonBlocking | LockingStrategy::AlreadyLocked => {
+                LockGuard::Python(Vec::new())
+            }
         };
 
         // Find PyThreadState, and loop over all the python threads
@@ -321,10 +376,12 @@ impl PythonSpy {
             #[cfg(feature = "unwind")]
             {
                 if self.config.native {
-                    if let Some(native) = self.native.as_mut() {
-                        let thread_id = trace
-                            .os_thread_id
-                            .ok_or_else(|| format_err!("failed to get os threadid"))?;
+                    // A Python thread whose OS thread id we couldn't resolve (e.g. one that
+                    // appeared after we learned the mapping) keeps its Python-only frames rather
+                    // than failing the whole sample.
+                    if let (Some(native), Some(thread_id)) =
+                        (self.native.as_mut(), trace.os_thread_id)
+                    {
                         let os_thread = remoteprocess::Thread::new(thread_id as Tid)?;
                         trace.frames = native.merge_native_thread(&trace.frames, &os_thread)?
                     }
