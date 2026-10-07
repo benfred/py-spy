@@ -16,9 +16,12 @@ use crate::python_bindings::{
     v3_9_5,
 };
 use crate::python_data_access::format_variable;
-use crate::python_interpreters::{InterpreterState, ThreadState};
+use crate::python_interpreters::{
+    threadstate_ptr_ptr, InterpreterState, InterpreterStateOffsets, ThreadState,
+};
 use crate::python_process_info::{
-    get_interpreter_address, get_python_version, get_threadstate_address, PythonProcessInfo,
+    get_interpreter_info, get_python_version, get_threadstate_address_with_offsets,
+    PythonProcessInfo,
 };
 use crate::python_threading::thread_name_lookup;
 use crate::stack_trace::{get_gil_threadid, get_stack_trace, StackTrace};
@@ -30,6 +33,7 @@ pub struct PythonSpy {
     pub process: Process,
     pub version: Version,
     pub interpreter_address: usize,
+    pub(crate) interpreter_state_offsets: Option<InterpreterStateOffsets>,
     pub threadstate_address: usize,
     pub config: Config,
     #[cfg(feature = "unwind")]
@@ -59,16 +63,18 @@ impl PythonSpy {
         let version = get_python_version(&python_info, &process)?;
         info!("python version {} detected", version);
 
-        let interpreter_address = get_interpreter_address(&python_info, &process, &version)?;
+        let interpreter_info = get_interpreter_info(&python_info, &process, &version)?;
+        let interpreter_address = interpreter_info.address;
         info!("Found interpreter at 0x{:016x}", interpreter_address);
 
         // lets us figure out which thread has the GIL
-        let threadstate_address = get_threadstate_address(
+        let threadstate_address = get_threadstate_address_with_offsets(
             interpreter_address,
             &python_info,
             &process,
             &version,
             config,
+            interpreter_info.offsets,
         )?;
 
         #[cfg(feature = "unwind")]
@@ -87,6 +93,7 @@ impl PythonSpy {
             process,
             version,
             interpreter_address,
+            interpreter_state_offsets: interpreter_info.offsets,
             threadstate_address,
             #[cfg(feature = "unwind")]
             native,
@@ -219,7 +226,8 @@ impl PythonSpy {
         };
 
         // Find PyThreadState, and loop over all the python threads
-        let threadstate_ptr_ptr = I::threadstate_ptr_ptr(self.interpreter_address);
+        let threadstate_ptr_ptr =
+            threadstate_ptr_ptr::<I>(self.interpreter_address, self.interpreter_state_offsets);
         let threads_head = self
             .process
             .copy_pointer(threadstate_ptr_ptr)
