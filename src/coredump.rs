@@ -14,12 +14,13 @@ use remoteprocess::ProcessMemory;
 use crate::binary_parser::{parse_binary, BinaryInfo};
 use crate::config::Config;
 use crate::dump::print_trace;
+use crate::obj_walk::{get_object_attribute, walk_gc};
 use crate::python_bindings::{
     v2_7_15, v3_10_0, v3_11_0, v3_12_0, v3_13_0, v3_14_0, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0,
     v3_9_5,
 };
 use crate::python_data_access::format_variable;
-use crate::python_interpreters::InterpreterState;
+use crate::python_interpreters::{HasGcGenerations, InterpreterState};
 use crate::python_process_info::{
     get_interpreter_address, get_python_version, get_threadstate_address, is_python_lib,
     ContainsAddr, PythonProcessInfo,
@@ -394,6 +395,81 @@ impl PythonCoreDump {
         for trace in traces.iter().rev() {
             print_trace(trace, false);
         }
+        Ok(())
+    }
+
+    pub fn print_objects(&self, config: &Config) -> Result<(), Error> {
+        match self.version {
+            Version {
+                major: 3, minor: 9, ..
+            } => self._print_objects::<v3_9_5::_is>(config),
+            Version {
+                major: 3,
+                minor: 10,
+                ..
+            } => self._print_objects::<v3_10_0::_is>(config),
+            Version {
+                major: 3,
+                minor: 11,
+                ..
+            } => self._print_objects::<v3_11_0::_is>(config),
+            Version {
+                major: 3,
+                minor: 12,
+                ..
+            } => self._print_objects::<v3_12_0::_is>(config),
+            Version {
+                major: 3,
+                minor: 13,
+                ..
+            } => self._print_objects::<v3_13_0::_is>(config),
+            Version {
+                major: 3,
+                minor: 14,
+                ..
+            } => self._print_objects::<v3_14_0::_is>(config),
+            _ => Err(format_err!(
+                "Unsupported version of Python: {}",
+                self.version
+            )),
+        }
+    }
+
+    fn _print_objects<I>(&self, config: &Config) -> Result<(), Error>
+    where
+        I: HasGcGenerations,
+    {
+        let (type_name, attrs): (Option<&str>, Vec<&str>) = match config.object_path.as_deref() {
+            Some(s) => {
+                let mut parts = s.split('.');
+                let first = parts.next();
+                let rest = parts.collect();
+                (first, rest)
+            }
+            None => (None, Vec::new()),
+        };
+
+        let objects = walk_gc::<I, CoreDump>(self.interpreter_address, type_name, &self.core)?;
+        println!("Found {} object(s)", objects.len());
+
+        if !attrs.is_empty() {
+            for obj in objects {
+                println!("<{} at 0x{:x}>:", type_name.unwrap(), obj);
+                match get_object_attribute::<I, CoreDump>(obj, &attrs, &self.core, &self.version) {
+                    Ok(attr) => println!("{}", attr),
+                    Err(err) => println!("{}", err),
+                }
+            }
+        } else {
+            for obj in objects {
+                if let Ok(formatted) =
+                    format_variable::<I, CoreDump>(&self.core, &self.version, obj, 200)
+                {
+                    println!("{}", formatted);
+                }
+            }
+        }
+
         Ok(())
     }
 }

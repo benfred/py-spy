@@ -39,6 +39,7 @@ mod cython;
 pub mod dump;
 #[cfg(feature = "unwind")]
 mod native_stack_trace;
+mod obj_walk;
 mod python_bindings;
 mod python_data_access;
 mod python_interpreters;
