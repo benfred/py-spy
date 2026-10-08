@@ -79,7 +79,14 @@ where
     I: InterpreterState,
     P: ProcessMemory,
 {
-    let gil_thread_id = get_gil_threadid::<I, P>(threadstate_address, process)?;
+    let gil_thread_id = match get_gil_threadid::<I, P>(threadstate_address, process) {
+        Ok(thread_id) => thread_id,
+        Err(err) if config.is_some_and(|c| c.gil_only) => return Err(err),
+        Err(err) => {
+            warn!("failed to get gil_thread_id, continuing without GIL ownership data: {err}");
+            0
+        }
+    };
 
     let threadstate_ptr_ptr = I::threadstate_ptr_ptr(interpreter_address);
     let mut threads: *const I::ThreadState = process

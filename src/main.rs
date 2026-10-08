@@ -18,6 +18,7 @@ mod native_stack_trace;
 mod python_bindings;
 mod python_data_access;
 mod python_interpreters;
+mod python_interpreters_3_14t;
 mod python_process_info;
 mod python_spy;
 mod python_threading;
