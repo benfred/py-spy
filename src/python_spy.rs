@@ -434,11 +434,23 @@ impl PythonSpy {
             {
                 if self.config.native {
                     if let Some(native) = self.native.as_mut() {
-                        let thread_id = trace
+                        // A stale os thread id (e.g. a tid inherited across fork) can't be
+                        // unwound and libunwind reports UNW_EBADREG. Keep the python frames for
+                        // that thread instead of failing the whole dump.
+                        let merged = trace
                             .os_thread_id
-                            .ok_or_else(|| format_err!("failed to get os threadid"))?;
-                        let os_thread = remoteprocess::Thread::new(thread_id as Tid)?;
-                        trace.frames = native.merge_native_thread(&trace.frames, &os_thread)?
+                            .ok_or_else(|| format_err!("failed to get os threadid"))
+                            .and_then(|id| Ok(remoteprocess::Thread::new(id as Tid)?))
+                            .and_then(|os_thread| {
+                                native.merge_native_thread(&trace.frames, &os_thread)
+                            });
+                        match merged {
+                            Ok(frames) => trace.frames = frames,
+                            Err(e) => warn!(
+                                "Failed to get native stack for thread {:#x} (os thread {:?}): {:#}",
+                                trace.thread_id, trace.os_thread_id, e
+                            ),
+                        }
                     }
                 }
             }
