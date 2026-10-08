@@ -1,9 +1,7 @@
 #[cfg(feature = "cli")]
 use clap::builder::{styling::AnsiColor, EnumValueParser, Styles};
 #[cfg(feature = "cli")]
-use clap::{
-    crate_description, crate_name, crate_version, value_parser, Arg, ArgAction, Command, ValueEnum,
-};
+use clap::{crate_description, crate_version, value_parser, Arg, ArgAction, Command, ValueEnum};
 use remoteprocess::Pid;
 
 /// Options on how to collect samples from a python process
@@ -375,7 +373,7 @@ impl Config {
             .literal(AnsiColor::Green.on_default())
             .placeholder(AnsiColor::Green.on_default());
 
-        let mut app = Command::new(crate_name!())
+        let mut app = Command::new("py-spy-asyncio")
             .version(crate_version!())
             .about(crate_description!())
             .subcommand_required(true)

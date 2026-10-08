@@ -14,7 +14,7 @@ Frame = namedtuple("Frame", ["file", "name", "line", "col"])
 
 GIL = ["--gil"]
 
-PYSPY = which("py-spy")
+PYSPY = which("py-spy-asyncio")
 
 
 class TestPyspy(unittest.TestCase):
@@ -22,7 +22,7 @@ class TestPyspy(unittest.TestCase):
 
     def _sample_process(self, script_name, options=None, include_profile_name=False):
         if not PYSPY:
-            raise ValueError("Failed to find py-spy on the path")
+            raise ValueError("Failed to find py-spy-asyncio on the path")
 
         # for permissions reasons, we really want to run the sampled python process as a
         # subprocess of the py-spy (works best on linux etc). So we're running the

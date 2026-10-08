@@ -3,7 +3,8 @@ requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "py-spy"
+name = "py-spy-asyncio"
+readme = "README.md"
 classifiers = [
 	"Development Status :: 5 - Production/Stable",
 	"Programming Language :: Python :: 3",

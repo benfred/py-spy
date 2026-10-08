@@ -173,8 +173,8 @@ jobs:
           ls -ahl build-artifacts.tar
       - name: Prepare binary for upload
         run: |
-          tar xf build-artifacts.tar target/release/py-spy
-          mv target/release/py-spy py-spy-x86_64-unknown-freebsd
+          tar xf build-artifacts.tar target/release/py-spy-asyncio
+          mv target/release/py-spy-asyncio py-spy-x86_64-unknown-freebsd
       - name: Upload Binaries
         uses: actions/upload-artifact@v7
         with:
@@ -304,7 +304,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install wheel
         run: |
-          pip install --force-reinstall --no-index --find-links . py-spy
+          pip install --force-reinstall --no-index --find-links . py-spy-asyncio
       - name: Test Wheel
         id: test
         run: python tests/integration_test.py
@@ -365,8 +365,3 @@ jobs:
           pip install --upgrade wheel pip setuptools twine
           twine upload *
           rm *
-      - uses: actions/checkout@v6
-      - name: Push to crates.io
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish
