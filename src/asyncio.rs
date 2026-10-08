@@ -11,7 +11,7 @@ use remoteprocess::ProcessMemory;
 use serde_derive::Serialize;
 
 use crate::config::LineNo;
-use crate::python_bindings::v3_14_0;
+use crate::python_bindings::{v3_10_0, v3_11_0, v3_12_0, v3_13_0, v3_14_0, v3_7_0, v3_8_0, v3_9_5};
 use crate::python_data_access::{
     copy_long, copy_string, copy_type_name, format_variable, DictIterator, SetIterator,
     PY_TPFLAGS_MANAGED_DICT,
@@ -22,6 +22,7 @@ use crate::version::Version;
 
 const MAX_TASKS: usize = 100_000;
 const MAX_CREATION_FRAMES: usize = 10_000;
+const MAX_AWAIT_DEPTH: usize = 1_000;
 
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
@@ -536,6 +537,69 @@ where
     Ok(Some(frames))
 }
 
+/// Returns the object a suspended coroutine frame is awaiting: the top of its
+/// value stack, which is what CPython's `cr_await` / `gi_yieldfrom` report.
+// ponytail: no opcode check; callers only follow the result when it is itself a
+// coroutine or generator, so a plain `yield` with a generator on the stack can
+// add a spurious frame. Check gi_frame_state/next opcode if that shows up.
+fn awaited_object<P: ProcessMemory>(
+    process: &P,
+    version: &Version,
+    frame_addr: usize,
+    debug_offsets: Option<&v3_14_0::_Py_DebugOffsets>,
+) -> Option<usize> {
+    const PTR: usize = std::mem::size_of::<usize>();
+    macro_rules! frame_object {
+        ($v:ident) => {{
+            let frame: $v::_frame = process.copy_struct(frame_addr).ok()?;
+            if frame.f_stacktop.is_null() || frame.f_stacktop == frame.f_valuestack {
+                return None;
+            }
+            frame.f_stacktop as usize - PTR
+        }};
+    }
+    macro_rules! interpreter_frame {
+        ($v:ident) => {{
+            let frame: $v::_PyInterpreterFrame = process.copy_struct(frame_addr).ok()?;
+            if frame.stacktop <= 0 {
+                return None;
+            }
+            frame_addr
+                + std::mem::offset_of!($v::_PyInterpreterFrame, localsplus)
+                + (frame.stacktop as usize - 1) * PTR
+        }};
+    }
+    let top = match version.minor {
+        7 => frame_object!(v3_7_0),
+        8 => frame_object!(v3_8_0),
+        9 => frame_object!(v3_9_5),
+        10 => {
+            let frame: v3_10_0::_frame = process.copy_struct(frame_addr).ok()?;
+            if frame.f_stackdepth <= 0 || frame.f_valuestack.is_null() {
+                return None;
+            }
+            frame.f_valuestack as usize + (frame.f_stackdepth as usize - 1) * PTR
+        }
+        11 => interpreter_frame!(v3_11_0),
+        12 => interpreter_frame!(v3_12_0),
+        13 => interpreter_frame!(v3_13_0),
+        14 => {
+            let offset = debug_offsets
+                .map(|offsets| offsets.interpreter_frame.stackpointer as usize)
+                .unwrap_or(std::mem::offset_of!(
+                    v3_14_0::_PyInterpreterFrame,
+                    stackpointer
+                ));
+            let stackpointer: usize = process.copy_struct(frame_addr + offset).ok()?;
+            stackpointer.checked_sub(PTR)?
+        }
+        _ => return None,
+    };
+    // 3.14 stack refs carry tag bits in the low bits of the pointer.
+    let object: usize = process.copy_struct(top).ok()?;
+    Some(object & !3).filter(|object| *object != 0)
+}
+
 fn read_task<I, P>(
     process: &P,
     version: &Version,
@@ -618,39 +682,61 @@ where
         .to_owned()
     };
 
-    let frames = if coro == 0 {
-        Vec::new()
-    } else {
-        let coro_type = copy_type_name::<I, P>(process, coro).unwrap_or_default();
-        if matches!(
+    // Follow the await chain (task coroutine -> awaited coroutine -> ...) like
+    // walking `cr_await` in-process. Frames are collected outermost first.
+    let mut frames = Vec::new();
+    let mut current = coro;
+    let mut seen = HashSet::new();
+    while current != 0 && frames.len() < MAX_AWAIT_DEPTH && seen.insert(current) {
+        let coro_type = copy_type_name::<I, P>(process, current).unwrap_or_default();
+        if !matches!(
             coro_type.as_str(),
             "coroutine" | "generator" | "async_generator"
         ) {
-            let frame_offset = inspection_offsets
-                .python
-                .map(|offsets| offsets.gen_object.gi_iframe as usize)
-                .or_else(|| coroutine_frame_offset(version))
-                .unwrap();
-            let frame_addr = if version.minor <= 10 {
-                process.copy_struct(coro + frame_offset)?
-            } else {
-                coro + frame_offset
-            };
-            let mut frames = get_stack_frames(
-                frame_addr as *mut <I::ThreadState as ThreadState>::FrameObject,
-                process,
-                copy_locals,
-                lineno,
-            )?;
-            // A coroutine owns one current frame. When it is actively running,
-            // f_back may lead into the event loop's thread stack; those frames
-            // belong to the runner, not to this task.
-            frames.truncate(1);
-            frames
-        } else {
-            Vec::new()
+            break;
         }
-    };
+        let frame_offset = inspection_offsets
+            .python
+            .map(|offsets| offsets.gen_object.gi_iframe as usize)
+            .or_else(|| coroutine_frame_offset(version))
+            .unwrap();
+        let frame_addr = if version.minor <= 10 {
+            match process.copy_struct(current + frame_offset) {
+                Ok(addr) => addr,
+                Err(error) if frames.is_empty() => return Err(error.into()),
+                Err(_) => break,
+            }
+        } else {
+            current + frame_offset
+        };
+        if frame_addr == 0 {
+            break;
+        }
+        let mut coro_frames = match get_stack_frames(
+            frame_addr as *mut <I::ThreadState as ThreadState>::FrameObject,
+            process,
+            copy_locals,
+            lineno,
+        ) {
+            Ok(coro_frames) => coro_frames,
+            Err(error) if frames.is_empty() => return Err(error),
+            Err(_) => break,
+        };
+        // A coroutine owns one current frame. When it is actively running,
+        // f_back may lead into the event loop's thread stack; those frames
+        // belong to the runner, not to this task.
+        coro_frames.truncate(1);
+        frames.extend(coro_frames);
+        // A running task's value stacks are live and not safe to read; its
+        // full stack is in the thread dump anyway.
+        if running {
+            break;
+        }
+        current =
+            awaited_object(process, version, frame_addr, inspection_offsets.python).unwrap_or(0);
+    }
+    // Match thread dumps: innermost frame first.
+    frames.reverse();
 
     Ok(AsyncioTask {
         task_id: format!("0x{task:x}"),

@@ -189,8 +189,13 @@ fn test_asyncio_tasks() {
 
     let nested = named.get("nested-worker").expect("missing nested-worker");
     assert_eq!(nested.state, "pending");
-    assert_eq!(nested.frames[0].name, "nested_worker");
-    assert_eq!(nested.frames[0].line, 9);
+    // Innermost first: Event.wait <- wait_for_event <- nested_worker.
+    assert_eq!(nested.frames.len(), 3);
+    assert!(nested.frames[0].name.ends_with("wait"));
+    assert_eq!(nested.frames[1].name, "wait_for_event");
+    assert_eq!(nested.frames[1].line, 5);
+    assert_eq!(nested.frames[2].name, "nested_worker");
+    assert_eq!(nested.frames[2].line, 9);
     let creation_traceback = nested
         .creation_traceback
         .as_ref()

@@ -83,11 +83,8 @@ impl PythonSpy {
                         .ok()
                 })
                 .filter(|offsets| {
-                    offsets.cookie
-                        == [
-                            b'x' as i8, b'd' as i8, b'e' as i8, b'b' as i8, b'u' as i8, b'g' as i8,
-                            b'p' as i8, b'y' as i8,
-                        ]
+                    // c_char is signed on x86 but unsigned on ARM Linux.
+                    offsets.cookie.map(|c| c as u8) == *b"xdebugpy"
                 })
         } else {
             None
