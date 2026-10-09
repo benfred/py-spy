@@ -498,8 +498,15 @@ pub struct _object {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub union _object__bindgen_ty_1 {
+    // line manually added, see https://github.com/benfred/py-spy/issues/753
+    #[cfg(target_pointer_width = "64")]
     pub ob_refcnt_full: i64,
+    // line manually added, see https://github.com/benfred/py-spy/issues/753
+    #[cfg(target_pointer_width = "64")]
     pub __bindgen_anon_1: _object__bindgen_ty_1__bindgen_ty_1,
+    // line manually added, see https://github.com/benfred/py-spy/issues/753
+    #[cfg(target_pointer_width = "32")]
+    pub ob_refcnt: i32,
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]

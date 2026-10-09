@@ -233,7 +233,14 @@ impl PythonSpy {
 
         let mut traces = Vec::new();
         let mut threads = threads_head;
+        let mut visited = 0;
         while !threads.is_null() {
+            visited += 1;
+            // This seems to happen occasionally when scanning BSS addresses for valid interpreters
+            if visited > 4096 {
+                return Err(format_err!("Max thread recursion depth reached"));
+            }
+
             // Get the stack trace of the python thread
             let thread = self
                 .process
@@ -343,11 +350,6 @@ impl PythonSpy {
             }
 
             traces.push(trace);
-
-            // This seems to happen occasionally when scanning BSS addresses for valid interpreters
-            if traces.len() > 4096 {
-                return Err(format_err!("Max thread recursion depth reached"));
-            }
 
             if self.config.gil_only {
                 // There's only one GIL thread and we've captured it, so we can

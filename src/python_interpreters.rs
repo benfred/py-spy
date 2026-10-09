@@ -748,7 +748,7 @@ impl FrameObject for v3_11_0::_PyInterpreterFrame {
         self.previous
     }
     fn is_entry(&self) -> bool {
-        self.is_entry
+        self.is_entry != 0
     }
 }
 

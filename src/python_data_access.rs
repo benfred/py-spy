@@ -31,18 +31,31 @@ pub fn copy_string<T: StringObject, P: ProcessMemory>(
 
     match (kind, obj.ascii()) {
         (4, _) => {
-            #[allow(clippy::cast_ptr_alignment)]
-            let chars = unsafe {
-                std::slice::from_raw_parts(bytes.as_ptr() as *const char, bytes.len() / 4)
-            };
-            Ok(chars.iter().collect())
+            // Decode UCS-4 via u32 + char::from_u32. Casting process memory to
+            // &[char] is UB: char requires a Unicode scalar value, and the
+            // buffer is only 1-byte aligned. See issue #870.
+            let mut out = String::with_capacity(bytes.len() / 4);
+            for chunk in bytes.chunks_exact(4) {
+                let code = u32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+                match char::from_u32(code) {
+                    Some(c) => out.push(c),
+                    None => {
+                        return Err(format_err!(
+                            "Invalid Unicode code point in UCS-4 string: {:#x}",
+                            code
+                        ));
+                    }
+                }
+            }
+            Ok(out)
         }
         (2, _) => {
-            #[allow(clippy::cast_ptr_alignment)]
-            let chars = unsafe {
-                std::slice::from_raw_parts(bytes.as_ptr() as *const u16, bytes.len() / 2)
-            };
-            Ok(String::from_utf16(chars)?)
+            // Avoid casting an unaligned Vec<u8> buffer to &[u16].
+            let mut units = Vec::with_capacity(bytes.len() / 2);
+            for chunk in bytes.chunks_exact(2) {
+                units.push(u16::from_ne_bytes([chunk[0], chunk[1]]));
+            }
+            Ok(String::from_utf16(&units)?)
         }
         (1, true) => Ok(String::from_utf8(bytes)?),
         (1, false) => Ok(bytes.iter().map(|&b| b as char).collect()),
@@ -476,7 +489,8 @@ where
         "None".to_owned()
     } else if value_type_name.starts_with("numpy.") {
         match value_type_name {
-            "numpy.bool" => format_obval::<bool, P>(addr, process)?,
+            // u8, not bool: any byte value is possible, and bool would be UB
+            "numpy.bool" => format_obval::<u8, P>(addr, process)?,
             "numpy.uint8" => format_obval::<u8, P>(addr, process)?,
             "numpy.uint16" => format_obval::<u16, P>(addr, process)?,
             "numpy.uint32" => format_obval::<u32, P>(addr, process)?,
@@ -527,7 +541,7 @@ pub mod tests {
     // and then test out that the above code handles appropriately
     use super::*;
     use crate::python_bindings::v3_7_0::{
-        PyASCIIObject, PyBytesObject, PyUnicodeObject, PyVarObject,
+        PyASCIIObject, PyBytesObject, PyCompactUnicodeObject, PyUnicodeObject, PyVarObject,
     };
     use remoteprocess::LocalProcess;
     use std::ptr::copy_nonoverlapping;
@@ -545,6 +559,13 @@ pub mod tests {
     #[repr(C)] // Rust can optimize the layout of this struct and break our pointer arithmetic
     pub struct AllocatedPyASCIIObject {
         pub base: PyASCIIObject,
+        pub storage: [u8; 4096],
+    }
+
+    #[allow(dead_code)]
+    #[repr(C)]
+    pub struct AllocatedPyCompactUnicodeObject {
+        pub base: PyCompactUnicodeObject,
         pub storage: [u8; 4096],
     }
 
@@ -592,6 +613,36 @@ pub mod tests {
         ret
     }
 
+    pub fn to_ucs4object(input: &str) -> AllocatedPyCompactUnicodeObject {
+        // Non-ASCII compact unicode stores payload after PyCompactUnicodeObject
+        // (see StringObject::address), not after PyASCIIObject.
+        let chars: Vec<u32> = input.chars().map(|c| c as u32).collect();
+        let mut ascii = PyASCIIObject {
+            length: chars.len() as isize,
+            ..Default::default()
+        };
+        ascii.state.set_compact(1);
+        ascii.state.set_kind(4);
+        ascii.state.set_ascii(0);
+        let base = PyCompactUnicodeObject {
+            _base: ascii,
+            ..Default::default()
+        };
+        let mut ret = AllocatedPyCompactUnicodeObject {
+            base,
+            storage: [0 as u8; 4096],
+        };
+        unsafe {
+            let ptr = &mut ret as *mut AllocatedPyCompactUnicodeObject as *mut u8;
+            let dst = ptr.offset(std::mem::size_of::<PyCompactUnicodeObject>() as isize);
+            for (i, code) in chars.iter().enumerate() {
+                let bytes = code.to_ne_bytes();
+                copy_nonoverlapping(bytes.as_ptr(), dst.add(i * 4), 4);
+            }
+        }
+        ret
+    }
+
     #[test]
     fn test_copy_string() {
         let original = "function_name";
@@ -600,6 +651,34 @@ pub mod tests {
         let unicode: &PyUnicodeObject = unsafe { std::mem::transmute(&obj.base) };
         let copied = copy_string(unicode, &LocalProcess).unwrap();
         assert_eq!(copied, original);
+    }
+
+    #[test]
+    fn test_copy_string_ucs4() {
+        // Includes a non-BMP character so kind==4 is the real production path.
+        let original = "cafe😀";
+        let obj = to_ucs4object(original);
+        let unicode: &PyUnicodeObject = unsafe { std::mem::transmute(&obj.base) };
+        let copied = copy_string(unicode, &LocalProcess).unwrap();
+        assert_eq!(copied, original);
+    }
+
+    #[test]
+    fn test_copy_string_ucs4_rejects_surrogate() {
+        let mut obj = to_ucs4object("A");
+        // Overwrite the single code unit with an unpaired surrogate (invalid char).
+        unsafe {
+            let ptr = &mut obj as *mut AllocatedPyCompactUnicodeObject as *mut u8;
+            let dst = ptr.offset(std::mem::size_of::<PyCompactUnicodeObject>() as isize);
+            let bad = 0xD800u32.to_ne_bytes();
+            copy_nonoverlapping(bad.as_ptr(), dst, 4);
+        }
+        let unicode: &PyUnicodeObject = unsafe { std::mem::transmute(&obj.base) };
+        let err = copy_string(unicode, &LocalProcess).unwrap_err();
+        assert!(
+            err.to_string().contains("Invalid Unicode code point"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]
