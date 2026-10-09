@@ -85,7 +85,7 @@ pub fn copy_long<P: ProcessMemory>(
     let (size, negative, digit, value_size) = match version {
         Version {
             major: 3,
-            minor: 12..=14,
+            minor: 12..=15,
             ..
         } => {
             // PyLongObject format changed in python 3.12
@@ -191,7 +191,11 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
         }
 
         if values_addr != 0 {
-            let ht_cached_keys = if version.major == 3 && version.minor >= 12 {
+            let ht_cached_keys = if version.major == 3 && version.minor >= 15 {
+                let ht: crate::python_bindings::v3_15_0::PyHeapTypeObject =
+                    process.copy_struct(tp_addr)?;
+                ht.ht_cached_keys as usize
+            } else if version.major == 3 && version.minor >= 12 {
                 let ht: crate::python_bindings::v3_12_0::PyHeapTypeObject =
                     process.copy_struct(tp_addr)?;
                 ht.ht_cached_keys as usize
@@ -207,7 +211,6 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
                 // PyDictValues is stored inline after the initial PyObject
                 let dict_values: v3_13_0::_dictvalues = Default::default();
                 let values_offset = offset_of(&dict_values, &dict_values.values);
-
                 values_addr = addr + std::mem::size_of::<v3_13_0::PyObject>() + values_offset;
             }
 
@@ -240,7 +243,7 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
         match version {
             Version {
                 major: 3,
-                minor: 11..=14,
+                minor: 11..=15,
                 ..
             } => {
                 let dict: crate::python_bindings::v3_11_0::PyDictObject =
