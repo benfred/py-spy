@@ -7,6 +7,7 @@ use crate::python_bindings::{
 };
 use crate::python_data_access::{copy_long, copy_string, DictIterator, PY_TPFLAGS_MANAGED_DICT};
 use crate::python_interpreters::{InterpreterState, Object, TypeObject};
+use crate::python_process_info::PythonProcessLayout;
 use crate::python_spy::PythonSpy;
 use remoteprocess::Process;
 
@@ -17,11 +18,12 @@ use remoteprocess::ProcessMemory;
 /// Returns a hashmap of threadid: threadname, by inspecting the '_active' variable in the
 /// 'threading' module.
 pub fn thread_names_from_interpreter<I: InterpreterState, P: ProcessMemory>(
-    interpreter_address: usize,
+    addresses: &PythonProcessLayout,
     process: &P,
     version: &Version,
 ) -> Result<HashMap<u64, String>, Error> {
-    let modules_ptr_ptr = I::modules_ptr_ptr(interpreter_address);
+    let modules_ptr_ptr = addresses.imports_modules_address as *const *const I::Object;
+
     let modules: *const I::Object = process
         .copy_pointer(modules_ptr_ptr)
         .context("Failed to copy modules PyObject")?;
@@ -86,7 +88,7 @@ pub fn thread_names_from_interpreter<I: InterpreterState, P: ProcessMemory>(
 fn _thread_name_lookup<I: InterpreterState>(
     spy: &PythonSpy,
 ) -> Result<HashMap<u64, String>, Error> {
-    thread_names_from_interpreter::<I, Process>(spy.interpreter_address, &spy.process, &spy.version)
+    thread_names_from_interpreter::<I, Process>(&spy.addresses, &spy.process, &spy.version)
 }
 
 // try getting the threadnames, but don't sweat it if we can't. Since this relies on dictionary
