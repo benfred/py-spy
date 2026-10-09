@@ -476,7 +476,7 @@ mod test {
         let addresses = PythonProcessLayout {
             interpreter_address: 0x000055a8293dbe20,
             threadstate_address: 0x000055a82745fe18,
-            imports_modules_address: 0,
+            imports_modules_address: 0x55a8293dc178,
         };
         let python_core = PythonCoreDump {
             core,
