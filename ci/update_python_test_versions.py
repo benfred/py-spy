@@ -9,9 +9,9 @@ _VERSIONS_URL = "https://raw.githubusercontent.com/actions/python-versions/main/
 
 _OSX_PYTHON_EXCLUSIONS = []
 
-
 def parse_version(v):
-    return tuple(int(part) for part in re.split(r"\W", v)[:3])
+    flags = "-" + v.split("-")[1] if "-" in v else ""
+    return tuple(int(part) for part in re.split(r"\W", v)[:3]) + (flags,)
 
 
 def get_github_python_versions():
@@ -37,7 +37,7 @@ def get_github_python_versions():
         if "-" in version_str and version_str != "3.15.0-rc.3":
             continue
 
-        major, minor, patch = parse_version(version_str)
+        major, minor, patch, flags = parse_version(version_str)
         if major == 3 and minor < 6:
             # we don't support python 3.0/3.1/3.2 , and don't bother testing 3.3/3.4/3.5
             continue
@@ -45,7 +45,7 @@ def get_github_python_versions():
         elif major == 2 and minor < 7:
             # we don't test python support before 2.7
             continue
-        minor_versions[(major, minor)].append(patch)
+        minor_versions[(major, minor)].append((patch, flags))
 
     versions = []
     for (major, minor), patches in minor_versions.items():
@@ -59,7 +59,7 @@ def get_github_python_versions():
         if major == 3 and minor > 15:
             continue
 
-        versions.extend(f"{major}.{minor}.{patch}" for patch in patches)
+        versions.extend(f"{major}.{minor}.{patch}{flags}" for patch, flags in patches)
 
     return versions, platforms
 
