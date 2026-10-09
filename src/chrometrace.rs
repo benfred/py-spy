@@ -13,6 +13,8 @@ use crate::stack_trace::StackTrace;
 struct Args {
     pub filename: String,
     pub line: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -22,7 +24,7 @@ struct Event {
     pub name: String,
     pub ph: String,
     pub pid: u64,
-    pub tid: u64,
+    pub tid: u32,
     pub ts: u64,
 }
 
@@ -31,6 +33,8 @@ pub struct Chrometrace {
     start_ts: Instant,
     prev_traces: HashMap<u64, StackTrace>,
     show_linenumbers: bool,
+    // Perfetto only supports 32bit thread IDs so we remap them in the actual emitted events.
+    thread_ids: HashMap<u64, u32>,
 }
 
 impl Chrometrace {
@@ -40,6 +44,7 @@ impl Chrometrace {
             start_ts: Instant::now(),
             prev_traces: HashMap::new(),
             show_linenumbers,
+            thread_ids: HashMap::new(),
         }
     }
 
@@ -51,7 +56,7 @@ impl Chrometrace {
 
     fn event(&self, trace: &StackTrace, frame: &Frame, phase: &str, ts: u64) -> Event {
         Event {
-            tid: trace.thread_id,
+            tid: self.get_thread_id(trace),
             pid: trace.pid as u64,
             name: frame.name.to_string(),
             cat: "py-spy".to_owned(),
@@ -64,12 +69,43 @@ impl Chrometrace {
                 } else {
                     None
                 },
+                name: None,
             },
+        }
+    }
+
+    fn get_thread_id<'a>(&self, trace: &'a StackTrace) -> u32 {
+        let thread_id = trace.thread_id;
+        self.thread_ids[&thread_id]
+    }
+
+    fn record_new_thread(&mut self, trace: &StackTrace) {
+        if !self.thread_ids.contains_key(&trace.thread_id) {
+            let thread_id = trace.thread_id;
+
+            // remap IDs to be in the uint32 space
+            let remapped_id = self.thread_ids.len() as u32;
+            self.thread_ids.insert(thread_id, remapped_id);
+
+            let name = thread_id.to_string() + ": " + trace.thread_name .as_deref().unwrap_or_default();
+
+            self.events.push(Event { 
+                args: Args { filename: "".to_owned(), line: None, name: Some(name)}, 
+                cat: "py-spy".to_owned(), 
+                name: "thread_name".to_owned(), 
+                ph: "M".to_owned(), 
+                pid: trace.pid as u64, 
+                tid: self.get_thread_id(trace),
+                ts: 0,
+            });
         }
     }
 
     pub fn increment(&mut self, trace: &StackTrace) -> std::io::Result<()> {
         let now = self.start_ts.elapsed().as_micros() as u64;
+
+        // Maybe add metadata for new threads.
+        self.record_new_thread(trace);
 
         // Load the previous frames for this thread.
         let prev_frames = self
