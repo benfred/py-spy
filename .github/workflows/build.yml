@@ -47,11 +47,11 @@ jobs:
           # Windows on arm64 has no CPython builds before 3.11
           python-version: ${{ matrix.os == 'windows-11-arm' && '3.11' || '3.9' }}
       - name: Install optional numpy dependency
-        run: pip install numpy>=2
+        run: pip install "numpy>=2"
       - name: Test
         id: test
         continue-on-error: true
-        run: cargo test --release
+        run: cargo test --release --features test_artifacts
       - name: Test (retry#1)
         id: test1
         run: cargo test --release
