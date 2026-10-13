@@ -42,6 +42,20 @@ use stack_trace::{Frame, StackTrace};
 
 use chrono::Local;
 
+fn broken_pipe(err: &Error) -> bool {
+    err.chain().any(|cause| {
+        if let Some(ioerror) = cause.downcast_ref::<std::io::Error>() {
+            ioerror.kind() == std::io::ErrorKind::BrokenPipe
+        } else if let Some(remoteprocess::Error::IOError(ioerror)) =
+            cause.downcast_ref::<remoteprocess::Error>()
+        {
+            ioerror.kind() == std::io::ErrorKind::BrokenPipe
+        } else {
+            false
+        }
+    })
+}
+
 #[cfg(unix)]
 fn permission_denied(err: &Error) -> bool {
     err.chain().any(|cause| {
@@ -493,6 +507,12 @@ fn main() {
         .unwrap();
 
     if let Err(err) = pyspy_main() {
+        // Dumping into a closed pipe (e.g. `py-spy dump | head`) used to panic
+        // via println!; after switching dump to writeln! it still surfaced as a
+        // hard error. Treat BrokenPipe as a normal early consumer close.
+        if broken_pipe(&err) {
+            std::process::exit(0);
+        }
         #[cfg(unix)]
         {
             if permission_denied(&err) {
@@ -521,6 +541,29 @@ fn main() {
 
         eprintln!("Error: {:?}", err);
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod broken_pipe_tests {
+    use super::*;
+    #[test]
+    fn detects_std_io_broken_pipe() {
+        let err = anyhow::Error::new(std::io::Error::from(std::io::ErrorKind::BrokenPipe));
+        assert!(broken_pipe(&err));
+    }
+
+    #[test]
+    fn detects_wrapped_broken_pipe() {
+        let err = anyhow::Error::from(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
+            .context("write failed");
+        assert!(broken_pipe(&err));
+    }
+
+    #[test]
+    fn ignores_other_errors() {
+        let err = anyhow::Error::new(std::io::Error::from(std::io::ErrorKind::PermissionDenied));
+        assert!(!broken_pipe(&err));
     }
 }
 
