@@ -402,9 +402,10 @@ jobs:
             uname -m
             apt-get update && apt-get install -y gcc python3 python3-pip python3-full
             python3 -m venv ./venv
-            ./venv/bin/pip install --force-reinstall --no-index --find-links . py-spy
-            ./venv/bin/python --version
-            ./venv/bin/python tests/integration_test.py
+            export PATH=./venv/bin:$PATH
+            pip install --force-reinstall --no-index --find-links . py-spy
+            python --version
+            python tests/integration_test.py
           "
   release:
     name: Release
