@@ -182,6 +182,7 @@ impl<T> ::std::fmt::Debug for __IncompleteArrayField<T> {
         fmt.write_str("__IncompleteArrayField")
     }
 }
+pub const Py_TAG_BITS: u32 = 3;
 pub type __uint32_t = ::std::os::raw::c_uint;
 pub type __dev_t = ::std::os::raw::c_ulong;
 pub type __uid_t = ::std::os::raw::c_uint;
@@ -4315,6 +4316,12 @@ impl Default for _tracemalloc_runtime_state {
 pub struct _fileutils_state {
     pub force_ascii: ::std::os::raw::c_int,
 }
+pub const _frameowner_FRAME_OWNED_BY_THREAD: _frameowner = 0;
+pub const _frameowner_FRAME_OWNED_BY_GENERATOR: _frameowner = 1;
+pub const _frameowner_FRAME_OWNED_BY_FRAME_OBJECT: _frameowner = 2;
+pub const _frameowner_FRAME_OWNED_BY_INTERPRETER: _frameowner = 3;
+pub const _frameowner_FRAME_OWNED_BY_CSTACK: _frameowner = 4;
+pub type _frameowner = ::std::os::raw::c_uint;
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct _PyInterpreterFrame {
