@@ -559,7 +559,7 @@ impl PythonProcessLayout {
         match version {
             Version {
                 major: 3,
-                minor: 13..=14,
+                minor: 13..=15,
                 ..
             } => {
                 if let Some(&pyruntime_addr) = python_info.get_symbol("_PyRuntime") {
@@ -972,7 +972,7 @@ where
     let threadstate_address = match version {
         Version {
             major: 3,
-            minor: 13..=14,
+            minor: 13..=15,
             ..
         } => {
             let gil_ptr = interpreter_address + std::mem::offset_of!(v3_13_0::_is, ceval.gil);
