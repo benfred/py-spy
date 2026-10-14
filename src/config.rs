@@ -6,6 +6,8 @@ use clap::{
 };
 use remoteprocess::Pid;
 
+use crate::type_checks::TypeChecksConfig;
+
 /// Options on how to collect samples from a python process
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
@@ -19,6 +21,10 @@ pub struct Config {
     /// used with the nonblocking option, as we have to pause the process to collect
     /// the native stack traces
     pub native: bool,
+
+    /// Which objects to check against their exact python type before reading them.
+    /// All checks are disabled by default
+    pub type_checks: TypeChecksConfig,
 
     // The following config options only apply when using py-spy as an application
     #[doc(hidden)]
@@ -125,6 +131,7 @@ impl Default for Config {
             sampling_rate: 100,
             duration: RecordDuration::Unlimited,
             native: false,
+            type_checks: TypeChecksConfig::disabled(),
             gil_only: false,
             include_idle: false,
             include_thread_ids: false,
@@ -345,6 +352,39 @@ impl Config {
                     .action(ArgAction::Set),
             );
 
+        let type_checks = [
+            Arg::new("type_check_code")
+                .long("type-check-code")
+                .help("Skip frames whose code object is not a PyCode_Type")
+                .action(ArgAction::SetTrue),
+            Arg::new("type_check_frame_strings")
+                .long("type-check-frame-strings")
+                .help("Skip frames whose filename or function name is not a str")
+                .action(ArgAction::SetTrue),
+            Arg::new("type_check_thread_names")
+                .long("type-check-thread-names")
+                .help("Only accept str objects when looking up thread names")
+                .action(ArgAction::SetTrue),
+            Arg::new("type_check_locals_strings")
+                .long("type-check-locals-strings")
+                .help("Only accept str objects for local variable names and string values")
+                .action(ArgAction::SetTrue),
+            Arg::new("type_check_dicts")
+                .long("type-check-dicts")
+                .help("Only accept dict objects when looking up thread names or formatting locals")
+                .action(ArgAction::SetTrue),
+            Arg::new("type_check_max_subclass_depth")
+                .long("type-check-max-subclass-depth")
+                .value_name("depth")
+                .help("How many base classes to follow when a type check doesn't match exactly")
+                .default_value("0")
+                .value_parser(value_parser!(usize))
+                .action(ArgAction::Set),
+        ];
+        let record = record.args(type_checks.clone());
+        let top = top.args(type_checks.clone());
+        let dump = dump.args(type_checks);
+
         let record = record.arg(native.clone());
         let top = top.arg(native.clone());
         let dump = dump.arg(native.clone());
@@ -466,6 +506,14 @@ impl Config {
         });
 
         config.full_filenames = matches.get_flag("full_filenames");
+        config.type_checks = TypeChecksConfig {
+            code: matches.get_flag("type_check_code"),
+            frame_strings: matches.get_flag("type_check_frame_strings"),
+            thread_names: matches.get_flag("type_check_thread_names"),
+            locals_strings: matches.get_flag("type_check_locals_strings"),
+            dicts: matches.get_flag("type_check_dicts"),
+            max_subclass_depth: *matches.get_one("type_check_max_subclass_depth").unwrap(),
+        };
         if cfg!(feature = "unwind") {
             config.native = matches.get_flag("native");
         }
@@ -604,6 +652,35 @@ mod tests {
         assert_eq!(
             get_config("py-spy dump").unwrap_err().kind(),
             clap::error::ErrorKind::MissingRequiredArgument
+        );
+    }
+
+    #[test]
+    fn test_parse_type_check_args() {
+        let config = get_config("py-spy dump --pid 1234").unwrap();
+        assert_eq!(config.type_checks, TypeChecksConfig::disabled());
+
+        let config = get_config(
+            "py-spy record --pid 1234 --type-check-code --type-check-frame-strings \
+             --type-check-thread-names --type-check-locals-strings --type-check-dicts \
+             --type-check-max-subclass-depth 3",
+        )
+        .unwrap();
+        assert_eq!(
+            config.type_checks,
+            TypeChecksConfig {
+                max_subclass_depth: 3,
+                ..TypeChecksConfig::enabled()
+            }
+        );
+
+        let config = get_config("py-spy top --pid 1234 --type-check-thread-names").unwrap();
+        assert_eq!(
+            config.type_checks,
+            TypeChecksConfig {
+                thread_names: true,
+                ..TypeChecksConfig::disabled()
+            }
         );
     }
 

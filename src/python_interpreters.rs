@@ -71,6 +71,7 @@ pub trait CodeObject: Copy {
     fn nlocals(&self) -> i32;
     fn argcount(&self) -> i32;
     fn varnames(&self) -> *mut Self::TupleObject;
+    fn ob_type(&self) -> usize;
 
     fn get_line_number(&self, lasti: i32, table: &[u8]) -> i32;
 
@@ -87,6 +88,7 @@ pub trait BytesObject: Copy {
 }
 
 pub trait StringObject: Copy {
+    fn ob_type(&self) -> usize;
     fn ascii(&self) -> bool;
     fn kind(&self) -> u32;
     fn size(&self) -> usize;
@@ -113,6 +115,7 @@ pub trait TypeObject: Copy {
     fn name(&self) -> *const ::std::os::raw::c_char;
     fn dictoffset(&self) -> isize;
     fn flags(&self) -> usize;
+    fn base(&self) -> usize;
 }
 
 /// This macro provides a common impl for PyThreadState/PyFrameObject/PyCodeObject traits
@@ -194,18 +197,24 @@ macro_rules! PythonCommonImpl {
             fn flags(&self) -> usize {
                 self.tp_flags as usize
             }
+            fn base(&self) -> usize {
+                self.tp_base as usize
+            }
         }
     };
 }
 
 // We can use this up until python3.10 - where code object lnotab attribute is deprecated
 macro_rules! PythonCodeObjectImpl {
-    ($py: ident, $bytesobject: ident, $stringobject: ident) => {
+    ($py: ident, $bytesobject: ident, $stringobject: ident, $($obtype: tt).+) => {
         impl CodeObject for $py::PyCodeObject {
             type BytesObject = $py::$bytesobject;
             type StringObject = $py::$stringobject;
             type TupleObject = $py::PyTupleObject;
 
+            fn ob_type(&self) -> usize {
+                self.$($obtype).+ as usize
+            }
             fn name(&self) -> *mut Self::StringObject {
                 self.co_name as *mut Self::StringObject
             }
@@ -297,6 +306,9 @@ macro_rules! CompactCodeObjectImpl {
             type StringObject = $py::$stringobject;
             type TupleObject = $py::PyTupleObject;
 
+            fn ob_type(&self) -> usize {
+                self.ob_base.ob_base.ob_type as usize
+            }
             fn name(&self) -> *mut Self::StringObject {
                 self.co_name as *mut Self::StringObject
             }
@@ -384,6 +396,9 @@ macro_rules! Python3Impl {
         }
 
         impl StringObject for $py::PyUnicodeObject {
+            fn ob_type(&self) -> usize {
+                self._base._base.ob_base.ob_type as usize
+            }
             fn ascii(&self) -> bool {
                 self._base._base.state.ascii() != 0
             }
@@ -513,6 +528,9 @@ impl TypeObject for v3_15_0::PyTypeObject {
     fn flags(&self) -> usize {
         self.tp_flags as usize
     }
+    fn base(&self) -> usize {
+        self.tp_base as usize
+    }
 }
 
 CompactCodeObjectImpl!(v3_15_0, PyBytesObject, PyUnicodeObject);
@@ -604,6 +622,9 @@ impl TypeObject for v3_14_0::PyTypeObject {
     fn flags(&self) -> usize {
         self.tp_flags as usize
     }
+    fn base(&self) -> usize {
+        self.tp_base as usize
+    }
 }
 
 CompactCodeObjectImpl!(v3_14_0, PyBytesObject, PyUnicodeObject);
@@ -691,6 +712,9 @@ impl TypeObject for v3_13_0::PyTypeObject {
     }
     fn flags(&self) -> usize {
         self.tp_flags as usize
+    }
+    fn base(&self) -> usize {
+        self.tp_base as usize
     }
 }
 
@@ -786,6 +810,9 @@ impl TypeObject for v3_12_0::PyTypeObject {
     fn flags(&self) -> usize {
         self.tp_flags as usize
     }
+    fn base(&self) -> usize {
+        self.tp_base as usize
+    }
 }
 
 CompactCodeObjectImpl!(v3_12_0, PyBytesObject, PyUnicodeObject);
@@ -874,6 +901,9 @@ impl TypeObject for v3_11_0::PyTypeObject {
     fn flags(&self) -> usize {
         self.tp_flags as usize
     }
+    fn base(&self) -> usize {
+        self.tp_base as usize
+    }
 }
 
 CompactCodeObjectImpl!(v3_11_0, PyBytesObject, PyUnicodeObject);
@@ -887,6 +917,9 @@ impl CodeObject for v3_10_0::PyCodeObject {
     type StringObject = v3_10_0::PyUnicodeObject;
     type TupleObject = v3_10_0::PyTupleObject;
 
+    fn ob_type(&self) -> usize {
+        self.ob_base.ob_type as usize
+    }
     fn name(&self) -> *mut Self::StringObject {
         self.co_name as *mut Self::StringObject
     }
@@ -943,37 +976,37 @@ impl CodeObject for v3_10_0::PyCodeObject {
 
 // Python 3.9
 PythonCommonImpl!(v3_9_5, PyUnicodeObject);
-PythonCodeObjectImpl!(v3_9_5, PyBytesObject, PyUnicodeObject);
+PythonCodeObjectImpl!(v3_9_5, PyBytesObject, PyUnicodeObject, ob_base.ob_type);
 Python3Impl!(v3_9_5);
 
 // Python 3.8
 PythonCommonImpl!(v3_8_0, PyUnicodeObject);
-PythonCodeObjectImpl!(v3_8_0, PyBytesObject, PyUnicodeObject);
+PythonCodeObjectImpl!(v3_8_0, PyBytesObject, PyUnicodeObject, ob_base.ob_type);
 Python3Impl!(v3_8_0);
 
 // Python 3.7
 PythonCommonImpl!(v3_7_0, PyUnicodeObject);
-PythonCodeObjectImpl!(v3_7_0, PyBytesObject, PyUnicodeObject);
+PythonCodeObjectImpl!(v3_7_0, PyBytesObject, PyUnicodeObject, ob_base.ob_type);
 Python3Impl!(v3_7_0);
 
 // Python 3.6
 PythonCommonImpl!(v3_6_6, PyUnicodeObject);
-PythonCodeObjectImpl!(v3_6_6, PyBytesObject, PyUnicodeObject);
+PythonCodeObjectImpl!(v3_6_6, PyBytesObject, PyUnicodeObject, ob_base.ob_type);
 Python3Impl!(v3_6_6);
 
 // python 3.5 and python 3.4
 PythonCommonImpl!(v3_5_5, PyUnicodeObject);
-PythonCodeObjectImpl!(v3_5_5, PyBytesObject, PyUnicodeObject);
+PythonCodeObjectImpl!(v3_5_5, PyBytesObject, PyUnicodeObject, ob_base.ob_type);
 Python3Impl!(v3_5_5);
 
 // python 3.3
 PythonCommonImpl!(v3_3_7, PyUnicodeObject);
-PythonCodeObjectImpl!(v3_3_7, PyBytesObject, PyUnicodeObject);
+PythonCodeObjectImpl!(v3_3_7, PyBytesObject, PyUnicodeObject, ob_base.ob_type);
 Python3Impl!(v3_3_7);
 
 // Python 2.7
 PythonCommonImpl!(v2_7_15, PyStringObject);
-PythonCodeObjectImpl!(v2_7_15, PyStringObject, PyStringObject);
+PythonCodeObjectImpl!(v2_7_15, PyStringObject, PyStringObject, ob_type);
 impl BytesObject for v2_7_15::PyStringObject {
     fn size(&self) -> usize {
         self.ob_size as usize
@@ -984,6 +1017,9 @@ impl BytesObject for v2_7_15::PyStringObject {
 }
 
 impl StringObject for v2_7_15::PyStringObject {
+    fn ob_type(&self) -> usize {
+        self.ob_type as usize
+    }
     fn ascii(&self) -> bool {
         true
     }

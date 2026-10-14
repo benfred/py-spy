@@ -22,6 +22,7 @@ use crate::python_bindings::{
 };
 use crate::python_interpreters::{InterpreterState, ThreadState};
 use crate::stack_trace::get_stack_traces;
+use crate::type_checks::TypeChecks;
 use crate::version::Version;
 
 /// Holds information about the python process: memory map layout, parsed binary info
@@ -43,6 +44,7 @@ pub struct PythonProcessLayout {
     pub interpreter_address: usize,
     pub threadstate_address: usize,
     pub imports_modules_address: usize,
+    pub type_checks: TypeChecks,
 }
 
 impl PythonProcessInfo {
@@ -493,6 +495,7 @@ macro_rules! dispatch_by_version {
         }
     }
 }
+pub(crate) use dispatch_by_version;
 
 impl PythonProcessLayout {
     /// Loads addresses and offsets from a target python process. These addresses include
@@ -513,9 +516,12 @@ impl PythonProcessLayout {
     where
         P: ProcessMemory,
     {
+        let type_checks = &TypeChecks::new(python_info, process, version, &config.type_checks)?;
+
         // get the address of the main PyInterpreterState object from loaded symbols if we can
         // (this tends to be faster than scanning through the bss section)
-        match PythonProcessLayout::from_symbols(python_info, process, version, config) {
+        match PythonProcessLayout::from_symbols(python_info, process, version, config, type_checks)
+        {
             Ok(addr) => {
                 // Check that the symbol address is valid before returning by attempting to load a stack trace
                 match dispatch_by_version!(
@@ -524,7 +530,9 @@ impl PythonProcessLayout {
                     addr.interpreter_address,
                     process,
                     addr.threadstate_address,
-                    None
+                    None,
+                    version,
+                    type_checks
                 ) {
                     Ok(_) => {
                         return Ok(addr);
@@ -543,7 +551,7 @@ impl PythonProcessLayout {
         }
 
         // If we can't load up the symbols, try scanning the python and libpython binaries
-        PythonProcessLayout::from_binaries(python_info, process, version, config)
+        PythonProcessLayout::from_binaries(python_info, process, version, config, type_checks)
     }
 
     // initializes a new PythonProcessLayout from loaded symbols
@@ -552,6 +560,7 @@ impl PythonProcessLayout {
         process: &P,
         version: &Version,
         config: &Config,
+        type_checks: &TypeChecks,
     ) -> Result<PythonProcessLayout, Error>
     where
         P: ProcessMemory,
@@ -568,6 +577,7 @@ impl PythonProcessLayout {
                         process,
                         version,
                         config,
+                        type_checks,
                     );
                 }
             }
@@ -586,6 +596,7 @@ impl PythonProcessLayout {
                         process,
                         version,
                         config,
+                        type_checks,
                     );
                 }
             }
@@ -600,6 +611,7 @@ impl PythonProcessLayout {
                         process,
                         version,
                         config,
+                        type_checks,
                     );
                 }
             }
@@ -616,13 +628,21 @@ impl PythonProcessLayout {
         process: &P,
         version: &Version,
         config: &Config,
+        type_checks: &TypeChecks,
     ) -> Result<PythonProcessLayout, Error>
     where
         P: ProcessMemory,
     {
         // try scanning the BSS section of the binary for things that might be the interpreterstate
         let err = if let Some(ref pb) = python_info.python_binary {
-            match PythonProcessLayout::from_binary(pb, python_info, process, version, config) {
+            match PythonProcessLayout::from_binary(
+                pb,
+                python_info,
+                process,
+                version,
+                config,
+                type_checks,
+            ) {
                 Ok(addr) => return Ok(addr),
                 err => Some(err),
             }
@@ -633,7 +653,14 @@ impl PythonProcessLayout {
         // Before giving up, try again if there is a libpython.so
         if let Some(ref lpb) = python_info.libpython_binary {
             info!("Failed to get interpreter from binary BSS, scanning libpython BSS");
-            match PythonProcessLayout::from_binary(lpb, python_info, process, version, config) {
+            match PythonProcessLayout::from_binary(
+                lpb,
+                python_info,
+                process,
+                version,
+                config,
+                type_checks,
+            ) {
                 Ok(addr) => Ok(addr),
                 lib_err => err.unwrap_or(lib_err),
             }
@@ -648,6 +675,7 @@ impl PythonProcessLayout {
         process: &P,
         version: &Version,
         config: &Config,
+        type_checks: &TypeChecks,
     ) -> Result<PythonProcessLayout, Error>
     where
         P: ProcessMemory,
@@ -661,6 +689,7 @@ impl PythonProcessLayout {
                 process,
                 version,
                 config,
+                type_checks,
             ) {
                 return Ok(addr);
             }
@@ -675,6 +704,7 @@ impl PythonProcessLayout {
             process,
             version,
             config,
+            type_checks,
         )
     }
 
@@ -685,6 +715,7 @@ impl PythonProcessLayout {
         process: &P,
         version: &Version,
         config: &Config,
+        type_checks: &TypeChecks,
     ) -> Result<PythonProcessLayout, Error>
     where
         P: ProcessMemory,
@@ -713,6 +744,7 @@ impl PythonProcessLayout {
                 get_imports_modules_address,
                 interpreter_address
             )?,
+            type_checks: *type_checks,
         })
     }
 
@@ -722,6 +754,7 @@ impl PythonProcessLayout {
         process: &P,
         version: &Version,
         config: &Config,
+        type_checks: &TypeChecks,
     ) -> Result<PythonProcessLayout, Error>
     where
         P: ProcessMemory,
@@ -750,6 +783,7 @@ impl PythonProcessLayout {
                     interpreter_address,
                     threadstate_address,
                     imports_modules_address,
+                    type_checks: *type_checks,
                 })
             }};
         }
@@ -790,6 +824,7 @@ fn scan_memory<P>(
     process: &P,
     version: &Version,
     config: &Config,
+    type_checks: &TypeChecks,
 ) -> Result<PythonProcessLayout, Error>
 where
     P: ProcessMemory,
@@ -807,7 +842,8 @@ where
                 size,
                 process,
                 version,
-                config
+                config,
+                type_checks
             )
         }
         _ => {
@@ -819,7 +855,8 @@ where
                 python_info,
                 process,
                 version,
-                config
+                config,
+                type_checks
             )
         }
     }
@@ -832,6 +869,7 @@ fn scan_memory_for_debug_offsets<I, P>(
     process: &P,
     version: &Version,
     config: &Config,
+    type_checks: &TypeChecks,
 ) -> Result<PythonProcessLayout, Error>
 where
     I: InterpreterState,
@@ -859,6 +897,7 @@ where
                 process,
                 version,
                 &config,
+                type_checks,
             ) {
                 Ok(address_book) => address_book,
                 Err(_) => continue,
@@ -870,6 +909,8 @@ where
                 process,
                 address_book.threadstate_address,
                 None,
+                version,
+                type_checks,
             )
             .is_ok()
             {
@@ -890,6 +931,7 @@ fn scan_memory_for_python_interpreter<I, P>(
     process: &P,
     version: &Version,
     config: &Config,
+    type_checks: &TypeChecks,
 ) -> Result<PythonProcessLayout, Error>
 where
     I: InterpreterState,
@@ -935,6 +977,7 @@ where
                 process,
                 version,
                 &config,
+                type_checks,
             ) {
                 Ok(layout) => layout,
                 Err(_) => continue,
@@ -946,6 +989,8 @@ where
                 process,
                 layout.threadstate_address,
                 None,
+                version,
+                type_checks,
             )
             .is_ok()
             {
