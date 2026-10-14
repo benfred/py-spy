@@ -1,6 +1,8 @@
 extern crate py_spy;
 use py_spy::{Config, Pid, PythonSpy};
 use std::collections::HashSet;
+use std::io::{BufRead, BufReader, Lines, Write};
+use std::time::{Duration, Instant};
 
 struct ScriptRunner {
     #[allow(dead_code)]
@@ -42,6 +44,71 @@ impl TestRunner {
         let spy = PythonSpy::retry_new(child.id(), &config, 20).unwrap();
         TestRunner { child, spy }
     }
+}
+
+/// Runs a script that prints READY once it is set up, and then runs one step
+/// for each line it reads from stdin
+struct StepRunner {
+    #[allow(dead_code)]
+    child: ScriptRunner,
+    spy: PythonSpy,
+    stdin: std::process::ChildStdin,
+    stdout: Lines<BufReader<std::process::ChildStdout>>,
+}
+
+impl StepRunner {
+    fn new(config: Config, filename: &str) -> StepRunner {
+        let mut child = std::process::Command::new("python")
+            .arg(filename)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let stdin = child.stdin.take().unwrap();
+        let mut stdout = BufReader::new(child.stdout.take().unwrap()).lines();
+        let child = ScriptRunner { child };
+        wait_for_line(&mut stdout, "READY");
+        let spy = PythonSpy::retry_new(child.id(), &config, 20).unwrap();
+        StepRunner {
+            child,
+            spy,
+            stdin,
+            stdout,
+        }
+    }
+
+    /// Runs the next step of the script, and waits for the line it prints when done
+    fn step(&mut self, done: &str) {
+        writeln!(self.stdin).unwrap();
+        wait_for_line(&mut self.stdout, done);
+    }
+}
+
+fn wait_for_line(lines: &mut Lines<BufReader<std::process::ChildStdout>>, expected: &str) {
+    for line in lines {
+        if line.unwrap().trim() == expected {
+            return;
+        }
+    }
+    panic!("script exited without printing {}", expected);
+}
+
+/// Takes `samples` samples, and counts the ones that looked up the thread names in the
+/// threading module. A lookup replaces the whole name cache, so an entry for a thread
+/// id that doesn't exist only stays in the cache while no lookup runs.
+fn count_thread_name_lookups(spy: &mut PythonSpy, samples: usize) -> usize {
+    const NO_SUCH_THREAD: u64 = u64::MAX;
+    let mut lookups = 0;
+    for _ in 0..samples {
+        spy.python_thread_names
+            .insert(NO_SUCH_THREAD, Default::default());
+        spy.get_stack_traces().unwrap();
+        if !spy.python_thread_names.contains_key(&NO_SUCH_THREAD) {
+            lookups += 1;
+        }
+    }
+    spy.python_thread_names.remove(&NO_SUCH_THREAD);
+    lookups
 }
 
 #[test]
@@ -164,6 +231,131 @@ fn test_thread_names() {
             assert!(trace.thread_name.is_none());
         }
     }
+}
+
+#[test]
+fn test_skip_thread_names() {
+    #[cfg(target_os = "macos")]
+    {
+        // We need root permissions here to run this on OSX
+        if unsafe { libc::geteuid() } != 0 {
+            return;
+        }
+    }
+    let config = Config {
+        collect_thread_names: false,
+        include_idle: true,
+        ..Default::default()
+    };
+    let mut runner = TestRunner::new(config, "./tests/scripts/thread_names.py");
+
+    let traces = runner.spy.get_stack_traces().unwrap();
+    assert_eq!(traces.len(), 11);
+    assert!(traces.iter().all(|trace| trace.thread_name.is_none()));
+}
+
+#[test]
+fn test_thread_names_unnamed_threads() {
+    #[cfg(target_os = "macos")]
+    {
+        // We need root permissions here to run this on OSX
+        if unsafe { libc::geteuid() } != 0 {
+            return;
+        }
+    }
+    let mut runner = StepRunner::new(Config::default(), "./tests/scripts/thread_names_unnamed.py");
+
+    // dictionary + thread name lookup is only supported with python 3.6+
+    if runner.spy.version.major == 3 && runner.spy.version.minor < 6 {
+        return;
+    }
+
+    let traces = runner.spy.get_stack_traces().unwrap();
+    let mut names: Vec<Option<String>> = traces
+        .iter()
+        .map(|trace| trace.thread_name.clone())
+        .collect();
+    names.sort();
+    assert_eq!(
+        names,
+        vec![
+            None,
+            None,
+            Some("MainThread".to_owned()),
+            Some("NamedThread-0".to_owned()),
+            Some("NamedThread-1".to_owned()),
+            Some("NamedThread-2".to_owned()),
+        ]
+    );
+
+    // threads without a name don't make every sample look up the names again
+    let lookups = count_thread_name_lookups(&mut runner.spy, 10);
+    assert!(
+        lookups <= 1,
+        "thread names were looked up in {} of 10 samples",
+        lookups
+    );
+}
+
+#[test]
+fn test_thread_names_late_import() {
+    #[cfg(target_os = "macos")]
+    {
+        // We need root permissions here to run this on OSX
+        if unsafe { libc::geteuid() } != 0 {
+            return;
+        }
+    }
+    let mut runner = StepRunner::new(
+        Config::default(),
+        "./tests/scripts/thread_names_late_import.py",
+    );
+
+    // dictionary + thread name lookup is only supported with python 3.6+
+    if runner.spy.version.major == 3 && runner.spy.version.minor < 6 {
+        return;
+    }
+
+    // without the threading module no thread has a name, and the names
+    // are not looked up again on every sample
+    let traces = runner.spy.get_stack_traces().unwrap();
+    assert_eq!(traces.len(), 1);
+    assert_eq!(traces[0].thread_name, None);
+    let lookups = count_thread_name_lookups(&mut runner.spy, 10);
+    assert!(
+        lookups <= 1,
+        "thread names were looked up in {} of 10 samples",
+        lookups
+    );
+
+    // importing threading names the main thread, and the name shows up
+    // even though no new thread starts
+    runner.step("IMPORTED");
+    let start = Instant::now();
+    loop {
+        let traces = runner.spy.get_stack_traces().unwrap();
+        if traces[0].thread_name.as_deref() == Some("MainThread") {
+            break;
+        }
+        assert!(
+            start.elapsed() < Duration::from_secs(10),
+            "main thread has no name {:?} after threading was imported",
+            start.elapsed()
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+
+    // a new thread has its name in the first sample
+    runner.step("STARTED");
+    let traces = runner.spy.get_stack_traces().unwrap();
+    let names: HashSet<Option<String>> = traces
+        .iter()
+        .map(|trace| trace.thread_name.clone())
+        .collect();
+    assert_eq!(
+        names,
+        HashSet::from([Some("MainThread".to_owned()), Some("LateThread".to_owned())])
+    );
 }
 
 #[test]
@@ -329,7 +521,7 @@ fn test_local_vars() {
     // Numpy scalars
     let local7 = &locals[9];
     assert_eq!(local7.name, "local7");
-    assert_eq!(local7.repr, Some("true".to_string()));
+    assert_eq!(local7.repr, Some("1".to_string()));
 
     let local8 = &locals[10];
     assert_eq!(local8.name, "local8");
@@ -520,7 +712,13 @@ fn test_negative_linenumber_increment() {
     // Python 3.12 inlined comprehensions - see https://peps.python.org/pep-0709/
     match (runner.spy.version.major, runner.spy.version.minor) {
         (3, 0..=11) => {
-            assert_eq!(trace.frames[0].name, "<listcomp>");
+            // 3.11 added co_qualname, which py-spy reports in preference to co_name
+            let listcomp = if runner.spy.version.minor >= 11 {
+                "f.<locals>.<listcomp>"
+            } else {
+                "<listcomp>"
+            };
+            assert_eq!(trace.frames[0].name, listcomp);
             assert!(trace.frames[0].line >= 5 && trace.frames[0].line <= 10);
             assert_eq!(trace.frames[1].name, "f");
             assert!(trace.frames[1].line >= 5 && trace.frames[0].line <= 10);

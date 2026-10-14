@@ -42,6 +42,8 @@ pub struct Config {
     #[doc(hidden)]
     pub include_thread_ids: bool,
     #[doc(hidden)]
+    pub collect_thread_names: bool,
+    #[doc(hidden)]
     pub subprocesses: bool,
     #[doc(hidden)]
     pub gil_only: bool,
@@ -126,6 +128,7 @@ impl Default for Config {
             gil_only: false,
             include_idle: false,
             include_thread_ids: false,
+            collect_thread_names: true,
             hide_progress: false,
             capture_output: true,
             dump_json: false,
@@ -447,6 +450,11 @@ impl Config {
 
         config.subprocesses = matches.get_flag("subprocesses");
         config.command = subcommand.to_owned();
+        config.collect_thread_names = match subcommand {
+            "record" => config.include_thread_ids || config.format == Some(FileFormat::speedscope),
+            "top" => false,
+            _ => true,
+        };
 
         // options that can be shared between subcommands
         config.pid = matches.get_one::<String>("pid").map(|p| {
@@ -558,11 +566,26 @@ mod tests {
         assert_eq!(config.include_idle, false);
         assert_eq!(config.gil_only, false);
         assert_eq!(config.include_thread_ids, false);
+        assert_eq!(config.collect_thread_names, false);
 
         let config_flags = get_config("py-spy r -p 1234 -o foo --idle --gil --threads").unwrap();
         assert_eq!(config_flags.include_idle, true);
         assert_eq!(config_flags.gil_only, true);
         assert_eq!(config_flags.include_thread_ids, true);
+        assert_eq!(config_flags.collect_thread_names, true);
+
+        let speedscope = get_config("py-spy record -p 1234 -f speedscope").unwrap();
+        assert_eq!(speedscope.collect_thread_names, true);
+
+        let raw = get_config("py-spy record -p 1234 -f raw").unwrap();
+        assert_eq!(raw.collect_thread_names, false);
+
+        let chrometrace = get_config("py-spy record -p 1234 -f chrometrace").unwrap();
+        assert_eq!(chrometrace.collect_thread_names, false);
+
+        let chrometrace_threads =
+            get_config("py-spy record -p 1234 -f chrometrace --threads").unwrap();
+        assert_eq!(chrometrace_threads.collect_thread_names, true);
     }
 
     #[test]
@@ -571,6 +594,7 @@ mod tests {
         let config = get_config("py-spy dump --pid 1234").unwrap();
         assert_eq!(config.pid, Some(1234));
         assert_eq!(config.command, String::from("dump"));
+        assert_eq!(config.collect_thread_names, true);
 
         // short version
         let short_config = get_config("py-spy d -p 1234").unwrap();
@@ -589,6 +613,7 @@ mod tests {
         let config = get_config("py-spy top --pid 1234").unwrap();
         assert_eq!(config.pid, Some(1234));
         assert_eq!(config.command, String::from("top"));
+        assert_eq!(config.collect_thread_names, false);
 
         // short version
         let short_config = get_config("py-spy t -p 1234").unwrap();

@@ -2079,7 +2079,8 @@ pub struct _PyInterpreterFrame {
     pub previous: *mut _PyInterpreterFrame,
     pub prev_instr: *mut _Py_CODEUNIT,
     pub stacktop: ::std::os::raw::c_int,
-    pub is_entry: bool,
+    // not bool: read from the target process, where any byte value is possible
+    pub is_entry: ::std::os::raw::c_char,
     pub owner: ::std::os::raw::c_char,
     pub localsplus: [*mut PyObject; 1usize],
 }
