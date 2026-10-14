@@ -54,6 +54,9 @@ pub trait FrameObject: Copy {
     fn lasti(&self) -> i32;
     fn back(&self) -> *mut Self;
     fn is_entry(&self) -> bool;
+    fn is_python_frame(&self) -> bool {
+        true
+    }
 }
 
 pub trait CodeObject: Copy {
@@ -354,7 +357,7 @@ macro_rules! CompactCodeObjectImpl {
                         }
                     };
                     line_number += line_delta as i32;
-                    if bytecode_address >= lasti {
+                    if bytecode_address > lasti {
                         break;
                     }
                 }
@@ -472,10 +475,11 @@ impl ThreadState for v3_15_0::PyThreadState {
 impl FrameObject for v3_15_0::_PyInterpreterFrame {
     type CodeObject = v3_15_0::PyCodeObject;
     fn code(&self) -> *mut Self::CodeObject {
-        unsafe { self.f_executable.bits as *mut v3_15_0::PyCodeObject }
+        let bits = unsafe { self.f_executable.bits };
+        (bits & !(v3_15_0::Py_TAG_BITS as usize)) as *mut v3_15_0::PyCodeObject
     }
     fn lasti(&self) -> i32 {
-        let co_code = unsafe { self.f_executable.bits as *const u8 };
+        let co_code = self.code() as *const u8;
         unsafe { (self.instr_ptr as *const u8).offset_from(co_code) as i32 }
     }
     fn back(&self) -> *mut Self {
@@ -483,8 +487,12 @@ impl FrameObject for v3_15_0::_PyInterpreterFrame {
     }
     fn is_entry(&self) -> bool {
         // https://github.com/python/cpython/pull/108036#issuecomment-1684458828
-        const FRAME_OWNED_BY_CSTACK: ::std::os::raw::c_char = 3;
-        self.owner == FRAME_OWNED_BY_CSTACK
+        self.owner as v3_15_0::_frameowner == v3_15_0::_frameowner_FRAME_OWNED_BY_INTERPRETER
+    }
+    fn is_python_frame(&self) -> bool {
+        // https://github.com/python/cpython/blob/v3.15.0rc3/Modules/_remote_debugging/frames.c#L167-L188
+        !self.code().is_null()
+            && self.owner as v3_15_0::_frameowner != v3_15_0::_frameowner_FRAME_OWNED_BY_INTERPRETER
     }
 }
 
@@ -556,10 +564,11 @@ impl ThreadState for v3_14_0::PyThreadState {
 impl FrameObject for v3_14_0::_PyInterpreterFrame {
     type CodeObject = v3_14_0::PyCodeObject;
     fn code(&self) -> *mut Self::CodeObject {
-        unsafe { self.f_executable.bits as *mut v3_14_0::PyCodeObject }
+        let bits = unsafe { self.f_executable.bits };
+        (bits & !(v3_14_0::Py_TAG_BITS as usize)) as *mut v3_14_0::PyCodeObject
     }
     fn lasti(&self) -> i32 {
-        let co_code = unsafe { self.f_executable.bits as *const u8 };
+        let co_code = self.code() as *const u8;
         unsafe { (self.instr_ptr as *const u8).offset_from(co_code) as i32 }
     }
     fn back(&self) -> *mut Self {
@@ -567,8 +576,14 @@ impl FrameObject for v3_14_0::_PyInterpreterFrame {
     }
     fn is_entry(&self) -> bool {
         // https://github.com/python/cpython/pull/108036#issuecomment-1684458828
-        const FRAME_OWNED_BY_CSTACK: ::std::os::raw::c_char = 3;
-        self.owner == FRAME_OWNED_BY_CSTACK
+        self.owner as v3_14_0::_frameowner == v3_14_0::_frameowner_FRAME_OWNED_BY_INTERPRETER
+    }
+    fn is_python_frame(&self) -> bool {
+        // https://github.com/python/cpython/blob/v3.14.0/Modules/_remote_debugging_module.c#L2134-L2148
+        let owner = self.owner as v3_14_0::_frameowner;
+        !self.code().is_null()
+            && owner != v3_14_0::_frameowner_FRAME_OWNED_BY_CSTACK
+            && owner != v3_14_0::_frameowner_FRAME_OWNED_BY_INTERPRETER
     }
 }
 
@@ -651,8 +666,12 @@ impl FrameObject for v3_13_0::_PyInterpreterFrame {
     }
     fn is_entry(&self) -> bool {
         // https://github.com/python/cpython/pull/108036#issuecomment-1684458828
-        const FRAME_OWNED_BY_CSTACK: ::std::os::raw::c_char = 3;
-        self.owner == FRAME_OWNED_BY_CSTACK
+        self.owner as v3_13_0::_frameowner == v3_13_0::_frameowner_FRAME_OWNED_BY_CSTACK
+    }
+    fn is_python_frame(&self) -> bool {
+        // https://github.com/python/cpython/blob/v3.13.0/Modules/_testexternalinspection.c#L502-L525
+        self.owner as v3_13_0::_frameowner != v3_13_0::_frameowner_FRAME_OWNED_BY_CSTACK
+            && !self.f_executable.is_null()
     }
 }
 
@@ -742,8 +761,11 @@ impl FrameObject for v3_12_0::_PyInterpreterFrame {
     }
     fn is_entry(&self) -> bool {
         // https://github.com/python/cpython/pull/108036#issuecomment-1684458828
-        const FRAME_OWNED_BY_CSTACK: ::std::os::raw::c_char = 3;
-        self.owner == FRAME_OWNED_BY_CSTACK
+        self.owner as v3_12_0::_frameowner == v3_12_0::_frameowner_FRAME_OWNED_BY_CSTACK
+    }
+    fn is_python_frame(&self) -> bool {
+        // https://github.com/python/cpython/blob/v3.12.0/Python/ceval.c#L688-L692
+        self.owner as v3_12_0::_frameowner != v3_12_0::_frameowner_FRAME_OWNED_BY_CSTACK
     }
 }
 
@@ -1013,6 +1035,28 @@ mod tests {
             22, 208, 4, 22,
         ];
         assert_eq!(code.get_line_number(214, &table), 5);
+    }
+
+    #[test]
+    fn test_compact_line_number_boundaries() {
+        let table = [
+            240, 3, 1, 1, 1, 242, 2, 3, 1, 17, 240, 12, 0, 7, 11, 217, 4, 11, 136, 66, 134, 75,
+        ];
+        let code = v3_14_0::PyCodeObject {
+            co_firstlineno: 1,
+            ..Default::default()
+        };
+        let code_offset = std::mem::offset_of!(v3_14_0::PyCodeObject, co_code_adaptive) as i32;
+        for (start, end, line) in [(0, 2, 0), (2, 8, 1), (8, 10, 7), (10, 30, 8)] {
+            for offset in (start..end).step_by(2) {
+                assert_eq!(
+                    code.get_line_number(code_offset + offset, &table),
+                    line,
+                    "incorrect line for bytecode offset {}",
+                    offset
+                );
+            }
+        }
     }
 
     #[test]

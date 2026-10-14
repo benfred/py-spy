@@ -33,8 +33,7 @@ def get_github_python_versions():
     minor_versions = defaultdict(list)
 
     for version_str in raw_versions:
-        # allow python3.15rc3 until the final release is available here
-        if "-" in version_str and version_str != "3.15.0-rc.3":
+        if "-" in version_str:
             continue
 
         major, minor, patch, flags = parse_version(version_str)
