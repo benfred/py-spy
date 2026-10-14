@@ -151,6 +151,12 @@ where
             .copy_pointer(frame_ptr)
             .context("Failed to copy PyFrameObject")?;
 
+        if !frame.is_python_frame() {
+            frame_ptr = frame.back();
+            set_last_frame_as_shim_entry(&mut frames);
+            continue;
+        }
+
         let code = process
             .copy_pointer(frame.code())
             .context("Failed to copy PyCodeObject")?;
@@ -166,13 +172,7 @@ where
         }
         .context("Failed to copy function name");
 
-        // just skip processing the current frame if we can't load the filename or function name.
-        // this can happen in python 3.13+ since the f_executable isn't guaranteed to be
-        // a PyCodeObject. We could check the type (and mimic the logic of PyCode_Check here)
-        // but that would require extra overhead of reading the ob_type per frame - and we
-        // would also have to figure out what the address of PyCode_Type is (which will be
-        // easier if something like https://github.com/python/cpython/issues/100987#issuecomment-1487227139
-        // is merged )
+        // Guards against torn reads while sampling without pausing the process.
         if filename.is_err() || name.is_err() {
             frame_ptr = frame.back();
             set_last_frame_as_shim_entry(&mut frames);
@@ -181,7 +181,7 @@ where
         let filename = filename?;
         let name = name?;
 
-        // skip <shim> entries in python 3.12+
+        // skip <shim> entries in python 3.13+
         // Unset file/function name in py3.13 means this is a shim.
         if filename.is_empty() || filename == "<shim>" {
             frame_ptr = frame.back();

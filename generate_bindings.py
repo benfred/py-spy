@@ -146,6 +146,8 @@ def extract_bindings(cpython_path, version, configure=False):
             --allowlist-type PyTypeObject \
             --allowlist-type PyHeapTypeObject \
             --allowlist-type PyInterpreterFrame \
+            --allowlist-var Py_TAG_BITS \
+            --allowlist-type _frameowner \
              -- -I . -I ./Include -I ./Include/internal
     """
     )

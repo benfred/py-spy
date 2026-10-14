@@ -14676,6 +14676,11 @@ impl Default for _frame {
         }
     }
 }
+pub const _frameowner_FRAME_OWNED_BY_THREAD: _frameowner = 0;
+pub const _frameowner_FRAME_OWNED_BY_GENERATOR: _frameowner = 1;
+pub const _frameowner_FRAME_OWNED_BY_FRAME_OBJECT: _frameowner = 2;
+pub const _frameowner_FRAME_OWNED_BY_CSTACK: _frameowner = 3;
+pub type _frameowner = ::std::os::raw::c_uint;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct _PyInterpreterFrame {
