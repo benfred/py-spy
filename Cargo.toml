@@ -30,7 +30,7 @@ ctrlc = { version = "3", optional = true }
 indicatif = { version = "0.18", optional = true }
 env_logger = { version = "0.11", optional = true }
 inferno = { version = "0.12.6", optional = true }
-goblin = "0.10.5"
+goblin = "0.10.7"
 lazy_static = "1.4.0"
 libc = "0.2"
 log = "0.4"
@@ -39,7 +39,7 @@ num-traits = "0.2"
 regex = ">=1.6.0"
 tempfile = "3.27.0"
 page_size = "0.6.0"
-proc-maps = "0.4.0"
+proc-maps = "0.5.0"
 memmap2 = "0.9.4"
 cpp_demangle = "0.5"
 serde = { version = "1.0", features = ["rc"] }
@@ -47,7 +47,7 @@ serde_derive = "1.0"
 serde_json = "1.0"
 rand = "0.9"
 rand_distr = "0.5"
-remoteprocess = "0.5.2"
+remoteprocess = "0.5.4"
 chrono = "0.4.44"
 
 [dev-dependencies]
