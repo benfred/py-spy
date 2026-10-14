@@ -399,9 +399,11 @@ jobs:
       - name: Run 32-bit ARM container
         run: |
           docker run --rm --platform linux/arm/v7 --cap-add SYS_PTRACE -v ${{ github.workspace }}:/work -w /work arm32v7/debian:bookworm bash -c "
+            echo 'uname -m:'
             uname -m
+            apt-get update && apt-get install -y gcc python3 python3-pip python3-full lipcap2-bin
+            echo 'capsh --print'
             capsh --print
-            apt-get update && apt-get install -y gcc python3 python3-pip python3-full
             python3 -m venv ./venv
             source ./venv/bin/activate
             pip install --force-reinstall --no-index --find-links . py-spy
