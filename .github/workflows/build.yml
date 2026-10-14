@@ -398,8 +398,9 @@ jobs:
           merge-multiple: true
       - name: Run 32-bit ARM container
         run: |
-          docker run --rm --platform linux/arm/v7 -v ${{ github.workspace }}:/work -w /work arm32v7/debian:bookworm bash -c "
+          docker run --rm --platform linux/arm/v7 --cap-add SYS_PTRACE -v ${{ github.workspace }}:/work -w /work arm32v7/debian:bookworm bash -c "
             uname -m
+            capsh --print
             apt-get update && apt-get install -y gcc python3 python3-pip python3-full
             python3 -m venv ./venv
             source ./venv/bin/activate
