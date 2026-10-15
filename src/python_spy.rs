@@ -20,7 +20,9 @@ use crate::python_data_access::format_variable;
 use crate::python_interpreters::{InterpreterState, ThreadState};
 use crate::python_process_info::{get_python_version, PythonProcessInfo, PythonProcessLayout};
 use crate::python_threading::thread_name_lookup;
-use crate::stack_trace::{get_gil_threadid, get_stack_trace, StackTrace};
+use crate::stack_trace::{
+    get_gil_threadid, resolve_frames, unwind_frames, RawThread, StackTrace, UnwindBuffers,
+};
 use crate::version::Version;
 
 /// Lets you retrieve stack traces of a running python program
@@ -121,65 +123,72 @@ impl PythonSpy {
 
     /// Gets a StackTrace for each thread in the current process
     pub fn get_stack_traces(&mut self) -> Result<Vec<StackTrace>, Error> {
+        self.get_stack_traces_with(&mut UnwindBuffers::default())
+    }
+
+    pub(crate) fn get_stack_traces_with(
+        &mut self,
+        bufs: &mut UnwindBuffers,
+    ) -> Result<Vec<StackTrace>, Error> {
         match self.version {
             // ABI for 2.3/2.4/2.5/2.6/2.7 is compatible for our purpose
             Version {
                 major: 2,
                 minor: 3..=7,
                 ..
-            } => self._get_stack_traces::<v2_7_15::_is>(),
+            } => self._get_stack_traces::<v2_7_15::_is>(bufs),
             Version {
                 major: 3, minor: 3, ..
-            } => self._get_stack_traces::<v3_3_7::_is>(),
+            } => self._get_stack_traces::<v3_3_7::_is>(bufs),
             // ABI for 3.4 and 3.5 is the same for our purposes
             Version {
                 major: 3, minor: 4, ..
-            } => self._get_stack_traces::<v3_5_5::_is>(),
+            } => self._get_stack_traces::<v3_5_5::_is>(bufs),
             Version {
                 major: 3, minor: 5, ..
-            } => self._get_stack_traces::<v3_5_5::_is>(),
+            } => self._get_stack_traces::<v3_5_5::_is>(bufs),
             Version {
                 major: 3, minor: 6, ..
-            } => self._get_stack_traces::<v3_6_6::_is>(),
+            } => self._get_stack_traces::<v3_6_6::_is>(bufs),
             Version {
                 major: 3, minor: 7, ..
-            } => self._get_stack_traces::<v3_7_0::_is>(),
+            } => self._get_stack_traces::<v3_7_0::_is>(bufs),
             Version {
                 major: 3, minor: 8, ..
-            } => self._get_stack_traces::<v3_8_0::_is>(),
+            } => self._get_stack_traces::<v3_8_0::_is>(bufs),
             Version {
                 major: 3, minor: 9, ..
-            } => self._get_stack_traces::<v3_9_5::_is>(),
+            } => self._get_stack_traces::<v3_9_5::_is>(bufs),
             Version {
                 major: 3,
                 minor: 10,
                 ..
-            } => self._get_stack_traces::<v3_10_0::_is>(),
+            } => self._get_stack_traces::<v3_10_0::_is>(bufs),
             Version {
                 major: 3,
                 minor: 11,
                 ..
-            } => self._get_stack_traces::<v3_11_0::_is>(),
+            } => self._get_stack_traces::<v3_11_0::_is>(bufs),
             Version {
                 major: 3,
                 minor: 12,
                 ..
-            } => self._get_stack_traces::<v3_12_0::_is>(),
+            } => self._get_stack_traces::<v3_12_0::_is>(bufs),
             Version {
                 major: 3,
                 minor: 13,
                 ..
-            } => self._get_stack_traces::<v3_13_0::_is>(),
+            } => self._get_stack_traces::<v3_13_0::_is>(bufs),
             Version {
                 major: 3,
                 minor: 14,
                 ..
-            } => self._get_stack_traces::<v3_14_0::_is>(),
+            } => self._get_stack_traces::<v3_14_0::_is>(bufs),
             Version {
                 major: 3,
                 minor: 15,
                 ..
-            } => self._get_stack_traces::<v3_15_0::_is>(),
+            } => self._get_stack_traces::<v3_15_0::_is>(bufs),
             _ => Err(format_err!(
                 "Unsupported version of Python: {}",
                 self.version
@@ -188,7 +197,10 @@ impl PythonSpy {
     }
 
     // implementation of get_stack_traces, where we have a type for the InterpreterState
-    fn _get_stack_traces<I: InterpreterState>(&mut self) -> Result<Vec<StackTrace>, Error> {
+    fn _get_stack_traces<I: InterpreterState>(
+        &mut self,
+        bufs: &mut UnwindBuffers,
+    ) -> Result<Vec<StackTrace>, Error> {
         // Query the OS to get if each thread in the process is running or not
         let mut thread_activity = HashMap::new();
         if self.config.gil_only {
@@ -230,7 +242,8 @@ impl PythonSpy {
 
         let mut did_thread_name_lookup = false;
 
-        let mut traces = Vec::new();
+        bufs.frames.clear();
+        bufs.threads.clear();
         let mut threads = threads_head;
         let mut visited = 0;
         while !threads.is_null() {
@@ -240,7 +253,6 @@ impl PythonSpy {
                 return Err(format_err!("Max thread recursion depth reached"));
             }
 
-            // Get the stack trace of the python thread
             let thread = self
                 .process
                 .copy_pointer(threads)
@@ -254,18 +266,45 @@ impl PythonSpy {
                 continue;
             }
 
-            let mut trace = get_stack_trace(
-                &thread,
+            let start = bufs.frames.len();
+            unwind_frames(&thread, &self.process, &mut bufs.frames)
+                .context("Failed to unwind frames")?;
+            bufs.threads.push(RawThread {
+                thread_id: python_thread_id,
+                os_thread_id: thread.native_thread_id(),
+                owns_gil,
+                frames: start..bufs.frames.len(),
+            });
+
+            if self.config.gil_only {
+                // There's only one GIL thread and we've captured it, so we can
+                // stop now
+                break;
+            }
+        }
+
+        let mut traces = Vec::with_capacity(bufs.threads.len());
+        for raw in &bufs.threads {
+            let python_thread_id = raw.thread_id;
+            let frames = resolve_frames::<<I::ThreadState as ThreadState>::FrameObject, Process>(
+                &bufs.frames[raw.frames.clone()],
                 &self.process,
                 self.config.dump_locals > 0,
                 self.config.lineno,
+                &self.version,
+                &self.addresses.type_checks,
             )
-            .with_context(|| {
-                format!(
-                    "Failed to call get_stack_trace for thread {}",
-                    python_thread_id
-                )
-            })?;
+            .context("Failed to resolve frames")?;
+            let mut trace = StackTrace {
+                pid: self.process.pid,
+                thread_id: python_thread_id,
+                thread_name: None,
+                os_thread_id: raw.os_thread_id,
+                active: true,
+                owns_gil: raw.owns_gil,
+                frames,
+                process_info: None,
+            };
 
             // Try getting the native thread id
 
@@ -296,8 +335,6 @@ impl PythonSpy {
             } else {
                 None
             };
-            trace.owns_gil = owns_gil;
-            trace.pid = self.process.pid;
 
             // Figure out if the thread is sleeping from the OS if possible
             trace.active = true;
@@ -342,6 +379,7 @@ impl PythonSpy {
                             &self.version,
                             local.addr,
                             max_length,
+                            &self.addresses.type_checks,
                         );
                         local.repr = Some(repr.unwrap_or_else(|_| "?".to_owned()));
                     }
@@ -349,12 +387,6 @@ impl PythonSpy {
             }
 
             traces.push(trace);
-
-            if self.config.gil_only {
-                // There's only one GIL thread and we've captured it, so we can
-                // stop now
-                break;
-            }
         }
         Ok(traces)
     }
