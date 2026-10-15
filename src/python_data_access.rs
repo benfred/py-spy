@@ -120,22 +120,35 @@ pub fn copy_long<P: ProcessMemory>(
         }
     };
 
+    #[cfg(target_pointer_width = "64")]
+    let bits_in_digit = 30;
+
+    #[cfg(target_pointer_width = "32")]
+    let bits_in_digit = match version {
+        // PYLONG_BITS_IN_DIGIT changed from 15 to 30 in python3.11
+        // https://github.com/python/cpython/pull/30497
+        Version {
+            major: 3,
+            minor: 11..,
+            ..
+        } => 30,
+        _ => 15,
+    };
+
     match size {
         0 => Ok((0, false)),
         1 => Ok((negative * (digit as i64), false)),
 
-        #[cfg(target_pointer_width = "64")]
-        2 => {
-            let digits: [u32; 2] = process.copy_struct(addr + value_size - 8)?;
+        2 if bits_in_digit == 30 => {
+            let digits: [u32; 2] = process.copy_struct(addr + value_size - size_of::<usize>())?;
             let mut ret: i64 = 0;
             for i in 0..size {
                 ret += (digits[i as usize] as i64) << (30 * i);
             }
             Ok((negative * ret, false))
         }
-        #[cfg(target_pointer_width = "32")]
-        2..=4 => {
-            let digits: [u16; 4] = process.copy_struct(addr + value_size - 4)?;
+        2..=4 if bits_in_digit == 15 => {
+            let digits: [u16; 4] = process.copy_struct(addr + value_size - size_of::<usize>())?;
             let mut ret: i64 = 0;
             for i in 0..size {
                 ret += (digits[i as usize] as i64) << (15 * i);
