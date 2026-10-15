@@ -1,7 +1,6 @@
 py-spy: Sampling profiler for Python programs
 =====
-[![Build Status](https://github.com/benfred/py-spy/workflows/Build/badge.svg?branch=master)](https://github.com/benfred/py-spy/actions?query=branch%3Amaster)
-[![FreeBSD Build Status](https://api.cirrus-ci.com/github/benfred/py-spy.svg)](https://cirrus-ci.com/github/benfred/py-spy)
+[![Build Status](https://github.com/benfred/py-spy/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/benfred/py-spy/actions/workflows/build.yml)
 
 py-spy is a sampling profiler for Python programs. It lets you visualize what your Python
 program is spending time on without restarting the program or modifying the code in any way.
@@ -9,7 +8,7 @@ py-spy is extremely low overhead: it is written in Rust for speed and doesn't ru
 in the same process as the profiled Python program. This means py-spy is safe to use against production Python code.
 
 py-spy works on Linux, OSX, Windows and FreeBSD, and supports profiling all recent versions of the CPython
-interpreter (versions 2.3-2.7 and 3.3-3.14).
+interpreter (versions 2.3-2.7 and 3.3-3.15).
 
 ## Installation
 
