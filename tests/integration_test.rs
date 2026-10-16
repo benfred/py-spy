@@ -1,8 +1,16 @@
 extern crate py_spy;
+use py_spy::config::LockingStrategy;
 use py_spy::{Config, Pid, PythonSpy};
 use std::collections::HashSet;
 use std::io::{BufRead, BufReader, Lines, Write};
 use std::time::{Duration, Instant};
+
+fn default_config() -> Config {
+    Config {
+        include_idle: true,
+        ..Default::default()
+    }
+}
 
 struct ScriptRunner {
     #[allow(dead_code)]
@@ -120,7 +128,7 @@ fn test_busy_loop() {
             return;
         }
     }
-    let mut runner = TestRunner::new(Config::default(), "./tests/scripts/busyloop.py");
+    let mut runner = TestRunner::new(default_config(), "./tests/scripts/busyloop.py");
     let traces = runner.spy.get_stack_traces().unwrap();
 
     // we can't be guaranteed what line the script is processing, but
@@ -139,7 +147,7 @@ fn test_thread_reuse() {
     // a couple short lived threads, and then profiling with native enabled
     let config = Config {
         native: true,
-        ..Default::default()
+        ..default_config()
     };
     let mut runner = TestRunner::new(config, "./tests/scripts/thread_reuse.py");
 
@@ -169,7 +177,7 @@ fn test_long_sleep() {
         }
     }
 
-    let mut runner = TestRunner::new(Config::default(), "./tests/scripts/longsleep.py");
+    let mut runner = TestRunner::new(default_config(), "./tests/scripts/longsleep.py");
 
     let traces = runner.spy.get_stack_traces().unwrap();
     assert_eq!(traces.len(), 1);
@@ -199,6 +207,32 @@ fn test_long_sleep() {
 }
 
 #[test]
+fn test_long_sleep_trace_dropped_without_idle() {
+    #[cfg(target_os = "macos")]
+    {
+        if unsafe { libc::geteuid() } != 0 {
+            return;
+        }
+    }
+
+    let config = Config {
+        include_idle: false,
+        blocking: LockingStrategy::NonBlocking,
+        ..default_config()
+    };
+    let mut runner = TestRunner::new(config, "./tests/scripts/longsleep.py");
+    let traces = runner.spy.get_stack_traces().unwrap();
+    assert_eq!(runner.spy.last_thread_count, 1);
+
+    let version = &runner.spy.version;
+    if cfg!(any(target_os = "macos", target_os = "windows"))
+        || (cfg!(target_os = "linux") && (version.major, version.minor) >= (3, 11))
+    {
+        assert!(traces.is_empty(), "{:?}", traces);
+    }
+}
+
+#[test]
 fn test_thread_names() {
     #[cfg(target_os = "macos")]
     {
@@ -209,7 +243,7 @@ fn test_thread_names() {
     }
     let config = Config {
         include_idle: true,
-        ..Default::default()
+        ..default_config()
     };
     let mut runner = TestRunner::new(config, "./tests/scripts/thread_names.py");
 
@@ -245,7 +279,7 @@ fn test_skip_thread_names() {
     let config = Config {
         collect_thread_names: false,
         include_idle: true,
-        ..Default::default()
+        ..default_config()
     };
     let mut runner = TestRunner::new(config, "./tests/scripts/thread_names.py");
 
@@ -263,7 +297,7 @@ fn test_thread_names_unnamed_threads() {
             return;
         }
     }
-    let mut runner = StepRunner::new(Config::default(), "./tests/scripts/thread_names_unnamed.py");
+    let mut runner = StepRunner::new(default_config(), "./tests/scripts/thread_names_unnamed.py");
 
     // dictionary + thread name lookup is only supported with python 3.6+
     if runner.spy.version.major == 3 && runner.spy.version.minor < 6 {
@@ -307,7 +341,7 @@ fn test_thread_names_late_import() {
         }
     }
     let mut runner = StepRunner::new(
-        Config::default(),
+        default_config(),
         "./tests/scripts/thread_names_late_import.py",
     );
 
@@ -373,7 +407,7 @@ fn test_recursive() {
     // This was fixed by locking the process while we are profiling it. Test that
     // the fix works by generating some samples from a program that would exhibit
     // this behaviour
-    let mut runner = TestRunner::new(Config::default(), "./tests/scripts/recursive.py");
+    let mut runner = TestRunner::new(default_config(), "./tests/scripts/recursive.py");
 
     for _ in 0..100 {
         let traces = runner.spy.get_stack_traces().unwrap();
@@ -398,7 +432,7 @@ fn test_unicode() {
             return;
         }
     }
-    let mut runner = TestRunner::new(Config::default(), "./tests/scripts/unicode💩.py");
+    let mut runner = TestRunner::new(default_config(), "./tests/scripts/unicode💩.py");
 
     let traces = runner.spy.get_stack_traces().unwrap();
     assert_eq!(traces.len(), 1);
@@ -431,12 +465,12 @@ fn test_cyrillic() {
     }
 
     // Identifiers with characters outside the ASCII range are supported from Python 3
-    let runner = TestRunner::new(Config::default(), "./tests/scripts/longsleep.py");
+    let runner = TestRunner::new(default_config(), "./tests/scripts/longsleep.py");
     if runner.spy.version.major == 2 {
         return;
     }
 
-    let mut runner = TestRunner::new(Config::default(), "./tests/scripts/cyrillic.py");
+    let mut runner = TestRunner::new(default_config(), "./tests/scripts/cyrillic.py");
 
     let traces = runner.spy.get_stack_traces().unwrap();
     assert_eq!(traces.len(), 1);
@@ -461,7 +495,7 @@ fn test_local_vars() {
 
     let config = Config {
         dump_locals: 1,
-        ..Default::default()
+        ..default_config()
     };
     let mut runner = TestRunner::new(config, "./tests/scripts/local_vars.py");
 
@@ -645,7 +679,7 @@ fn test_subprocesses() {
     std::thread::sleep(std::time::Duration::from_millis(1000));
     let config = Config {
         subprocesses: true,
-        ..Default::default()
+        ..default_config()
     };
     let sampler = py_spy::sampler::Sampler::new(process.id(), &config).unwrap();
     std::thread::sleep(std::time::Duration::from_millis(1000));
@@ -686,7 +720,7 @@ fn test_subprocesses_zombiechild() {
     std::thread::sleep(std::time::Duration::from_millis(200));
     let config = Config {
         subprocesses: true,
-        ..Default::default()
+        ..default_config()
     };
     let _sampler = py_spy::sampler::Sampler::new(process.id(), &config).unwrap();
 }
@@ -701,7 +735,7 @@ fn test_negative_linenumber_increment() {
         }
     }
     let mut runner = TestRunner::new(
-        Config::default(),
+        default_config(),
         "./tests/scripts/negative_linenumber_offsets.py",
     );
 
@@ -741,7 +775,7 @@ fn test_delayed_subprocess() {
     let process = ScriptRunner::new("bash", "./tests/scripts/delayed_launch.sh");
     let config = Config {
         subprocesses: true,
-        ..Default::default()
+        ..default_config()
     };
     let sampler = py_spy::sampler::Sampler::new(process.id(), &config).unwrap();
     for sample in sampler {
@@ -807,7 +841,7 @@ fn test_dump_subprocesses_no_duplication() {
 
     let config = Config {
         subprocesses: true,
-        ..Default::default()
+        ..default_config()
     };
     let mut buf: Vec<u8> = Vec::new();
     py_spy::dump::write_traces(&mut buf, parent_pid, &config, None).expect("write_traces failed");

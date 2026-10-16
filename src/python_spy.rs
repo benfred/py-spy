@@ -38,6 +38,7 @@ pub struct PythonSpy {
     thread_name_lookup_time: Instant,
     #[cfg(target_os = "linux")]
     pub dockerized: bool,
+    pub last_thread_count: usize,
 }
 
 impl PythonSpy {
@@ -89,6 +90,7 @@ impl PythonSpy {
             python_thread_ids: HashMap::new(),
             python_thread_names: HashMap::new(),
             thread_name_lookup_time: Instant::now(),
+            last_thread_count: 0,
         })
     }
 
@@ -229,6 +231,7 @@ impl PythonSpy {
                 .context("failed to get gil_thread_id")?;
 
         let mut did_thread_name_lookup = false;
+        let mut thread_count = 0;
 
         let mut traces = Vec::new();
         let mut threads = threads_head;
@@ -252,6 +255,15 @@ impl PythonSpy {
 
             if self.config.gil_only && !owns_gil {
                 continue;
+            }
+            thread_count += 1;
+
+            if !self.config.include_idle {
+                if let Some(tid) = thread.native_thread_id() {
+                    if thread_activity.get(&(tid as Tid)) == Some(&false) {
+                        continue;
+                    }
+                }
             }
 
             let mut trace = get_stack_trace(
@@ -291,11 +303,6 @@ impl PythonSpy {
                 trace.os_thread_id = os_thread_id.map(|id| id as u64);
             }
 
-            trace.thread_name = if self.config.collect_thread_names {
-                self._get_python_thread_name(&mut did_thread_name_lookup, python_thread_id)
-            } else {
-                None
-            };
             trace.owns_gil = owns_gil;
             trace.pid = self.process.pid;
 
@@ -317,6 +324,19 @@ impl PythonSpy {
             if trace.active {
                 trace.active = !self._heuristic_is_thread_idle(&trace);
             }
+
+            if !self.config.include_idle && !trace.active {
+                if self.config.gil_only {
+                    break;
+                }
+                continue;
+            }
+
+            trace.thread_name = if self.config.collect_thread_names {
+                self._get_python_thread_name(&mut did_thread_name_lookup, python_thread_id)
+            } else {
+                None
+            };
 
             // Merge in the native stack frames if necessary
             #[cfg(feature = "unwind")]
@@ -356,6 +376,7 @@ impl PythonSpy {
                 break;
             }
         }
+        self.last_thread_count = thread_count;
         Ok(traces)
     }
 
