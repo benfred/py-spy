@@ -11,7 +11,7 @@ use anyhow::Error;
 use remoteprocess::Pid;
 
 use crate::config::Config;
-use crate::python_spy::PythonSpy;
+use crate::python_spy::{PythonSample, PythonSpy};
 use crate::stack_trace::{ProcessInfo, StackTrace};
 use crate::timer::Timer;
 use crate::version::Version;
@@ -65,12 +65,8 @@ impl Sampler {
 
             for sleep in Timer::new(spy.config.sampling_rate as f64) {
                 let mut sampling_errors = None;
-                let mut threads = 0;
-                let traces = match spy.get_stack_traces() {
-                    Ok(traces) => {
-                        threads = spy.last_thread_count;
-                        traces
-                    }
+                let sample = match spy.get_sample() {
+                    Ok(sample) => sample,
                     Err(e) => {
                         if spy.process.exe().is_err() {
                             info!(
@@ -80,16 +76,19 @@ impl Sampler {
                             break;
                         }
                         sampling_errors = Some(vec![(spy.pid, e)]);
-                        Vec::new()
+                        PythonSample {
+                            traces: Vec::new(),
+                            thread_count: 0,
+                        }
                     }
                 };
 
                 let late = sleep.err();
                 if tx
                     .send(Sample {
-                        traces,
-                        threads,
-                        processes: if threads > 0 { 1 } else { 0 },
+                        traces: sample.traces,
+                        threads: sample.thread_count,
+                        processes: usize::from(sample.thread_count > 0),
                         sampling_errors,
                         late,
                     })
@@ -216,7 +215,7 @@ impl Sampler {
                         Some(Ok(mut sample)) => {
                             traces.append(&mut sample.traces);
                             threads += sample.thread_count;
-                            processes += if sample.thread_count > 0 { 1 } else { 0 };
+                            processes += usize::from(sample.thread_count > 0);
                         }
                         Some(Err(e)) => {
                             let errors = sampling_errors.get_or_insert_with(Vec::new);
@@ -282,15 +281,10 @@ impl Drop for Sampler {
     }
 }
 
-struct ProcessSample {
-    traces: Vec<StackTrace>,
-    thread_count: usize,
-}
-
 struct PythonSpyThread {
     initialized_rx: Receiver<Result<Version, Error>>,
     notify_tx: Sender<()>,
-    sample_rx: Receiver<Result<ProcessSample, Error>>,
+    sample_rx: Receiver<Result<PythonSample, Error>>,
     initialized: Option<Result<Version, Error>>,
     pub running: bool,
     notified: bool,
@@ -307,8 +301,8 @@ impl PythonSpyThread {
         ) = mpsc::channel();
         let (notify_tx, notify_rx): (Sender<()>, Receiver<()>) = mpsc::channel();
         let (sample_tx, sample_rx): (
-            Sender<Result<ProcessSample, Error>>,
-            Receiver<Result<ProcessSample, Error>>,
+            Sender<Result<PythonSample, Error>>,
+            Receiver<Result<PythonSample, Error>>,
         ) = mpsc::channel();
         let config = config.clone();
         let process = remoteprocess::Process::new(pid)?;
@@ -335,10 +329,7 @@ impl PythonSpyThread {
             };
 
             for _ in notify_rx.iter() {
-                let result = spy.get_stack_traces().map(|traces| ProcessSample {
-                    traces,
-                    thread_count: spy.last_thread_count,
-                });
+                let result = spy.get_sample();
                 if result.is_err() && spy.process.exe().is_err() {
                     info!(
                         "stopped sampling pid {} because the process exited",
@@ -412,7 +403,7 @@ impl PythonSpyThread {
         }
     }
 
-    fn collect(&mut self) -> Option<Result<ProcessSample, Error>> {
+    fn collect(&mut self) -> Option<Result<PythonSample, Error>> {
         if !self.notified {
             return None;
         }

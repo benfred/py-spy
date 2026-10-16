@@ -38,7 +38,11 @@ pub struct PythonSpy {
     thread_name_lookup_time: Instant,
     #[cfg(target_os = "linux")]
     pub dockerized: bool,
-    pub last_thread_count: usize,
+}
+
+pub struct PythonSample {
+    pub traces: Vec<StackTrace>,
+    pub thread_count: usize,
 }
 
 impl PythonSpy {
@@ -90,7 +94,6 @@ impl PythonSpy {
             python_thread_ids: HashMap::new(),
             python_thread_names: HashMap::new(),
             thread_name_lookup_time: Instant::now(),
-            last_thread_count: 0,
         })
     }
 
@@ -123,6 +126,11 @@ impl PythonSpy {
 
     /// Gets a StackTrace for each thread in the current process
     pub fn get_stack_traces(&mut self) -> Result<Vec<StackTrace>, Error> {
+        self.get_sample().map(|sample| sample.traces)
+    }
+
+    /// Gets the stack traces along with the number of python threads considered
+    pub fn get_sample(&mut self) -> Result<PythonSample, Error> {
         match self.version {
             // ABI for 2.3/2.4/2.5/2.6/2.7 is compatible for our purpose
             Version {
@@ -190,7 +198,7 @@ impl PythonSpy {
     }
 
     // implementation of get_stack_traces, where we have a type for the InterpreterState
-    fn _get_stack_traces<I: InterpreterState>(&mut self) -> Result<Vec<StackTrace>, Error> {
+    fn _get_stack_traces<I: InterpreterState>(&mut self) -> Result<PythonSample, Error> {
         // Query the OS to get if each thread in the process is running or not
         let mut thread_activity = HashMap::new();
         if self.config.gil_only {
@@ -376,8 +384,10 @@ impl PythonSpy {
                 break;
             }
         }
-        self.last_thread_count = thread_count;
-        Ok(traces)
+        Ok(PythonSample {
+            traces,
+            thread_count,
+        })
     }
 
     // heuristic fallback for determining if a thread is active, used

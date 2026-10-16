@@ -221,14 +221,14 @@ fn test_long_sleep_trace_dropped_without_idle() {
         ..default_config()
     };
     let mut runner = TestRunner::new(config, "./tests/scripts/longsleep.py");
-    let traces = runner.spy.get_stack_traces().unwrap();
-    assert_eq!(runner.spy.last_thread_count, 1);
+    let sample = runner.spy.get_sample().unwrap();
+    assert_eq!(sample.thread_count, 1);
 
     let version = &runner.spy.version;
     if cfg!(any(target_os = "macos", target_os = "windows"))
         || (cfg!(target_os = "linux") && (version.major, version.minor) >= (3, 11))
     {
-        assert!(traces.is_empty(), "{:?}", traces);
+        assert!(sample.traces.is_empty(), "{:?}", sample.traces);
     }
 }
 
