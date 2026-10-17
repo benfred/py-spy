@@ -336,8 +336,9 @@ impl PythonSpy {
             if !self.config.include_idle && !trace.active {
                 if self.config.gil_only {
                     break;
+                } else {
+                    continue;
                 }
-                continue;
             }
 
             trace.thread_name = if self.config.collect_thread_names {
