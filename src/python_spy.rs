@@ -40,6 +40,13 @@ pub struct PythonSpy {
     pub dockerized: bool,
 }
 
+pub struct ProcessSample {
+    pub traces: Vec<StackTrace>,
+    /// Number of python threads sampled, including idle threads dropped from `traces`.
+    /// With `gil_only`, only the thread holding the GIL is counted.
+    pub total_threads_count: usize,
+}
+
 impl PythonSpy {
     /// Constructs a new PythonSpy object.
     pub fn new(pid: Pid, config: &Config) -> Result<PythonSpy, Error> {
@@ -121,6 +128,11 @@ impl PythonSpy {
 
     /// Gets a StackTrace for each thread in the current process
     pub fn get_stack_traces(&mut self) -> Result<Vec<StackTrace>, Error> {
+        self.get_sample().map(|sample| sample.traces)
+    }
+
+    /// Gets the stack traces along with the number of python threads considered
+    pub fn get_sample(&mut self) -> Result<ProcessSample, Error> {
         match self.version {
             // ABI for 2.3/2.4/2.5/2.6/2.7 is compatible for our purpose
             Version {
@@ -188,7 +200,7 @@ impl PythonSpy {
     }
 
     // implementation of get_stack_traces, where we have a type for the InterpreterState
-    fn _get_stack_traces<I: InterpreterState>(&mut self) -> Result<Vec<StackTrace>, Error> {
+    fn _get_stack_traces<I: InterpreterState>(&mut self) -> Result<ProcessSample, Error> {
         // Query the OS to get if each thread in the process is running or not
         let mut thread_activity = HashMap::new();
         if self.config.gil_only {
@@ -229,6 +241,7 @@ impl PythonSpy {
                 .context("failed to get gil_thread_id")?;
 
         let mut did_thread_name_lookup = false;
+        let mut total_threads_count = 0;
 
         let mut traces = Vec::new();
         let mut threads = threads_head;
@@ -252,6 +265,15 @@ impl PythonSpy {
 
             if self.config.gil_only && !owns_gil {
                 continue;
+            }
+            total_threads_count += 1;
+
+            if !self.config.include_idle {
+                if let Some(tid) = thread.native_thread_id() {
+                    if thread_activity.get(&(tid as Tid)) == Some(&false) {
+                        continue;
+                    }
+                }
             }
 
             let mut trace = get_stack_trace(
@@ -291,11 +313,6 @@ impl PythonSpy {
                 trace.os_thread_id = os_thread_id.map(|id| id as u64);
             }
 
-            trace.thread_name = if self.config.collect_thread_names {
-                self._get_python_thread_name(&mut did_thread_name_lookup, python_thread_id)
-            } else {
-                None
-            };
             trace.owns_gil = owns_gil;
             trace.pid = self.process.pid;
 
@@ -317,6 +334,20 @@ impl PythonSpy {
             if trace.active {
                 trace.active = !self._heuristic_is_thread_idle(&trace);
             }
+
+            if !self.config.include_idle && !trace.active {
+                if self.config.gil_only {
+                    break;
+                } else {
+                    continue;
+                }
+            }
+
+            trace.thread_name = if self.config.collect_thread_names {
+                self._get_python_thread_name(&mut did_thread_name_lookup, python_thread_id)
+            } else {
+                None
+            };
 
             // Merge in the native stack frames if necessary
             #[cfg(feature = "unwind")]
@@ -356,7 +387,10 @@ impl PythonSpy {
                 break;
             }
         }
-        Ok(traces)
+        Ok(ProcessSample {
+            traces,
+            total_threads_count,
+        })
     }
 
     // heuristic fallback for determining if a thread is active, used

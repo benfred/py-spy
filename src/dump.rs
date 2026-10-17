@@ -21,6 +21,10 @@ pub fn write_traces<W: Write>(
     config: &Config,
     parent: Option<Pid>,
 ) -> Result<(), Error> {
+    let config = &Config {
+        include_idle: true,
+        ..config.clone()
+    };
     let mut process = PythonSpy::new(pid, config)?;
     if config.dump_json {
         let traces = process

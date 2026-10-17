@@ -80,26 +80,16 @@ impl ConsoleViewer {
         })
     }
 
-    pub fn increment(&mut self, traces: &[StackTrace]) -> Result<(), Error> {
+    pub fn increment(
+        &mut self,
+        traces: &[StackTrace],
+        threads: usize,
+        processes: usize,
+    ) -> Result<(), Error> {
         self.maybe_reset();
-        self.stats.threads = 0;
-        self.stats.processes = 0;
-        let mut last_pid = None;
+        self.stats.threads = threads as u64;
+        self.stats.processes = processes as u64;
         for trace in traces {
-            self.stats.threads += 1;
-            if last_pid != Some(trace.pid) {
-                self.stats.processes += 1;
-                last_pid = Some(trace.pid);
-            }
-
-            if !(self.config.include_idle || trace.active) {
-                continue;
-            }
-
-            if self.config.gil_only && !trace.owns_gil {
-                continue;
-            }
-
             if trace.owns_gil {
                 self.stats.gil += 1
             }
