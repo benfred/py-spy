@@ -222,7 +222,7 @@ fn test_long_sleep_trace_dropped_without_idle() {
     };
     let mut runner = TestRunner::new(config, "./tests/scripts/longsleep.py");
     let sample = runner.spy.get_sample().unwrap();
-    assert_eq!(sample.thread_count, 1);
+    assert_eq!(sample.total_threads_count, 1);
 
     let version = &runner.spy.version;
     if cfg!(any(target_os = "macos", target_os = "windows"))

@@ -40,9 +40,11 @@ pub struct PythonSpy {
     pub dockerized: bool,
 }
 
-pub struct PythonSample {
+pub struct ProcessSample {
     pub traces: Vec<StackTrace>,
-    pub thread_count: usize,
+    /// Number of python threads sampled, including idle threads dropped from `traces`.
+    /// With `gil_only`, only the thread holding the GIL is counted.
+    pub total_threads_count: usize,
 }
 
 impl PythonSpy {
@@ -130,7 +132,7 @@ impl PythonSpy {
     }
 
     /// Gets the stack traces along with the number of python threads considered
-    pub fn get_sample(&mut self) -> Result<PythonSample, Error> {
+    pub fn get_sample(&mut self) -> Result<ProcessSample, Error> {
         match self.version {
             // ABI for 2.3/2.4/2.5/2.6/2.7 is compatible for our purpose
             Version {
@@ -198,7 +200,7 @@ impl PythonSpy {
     }
 
     // implementation of get_stack_traces, where we have a type for the InterpreterState
-    fn _get_stack_traces<I: InterpreterState>(&mut self) -> Result<PythonSample, Error> {
+    fn _get_stack_traces<I: InterpreterState>(&mut self) -> Result<ProcessSample, Error> {
         // Query the OS to get if each thread in the process is running or not
         let mut thread_activity = HashMap::new();
         if self.config.gil_only {
@@ -239,7 +241,7 @@ impl PythonSpy {
                 .context("failed to get gil_thread_id")?;
 
         let mut did_thread_name_lookup = false;
-        let mut thread_count = 0;
+        let mut total_threads_count = 0;
 
         let mut traces = Vec::new();
         let mut threads = threads_head;
@@ -264,7 +266,7 @@ impl PythonSpy {
             if self.config.gil_only && !owns_gil {
                 continue;
             }
-            thread_count += 1;
+            total_threads_count += 1;
 
             if !self.config.include_idle {
                 if let Some(tid) = thread.native_thread_id() {
@@ -385,9 +387,9 @@ impl PythonSpy {
                 break;
             }
         }
-        Ok(PythonSample {
+        Ok(ProcessSample {
             traces,
-            thread_count,
+            total_threads_count,
         })
     }
 

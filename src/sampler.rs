@@ -11,7 +11,7 @@ use anyhow::Error;
 use remoteprocess::Pid;
 
 use crate::config::Config;
-use crate::python_spy::{PythonSample, PythonSpy};
+use crate::python_spy::{ProcessSample, PythonSpy};
 use crate::stack_trace::{ProcessInfo, StackTrace};
 use crate::timer::Timer;
 use crate::version::Version;
@@ -76,9 +76,9 @@ impl Sampler {
                             break;
                         }
                         sampling_errors = Some(vec![(spy.pid, e)]);
-                        PythonSample {
+                        ProcessSample {
                             traces: Vec::new(),
-                            thread_count: 0,
+                            total_threads_count: 0,
                         }
                     }
                 };
@@ -87,8 +87,8 @@ impl Sampler {
                 if tx
                     .send(Sample {
                         traces: sample.traces,
-                        threads: sample.thread_count,
-                        processes: usize::from(sample.thread_count > 0),
+                        threads: sample.total_threads_count,
+                        processes: usize::from(sample.total_threads_count > 0),
                         sampling_errors,
                         late,
                     })
@@ -214,8 +214,8 @@ impl Sampler {
                     match spy.collect() {
                         Some(Ok(mut sample)) => {
                             traces.append(&mut sample.traces);
-                            threads += sample.thread_count;
-                            processes += usize::from(sample.thread_count > 0);
+                            threads += sample.total_threads_count;
+                            processes += usize::from(sample.total_threads_count > 0);
                         }
                         Some(Err(e)) => {
                             let errors = sampling_errors.get_or_insert_with(Vec::new);
@@ -284,7 +284,7 @@ impl Drop for Sampler {
 struct PythonSpyThread {
     initialized_rx: Receiver<Result<Version, Error>>,
     notify_tx: Sender<()>,
-    sample_rx: Receiver<Result<PythonSample, Error>>,
+    sample_rx: Receiver<Result<ProcessSample, Error>>,
     initialized: Option<Result<Version, Error>>,
     pub running: bool,
     notified: bool,
@@ -301,8 +301,8 @@ impl PythonSpyThread {
         ) = mpsc::channel();
         let (notify_tx, notify_rx): (Sender<()>, Receiver<()>) = mpsc::channel();
         let (sample_tx, sample_rx): (
-            Sender<Result<PythonSample, Error>>,
-            Receiver<Result<PythonSample, Error>>,
+            Sender<Result<ProcessSample, Error>>,
+            Receiver<Result<ProcessSample, Error>>,
         ) = mpsc::channel();
         let config = config.clone();
         let process = remoteprocess::Process::new(pid)?;
@@ -403,7 +403,7 @@ impl PythonSpyThread {
         }
     }
 
-    fn collect(&mut self) -> Option<Result<PythonSample, Error>> {
+    fn collect(&mut self) -> Option<Result<ProcessSample, Error>> {
         if !self.notified {
             return None;
         }
