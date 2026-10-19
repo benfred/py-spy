@@ -5,10 +5,24 @@ use crate::python_bindings::v3_13_0;
 use crate::python_interpreters::{
     BytesObject, InterpreterState, ListObject, Object, StringObject, TupleObject, TypeObject,
 };
-use crate::type_checks::{TypeCheck, TypeChecks};
+use crate::type_checks::{TypeCheck, TypeCheckError, TypeChecks};
 use crate::utils::offset_of;
 use crate::version::Version;
 use remoteprocess::ProcessMemory;
+
+/// Like `copy_string`, but returns a placeholder naming the failure instead of an error
+pub fn copy_string_or_placeholder<T: StringObject, P: ProcessMemory>(
+    ptr: *const T,
+    process: &P,
+    version: &Version,
+    check: &TypeCheck,
+) -> String {
+    match copy_string(ptr, process, version, check) {
+        Ok(s) => s,
+        Err(e) if e.is::<TypeCheckError>() => "<string type check error>".to_owned(),
+        Err(_) => "<string copy error>".to_owned(),
+    }
+}
 
 /// Copies a string from a target process. Attempts to handle unicode differences, which mostly seems to be working
 pub fn copy_string<T: StringObject, P: ProcessMemory>(
@@ -707,8 +721,18 @@ pub mod tests {
         };
         assert!(copy_string(unicode, &LocalProcess, &version37(), &check).is_err());
         assert_eq!(
+            copy_string_or_placeholder(unicode, &LocalProcess, &version37(), &check),
+            "<string type check error>"
+        );
+        assert_eq!(
             copy_string(unicode, &LocalProcess, &version37(), &TypeCheck::Disabled).unwrap(),
             "function_name"
+        );
+        obj.base.length = 4096;
+        let unicode: &PyUnicodeObject = unsafe { std::mem::transmute(&obj.base) };
+        assert_eq!(
+            copy_string_or_placeholder(unicode, &LocalProcess, &version37(), &TypeCheck::Disabled),
+            "<string copy error>"
         );
     }
 

@@ -5,7 +5,9 @@ use anyhow::{Context, Error};
 use crate::python_bindings::{
     v3_10_0, v3_11_0, v3_12_0, v3_13_0, v3_14_0, v3_15_0, v3_6_6, v3_7_0, v3_8_0, v3_9_5,
 };
-use crate::python_data_access::{copy_long, copy_string, DictIterator, PY_TPFLAGS_MANAGED_DICT};
+use crate::python_data_access::{
+    copy_long, copy_string_or_placeholder, DictIterator, PY_TPFLAGS_MANAGED_DICT,
+};
 use crate::python_interpreters::{InterpreterState, Object, TypeObject};
 use crate::python_process_info::PythonProcessLayout;
 use crate::python_spy::PythonSpy;
@@ -32,24 +34,24 @@ pub fn thread_names_from_interpreter<I: InterpreterState, P: ProcessMemory>(
     let mut ret = HashMap::new();
     for entry in DictIterator::from(process, version, modules as usize, &checks.dicts)? {
         let (key, value) = entry?;
-        let module_name = copy_string(
+        let module_name = copy_string_or_placeholder(
             key as *const I::StringObject,
             process,
             version,
             &checks.thread_names,
-        )?;
+        );
         if module_name == "threading" {
             let module: I::Object = process.copy_struct(value)?;
             let module_type = process.copy_pointer(module.ob_type())?;
             let dictptr: usize = process.copy_struct(value + module_type.dictoffset() as usize)?;
             for i in DictIterator::from(process, version, dictptr, &checks.dicts)? {
                 let (key, value) = i?;
-                let name = copy_string(
+                let name = copy_string_or_placeholder(
                     key as *const I::StringObject,
                     process,
                     version,
                     &checks.thread_names,
-                )?;
+                );
                 if name == "_active" {
                     for i in DictIterator::from(process, version, value, &checks.dicts)? {
                         let (key, value) = i?;
@@ -77,19 +79,19 @@ pub fn thread_names_from_interpreter<I: InterpreterState, P: ProcessMemory>(
 
                         for i in dict_iter {
                             let (key, value) = i?;
-                            let varname = copy_string(
+                            let varname = copy_string_or_placeholder(
                                 key as *const I::StringObject,
                                 process,
                                 version,
                                 &checks.thread_names,
-                            )?;
+                            );
                             if varname == "_name" {
-                                let threadname = copy_string(
+                                let threadname = copy_string_or_placeholder(
                                     value as *const I::StringObject,
                                     process,
                                     version,
                                     &checks.thread_names,
-                                )?;
+                                );
                                 ret.insert(threadid as u64, threadname);
                                 break;
                             }

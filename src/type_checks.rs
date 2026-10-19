@@ -54,6 +54,17 @@ impl TypeChecksConfig {
     }
 }
 
+#[derive(Debug)]
+pub struct TypeCheckError(&'static CStr);
+
+impl std::fmt::Display for TypeCheckError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "Object is not a {}", self.0.to_string_lossy())
+    }
+}
+
+impl std::error::Error for TypeCheckError {}
+
 /// Checks objects against a resolved python type, unless disabled
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TypeCheck {
@@ -98,7 +109,7 @@ impl TypeCheck {
                 .context("Failed to read tp_base")?;
         }
         if current != address {
-            return Err(format_err!("Object is not a {}", name.to_string_lossy()));
+            return Err(TypeCheckError(name).into());
         }
         Ok(())
     }
