@@ -1,3 +1,4 @@
+use std::ops::Range;
 use std::sync::Arc;
 
 use anyhow::{Context, Error, Result};
@@ -6,10 +7,12 @@ use remoteprocess::{Pid, ProcessMemory};
 use serde_derive::Serialize;
 
 use crate::config::{Config, LineNo};
-use crate::python_data_access::{copy_bytes, copy_string};
+use crate::python_data_access::{copy_bytes, copy_string, copy_string_or_placeholder};
 use crate::python_interpreters::{
     CodeObject, FrameObject, InterpreterState, ThreadState, TupleObject,
 };
+use crate::type_checks::{TypeCheck, TypeChecks};
+use crate::version::Version;
 
 /// Call stack for a single python thread
 #[derive(Debug, Clone, Serialize)]
@@ -74,6 +77,8 @@ pub fn get_stack_traces<I, P>(
     process: &P,
     threadstate_address: usize,
     config: Option<&Config>,
+    version: &Version,
+    type_checks: &TypeChecks,
 ) -> Result<Vec<StackTrace>, Error>
 where
     I: InterpreterState,
@@ -96,7 +101,14 @@ where
             .copy_pointer(threads)
             .context("Failed to copy PyThreadState")?;
 
-        let mut trace = get_stack_trace(&thread, process, dump_locals > 0, lineno)?;
+        let mut trace = get_stack_trace(
+            &thread,
+            process,
+            dump_locals > 0,
+            lineno,
+            version,
+            type_checks,
+        )?;
         trace.owns_gil = trace.thread_id == gil_thread_id;
 
         ret.push(trace);
@@ -109,20 +121,66 @@ where
     Ok(ret)
 }
 
+pub(crate) struct RawFrame {
+    frame: usize,
+    code: usize,
+    lasti: i32,
+    is_entry: bool,
+    is_shim_entry: bool,
+}
+
+pub(crate) struct RawThread {
+    pub thread_id: u64,
+    pub os_thread_id: Option<u64>,
+    pub owns_gil: bool,
+    pub frames: Range<usize>,
+}
+
+#[derive(Default)]
+pub(crate) struct UnwindBuffers {
+    pub frames: Vec<RawFrame>,
+    pub threads: Vec<RawThread>,
+}
+
 /// Gets a stack trace for an individual thread
 pub fn get_stack_trace<T, P>(
     thread: &T,
     process: &P,
     copy_locals: bool,
     lineno: LineNo,
+    version: &Version,
+    checks: &TypeChecks,
 ) -> Result<StackTrace, Error>
 where
     T: ThreadState,
     P: ProcessMemory,
 {
-    // TODO: just return frames here? everything else probably should be returned out of scope
-    let mut frames = Vec::new();
+    let mut raw = Vec::new();
+    unwind_frames(thread, process, &mut raw)?;
+    let frames =
+        resolve_frames::<T::FrameObject, P>(&raw, process, copy_locals, lineno, version, checks)?;
 
+    Ok(StackTrace {
+        pid: 0,
+        frames,
+        thread_id: thread.thread_id(),
+        thread_name: None,
+        owns_gil: false,
+        active: true,
+        os_thread_id: thread.native_thread_id(),
+        process_info: None,
+    })
+}
+
+pub(crate) fn unwind_frames<T, P>(
+    thread: &T,
+    process: &P,
+    out: &mut Vec<RawFrame>,
+) -> Result<(), Error>
+where
+    T: ThreadState,
+    P: ProcessMemory,
+{
     // python 3.11+ has an extra level of indirection to get the Frame from the threadstate
     let mut frame_address = thread.frame_address();
     if let Some(addr) = frame_address {
@@ -130,15 +188,7 @@ where
     }
 
     let mut frame_ptr = thread.frame(frame_address);
-
-    // We are iterating in reverse, i.e. from last call to first call.
-    // Since Python 3.12, there are shim frames inserted before a block
-    // of Python frames. When we encounter one, update the last frame.
-    let set_last_frame_as_shim_entry = &mut |frames: &mut Vec<Frame>| {
-        if let Some(frame) = frames.last_mut() {
-            frame.is_shim_entry = true;
-        }
-    };
+    let start = out.len();
 
     let mut visited = 0;
     while !frame_ptr.is_null() {
@@ -151,30 +201,75 @@ where
             .copy_pointer(frame_ptr)
             .context("Failed to copy PyFrameObject")?;
 
-        if !frame.is_python_frame() {
-            frame_ptr = frame.back();
+        if frame.is_python_frame() {
+            out.push(RawFrame {
+                frame: frame_ptr as usize,
+                code: frame.code() as usize,
+                lasti: frame.lasti(),
+                is_entry: frame.is_entry(),
+                is_shim_entry: false,
+            });
+        } else if out.len() > start {
+            out.last_mut().unwrap().is_shim_entry = true;
+        }
+
+        frame_ptr = frame.back();
+    }
+    Ok(())
+}
+
+pub(crate) fn resolve_frames<F, P>(
+    raw: &[RawFrame],
+    process: &P,
+    copy_locals: bool,
+    lineno: LineNo,
+    version: &Version,
+    checks: &TypeChecks,
+) -> Result<Vec<Frame>, Error>
+where
+    F: FrameObject,
+    P: ProcessMemory,
+{
+    let mut frames = Vec::with_capacity(raw.len());
+
+    // We are iterating in reverse, i.e. from last call to first call.
+    // Since Python 3.12, there are shim frames inserted before a block
+    // of Python frames. When we encounter one, update the last frame.
+    let set_last_frame_as_shim_entry = &mut |frames: &mut Vec<Frame>| {
+        if let Some(frame) = frames.last_mut() {
+            frame.is_shim_entry = true;
+        }
+    };
+
+    for raw in raw {
+        let code = process
+            .copy_pointer(raw.code as *const F::CodeObject)
+            .context("Failed to copy PyCodeObject")?;
+
+        if checks
+            .code
+            .type_check(process, version, code.ob_type())
+            .is_err()
+        {
             set_last_frame_as_shim_entry(&mut frames);
             continue;
         }
 
-        let code = process
-            .copy_pointer(frame.code())
-            .context("Failed to copy PyCodeObject")?;
-
-        let filename = copy_string(code.filename(), process).context("Failed to copy filename");
+        let filename = copy_string(code.filename(), process, version, &checks.frame_strings)
+            .context("Failed to copy filename");
 
         // Try to get qualname first (available in Python 3.11+), fall back to name
         let name = match code.qualname() {
             Some(qualname_ptr) => {
-                copy_string(qualname_ptr, process).or_else(|_| copy_string(code.name(), process))
+                copy_string(qualname_ptr, process, version, &checks.frame_strings)
+                    .or_else(|_| copy_string(code.name(), process, version, &checks.frame_strings))
             }
-            None => copy_string(code.name(), process),
+            None => copy_string(code.name(), process, version, &checks.frame_strings),
         }
         .context("Failed to copy function name");
 
         // Guards against torn reads while sampling without pausing the process.
         if filename.is_err() || name.is_err() {
-            frame_ptr = frame.back();
             set_last_frame_as_shim_entry(&mut frames);
             continue;
         }
@@ -184,7 +279,6 @@ where
         // skip <shim> entries in python 3.13+
         // Unset file/function name in py3.13 means this is a shim.
         if filename.is_empty() || filename == "<shim>" {
-            frame_ptr = frame.back();
             set_last_frame_as_shim_entry(&mut frames);
             continue;
         }
@@ -192,7 +286,7 @@ where
         let line = match lineno {
             LineNo::NoLine => 0,
             LineNo::First => code.first_lineno(),
-            LineNo::LastInstruction => match get_line_number(&code, frame.lasti(), process) {
+            LineNo::LastInstruction => match get_line_number(&code, raw.lasti, process) {
                 Ok(line) => line,
                 Err(e) => {
                     // Failling to get the line number really shouldn't be fatal here, but
@@ -210,14 +304,18 @@ where
 
         let locals = if copy_locals {
             Some(
-                get_locals(&code, frame_ptr, &frame, process)
-                    .context("Failed to get local variables")?,
+                get_locals(
+                    &code,
+                    raw.frame as *const F,
+                    process,
+                    version,
+                    &checks.locals_strings,
+                )
+                .context("Failed to get local variables")?,
             )
         } else {
             None
         };
-
-        let is_entry = frame.is_entry();
 
         frames.push(Frame {
             name,
@@ -226,26 +324,15 @@ where
             short_filename: None,
             module: None,
             locals,
-            is_entry,
-            is_shim_entry: false,
+            is_entry: raw.is_entry,
+            is_shim_entry: raw.is_shim_entry,
         });
-
-        frame_ptr = frame.back();
     }
 
     // First frame is always a shim
     set_last_frame_as_shim_entry(&mut frames);
 
-    Ok(StackTrace {
-        pid: 0,
-        frames,
-        thread_id: thread.thread_id(),
-        thread_name: None,
-        owns_gil: false,
-        active: true,
-        os_thread_id: thread.native_thread_id(),
-        process_info: None,
-    })
+    Ok(frames)
 }
 
 impl StackTrace {
@@ -285,8 +372,9 @@ fn get_line_number<C: CodeObject, P: ProcessMemory>(
 fn get_locals<C: CodeObject, F: FrameObject, P: ProcessMemory>(
     code: &C,
     frameptr: *const F,
-    frame: &F,
     process: &P,
+    version: &Version,
+    check_names: &TypeCheck,
 ) -> Result<Vec<LocalVariable>, Error> {
     let local_count = code.nlocals() as usize;
     let argcount = code.argcount() as usize;
@@ -295,7 +383,7 @@ fn get_locals<C: CodeObject, F: FrameObject, P: ProcessMemory>(
         .context("Failed to get varnames from PyCodeObject")?;
 
     let ptr_size = std::mem::size_of::<*const i32>();
-    let locals_addr = frameptr as usize + std::mem::size_of_val(frame) - ptr_size;
+    let locals_addr = frameptr as usize + std::mem::size_of::<F>() - ptr_size;
 
     let mut ret = Vec::new();
 
@@ -303,7 +391,7 @@ fn get_locals<C: CodeObject, F: FrameObject, P: ProcessMemory>(
         let nameptr: *const C::StringObject =
             process.copy_struct(varnames.address(code.varnames() as usize, i))?;
 
-        let name = copy_string(nameptr, process).context("Failed to copy local variable name")?;
+        let name = copy_string_or_placeholder(nameptr, process, version, check_names);
         let addr: usize = process.copy_struct(locals_addr + i * ptr_size)?;
 
         // hack: handle things like None, True, False, small integer constants etc on Python 3.14

@@ -1138,8 +1138,7 @@ checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 [[package]]
 name = "remoteprocess"
 version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9dc1cc7301db24841e532648694e68e4345e34ae68ef7f8695fd1ec02cb5bd23"
+source = "git+https://github.com/benfred/remoteprocess?rev=3b464543ff36d6446de4dcf7df904f4464cc589c#3b464543ff36d6446de4dcf7df904f4464cc589c"
 dependencies = [
  "addr2line",
  "cfg-if",
