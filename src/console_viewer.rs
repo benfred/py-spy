@@ -9,6 +9,7 @@ use anyhow::Error;
 use console::{style, Term};
 
 use crate::config::Config;
+use crate::sampler::Sample;
 use crate::stack_trace::{Frame, StackTrace};
 use crate::version::Version;
 
@@ -80,16 +81,11 @@ impl ConsoleViewer {
         })
     }
 
-    pub fn increment(
-        &mut self,
-        traces: &[StackTrace],
-        threads: usize,
-        processes: usize,
-    ) -> Result<(), Error> {
+    pub fn increment(&mut self, sample: &Sample) -> Result<(), Error> {
         self.maybe_reset();
-        self.stats.threads = threads as u64;
-        self.stats.processes = processes as u64;
-        for trace in traces {
+        self.stats.threads = sample.threads as u64;
+        self.stats.processes = sample.processes as u64;
+        for trace in &sample.traces {
             if trace.owns_gil {
                 self.stats.gil += 1
             }

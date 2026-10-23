@@ -72,12 +72,12 @@ fn sample_console(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
             console.increment_late_sample(elapsed);
         }
 
-        if let Some(errors) = sample.sampling_errors {
+        if let Some(errors) = &sample.sampling_errors {
             for (_, error) in errors {
-                console.increment_error(&error)?
+                console.increment_error(error)?
             }
         }
-        console.increment(&sample.traces, sample.threads, sample.processes)?;
+        console.increment(&sample)?;
     }
 
     if !config.subprocesses {
