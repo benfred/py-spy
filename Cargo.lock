@@ -772,6 +772,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dae608c151f68243f2b000364e1f7b186d9c29845f7d2d85bd31b9ad77ad552b"
 
 [[package]]
+name = "mach2"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b0d28e293f2b8c9d2b2d1c0193bd3c1cbdc0d2cf396888dc01162f7cf9d6c3f3"
+
+[[package]]
 name = "mach_o_sys"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -970,7 +976,7 @@ dependencies = [
  "bindgen",
  "libc",
  "libproc",
- "mach2",
+ "mach2 0.6.0",
  "winapi",
 ]
 
@@ -1087,13 +1093,13 @@ dependencies = [
 
 [[package]]
 name = "read-process-memory"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "98379bd2cb26a9ad7d0af215816348a41279285fd15e40b398af97108207a9d3"
+checksum = "f211d14261b13964b23ca96e18910e1a430d886013ce9dca97389673d42ec01f"
 dependencies = [
  "libc",
  "log",
- "mach2",
+ "mach2 0.7.0",
  "windows-sys",
 ]
 
@@ -1137,9 +1143,9 @@ checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 
 [[package]]
 name = "remoteprocess"
-version = "0.5.4"
+version = "0.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9dc1cc7301db24841e532648694e68e4345e34ae68ef7f8695fd1ec02cb5bd23"
+checksum = "4dd5c1a32d0e827bed7239301ed478ac4ecdda65fd9f91d2a38005799ccf1e50"
 dependencies = [
  "addr2line",
  "cfg-if",
