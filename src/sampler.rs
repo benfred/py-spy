@@ -11,7 +11,7 @@ use anyhow::Error;
 use remoteprocess::Pid;
 
 use crate::config::Config;
-use crate::python_spy::PythonSpy;
+use crate::python_spy::{ProcessSample, PythonSpy};
 use crate::stack_trace::{ProcessInfo, StackTrace};
 use crate::timer::Timer;
 use crate::version::Version;
@@ -24,6 +24,8 @@ pub struct Sampler {
 
 pub struct Sample {
     pub traces: Vec<StackTrace>,
+    pub threads: usize,
+    pub processes: usize,
     pub sampling_errors: Option<Vec<(Pid, Error)>>,
     pub late: Option<Duration>,
 }
@@ -63,8 +65,8 @@ impl Sampler {
 
             for sleep in Timer::new(spy.config.sampling_rate as f64) {
                 let mut sampling_errors = None;
-                let traces = match spy.get_stack_traces() {
-                    Ok(traces) => traces,
+                let sample = match spy.get_sample() {
+                    Ok(sample) => sample,
                     Err(e) => {
                         if spy.process.exe().is_err() {
                             info!(
@@ -74,14 +76,19 @@ impl Sampler {
                             break;
                         }
                         sampling_errors = Some(vec![(spy.pid, e)]);
-                        Vec::new()
+                        ProcessSample {
+                            traces: Vec::new(),
+                            total_threads_count: 0,
+                        }
                     }
                 };
 
                 let late = sleep.err();
                 if tx
                     .send(Sample {
-                        traces,
+                        traces: sample.traces,
+                        threads: sample.total_threads_count,
+                        processes: usize::from(sample.total_threads_count > 0),
                         sampling_errors,
                         late,
                     })
@@ -183,6 +190,8 @@ impl Sampler {
         let sampling_thread = std::thread::spawn(move || {
             for sleep in Timer::new(config.sampling_rate as f64) {
                 let mut traces = Vec::new();
+                let mut threads = 0;
+                let mut processes = 0;
                 let mut sampling_errors = None;
 
                 let mut spies = match spies.lock() {
@@ -203,7 +212,11 @@ impl Sampler {
                 // collect the traces from each python spy if possible
                 for spy in spies.values_mut() {
                     match spy.collect() {
-                        Some(Ok(mut t)) => traces.append(&mut t),
+                        Some(Ok(mut sample)) => {
+                            traces.append(&mut sample.traces);
+                            threads += sample.total_threads_count;
+                            processes += usize::from(sample.total_threads_count > 0);
+                        }
                         Some(Err(e)) => {
                             let errors = sampling_errors.get_or_insert_with(Vec::new);
                             errors.push((spy.process.pid, e));
@@ -227,6 +240,8 @@ impl Sampler {
                 if tx
                     .send(Sample {
                         traces,
+                        threads,
+                        processes,
                         sampling_errors,
                         late,
                     })
@@ -269,7 +284,7 @@ impl Drop for Sampler {
 struct PythonSpyThread {
     initialized_rx: Receiver<Result<Version, Error>>,
     notify_tx: Sender<()>,
-    sample_rx: Receiver<Result<Vec<StackTrace>, Error>>,
+    sample_rx: Receiver<Result<ProcessSample, Error>>,
     initialized: Option<Result<Version, Error>>,
     pub running: bool,
     notified: bool,
@@ -286,8 +301,8 @@ impl PythonSpyThread {
         ) = mpsc::channel();
         let (notify_tx, notify_rx): (Sender<()>, Receiver<()>) = mpsc::channel();
         let (sample_tx, sample_rx): (
-            Sender<Result<Vec<StackTrace>, Error>>,
-            Receiver<Result<Vec<StackTrace>, Error>>,
+            Sender<Result<ProcessSample, Error>>,
+            Receiver<Result<ProcessSample, Error>>,
         ) = mpsc::channel();
         let config = config.clone();
         let process = remoteprocess::Process::new(pid)?;
@@ -314,7 +329,7 @@ impl PythonSpyThread {
             };
 
             for _ in notify_rx.iter() {
-                let result = spy.get_stack_traces();
+                let result = spy.get_sample();
                 if result.is_err() && spy.process.exe().is_err() {
                     info!(
                         "stopped sampling pid {} because the process exited",
@@ -388,7 +403,7 @@ impl PythonSpyThread {
         }
     }
 
-    fn collect(&mut self) -> Option<Result<Vec<StackTrace>, Error>> {
+    fn collect(&mut self) -> Option<Result<ProcessSample, Error>> {
         if !self.notified {
             return None;
         }

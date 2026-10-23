@@ -72,12 +72,12 @@ fn sample_console(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
             console.increment_late_sample(elapsed);
         }
 
-        if let Some(errors) = sample.sampling_errors {
+        if let Some(errors) = &sample.sampling_errors {
             for (_, error) in errors {
-                console.increment_error(&error)?
+                console.increment_error(error)?
             }
         }
-        console.increment(&sample.traces)?;
+        console.increment(&sample)?;
     }
 
     if !config.subprocesses {
@@ -267,14 +267,6 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
         }
 
         for trace in sample.traces.iter_mut() {
-            if !(config.include_idle || trace.active) {
-                continue;
-            }
-
-            if config.gil_only && !trace.owns_gil {
-                continue;
-            }
-
             if config.include_thread_ids {
                 let threadid = trace.format_threadid();
                 let thread_fmt = if let Some(thread_name) = &trace.thread_name {
