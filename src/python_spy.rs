@@ -259,7 +259,6 @@ impl PythonSpy {
                 &self.process,
                 self.config.dump_locals > 0,
                 self.config.lineno,
-                &self.version,
                 &self.addresses.type_checks,
             )
             .with_context(|| {

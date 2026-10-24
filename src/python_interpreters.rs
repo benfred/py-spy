@@ -112,7 +112,6 @@ pub trait TypeObject: Copy {
     fn name(&self) -> *const ::std::os::raw::c_char;
     fn dictoffset(&self) -> isize;
     fn flags(&self) -> usize;
-    fn base(&self) -> usize;
 }
 
 /// This macro provides a common impl for PyThreadState/PyFrameObject/PyCodeObject traits
@@ -193,9 +192,6 @@ macro_rules! PythonCommonImpl {
             }
             fn flags(&self) -> usize {
                 self.tp_flags as usize
-            }
-            fn base(&self) -> usize {
-                self.tp_base as usize
             }
         }
     };
@@ -538,9 +534,6 @@ impl TypeObject for v3_15_0::PyTypeObject {
     fn flags(&self) -> usize {
         self.tp_flags as usize
     }
-    fn base(&self) -> usize {
-        self.tp_base as usize
-    }
 }
 
 CompactCodeObjectImpl!(v3_15_0, PyBytesObject, PyUnicodeObject);
@@ -632,9 +625,6 @@ impl TypeObject for v3_14_0::PyTypeObject {
     fn flags(&self) -> usize {
         self.tp_flags as usize
     }
-    fn base(&self) -> usize {
-        self.tp_base as usize
-    }
 }
 
 CompactCodeObjectImpl!(v3_14_0, PyBytesObject, PyUnicodeObject);
@@ -722,9 +712,6 @@ impl TypeObject for v3_13_0::PyTypeObject {
     }
     fn flags(&self) -> usize {
         self.tp_flags as usize
-    }
-    fn base(&self) -> usize {
-        self.tp_base as usize
     }
 }
 
@@ -820,9 +807,6 @@ impl TypeObject for v3_12_0::PyTypeObject {
     fn flags(&self) -> usize {
         self.tp_flags as usize
     }
-    fn base(&self) -> usize {
-        self.tp_base as usize
-    }
 }
 
 CompactCodeObjectImpl!(v3_12_0, PyBytesObject, PyUnicodeObject);
@@ -910,9 +894,6 @@ impl TypeObject for v3_11_0::PyTypeObject {
     }
     fn flags(&self) -> usize {
         self.tp_flags as usize
-    }
-    fn base(&self) -> usize {
-        self.tp_base as usize
     }
 }
 

@@ -14,11 +14,10 @@ use remoteprocess::ProcessMemory;
 pub fn copy_string<T: StringObject, P: ProcessMemory>(
     ptr: *const T,
     process: &P,
-    version: &Version,
     check: &TypeCheck,
 ) -> Result<String, Error> {
     let obj = process.copy_pointer(ptr)?;
-    check.type_check(process, version, obj.ob_type() as usize)?;
+    check.type_check(obj.ob_type() as usize)?;
     if obj.size() == 0 {
         return Ok(String::new());
     }
@@ -254,7 +253,7 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
             } => {
                 let dict: crate::python_bindings::v3_11_0::PyDictObject =
                     process.copy_struct(addr)?;
-                check.type_check(process, version, dict.ob_base.ob_type as usize)?;
+                check.type_check(dict.ob_base.ob_type as usize)?;
                 let keys = process.copy_pointer(dict.ma_keys)?;
 
                 let entries_addr = dict.ma_keys as usize
@@ -272,7 +271,7 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
             _ => {
                 let dict: crate::python_bindings::v3_7_0::PyDictObject =
                     process.copy_struct(addr)?;
-                check.type_check(process, version, dict.ob_base.ob_type as usize)?;
+                check.type_check(dict.ob_base.ob_type as usize)?;
                 // Getting this going generically is tricky: there is a lot of variation on how dictionaries are handled
                 // instead this just focuses on a single version, which works for python
                 // 3.6/3.7/3.8/3.9/3.10
@@ -436,7 +435,6 @@ where
         let value = copy_string(
             addr as *const I::StringObject,
             process,
-            version,
             &checks.locals_strings,
         )?
         .replace('\'', "\\\"")

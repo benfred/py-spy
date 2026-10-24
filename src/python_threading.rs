@@ -35,7 +35,6 @@ pub fn thread_names_from_interpreter<I: InterpreterState, P: ProcessMemory>(
         let module_name = copy_string(
             key as *const I::StringObject,
             process,
-            version,
             &checks.thread_names,
         )?;
         if module_name == "threading" {
@@ -47,7 +46,6 @@ pub fn thread_names_from_interpreter<I: InterpreterState, P: ProcessMemory>(
                 let name = copy_string(
                     key as *const I::StringObject,
                     process,
-                    version,
                     &checks.thread_names,
                 )?;
                 if name == "_active" {
@@ -80,14 +78,12 @@ pub fn thread_names_from_interpreter<I: InterpreterState, P: ProcessMemory>(
                             let varname = copy_string(
                                 key as *const I::StringObject,
                                 process,
-                                version,
                                 &checks.thread_names,
                             )?;
                             if varname == "_name" {
                                 let threadname = copy_string(
                                     value as *const I::StringObject,
                                     process,
-                                    version,
                                     &checks.thread_names,
                                 )?;
                                 ret.insert(threadid as u64, threadname);

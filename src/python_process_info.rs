@@ -516,7 +516,7 @@ impl PythonProcessLayout {
     where
         P: ProcessMemory,
     {
-        let type_checks = &TypeChecks::new(python_info, process, version, &config.type_checks)?;
+        let type_checks = &TypeChecks::new(python_info, process, version, config.type_check)?;
 
         // get the address of the main PyInterpreterState object from loaded symbols if we can
         // (this tends to be faster than scanning through the bss section)
@@ -531,7 +531,6 @@ impl PythonProcessLayout {
                     process,
                     addr.threadstate_address,
                     None,
-                    version,
                     type_checks
                 ) {
                     Ok(_) => {
@@ -909,7 +908,6 @@ where
                 process,
                 address_book.threadstate_address,
                 None,
-                version,
                 type_checks,
             )
             .is_ok()
@@ -989,7 +987,6 @@ where
                 process,
                 layout.threadstate_address,
                 None,
-                version,
                 type_checks,
             )
             .is_ok()

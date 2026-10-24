@@ -11,93 +11,26 @@ use crate::python_interpreters::{InterpreterState, Object, TypeObject};
 use crate::python_process_info::{dispatch_by_version, PythonProcessInfo};
 use crate::version::Version;
 
-/// Type checks guard against reading garbage from torn or reused memory.
-/// By default they compare against the exact type, so subclasses of `str` and `dict` are rejected.
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub struct TypeChecksConfig {
-    /// Skip frames whose code object is not a `PyCode_Type`
-    pub code: bool,
-    /// Skip frames whose filename or function name is not a `PyUnicode_Type`
-    pub frame_strings: bool,
-    /// Fail thread name lookup on strings that are not a `PyUnicode_Type`
-    pub thread_names: bool,
-    /// Fail on local variable names and string values that are not a `PyUnicode_Type`
-    pub locals_strings: bool,
-    /// Fail on dicts that are not a `PyDict_Type`, when looking up thread names or formatting locals
-    pub dicts: bool,
-    /// How many `tp_base` links to follow when an object's type is not an exact match
-    pub max_subclass_depth: usize,
-}
-
-impl TypeChecksConfig {
-    pub const fn disabled() -> TypeChecksConfig {
-        TypeChecksConfig {
-            code: false,
-            frame_strings: false,
-            thread_names: false,
-            locals_strings: false,
-            dicts: false,
-            max_subclass_depth: 0,
-        }
-    }
-
-    #[allow(dead_code)]
-    pub const fn enabled() -> TypeChecksConfig {
-        TypeChecksConfig {
-            code: true,
-            frame_strings: true,
-            thread_names: true,
-            locals_strings: true,
-            dicts: true,
-            max_subclass_depth: 0,
-        }
-    }
-}
-
 /// Checks objects against a resolved python type, unless disabled
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TypeCheck {
     Disabled,
-    Enabled {
-        address: usize,
-        name: &'static CStr,
-        max_subclass_depth: usize,
-    },
+    Enabled { address: usize, name: &'static CStr },
 }
 
 impl TypeCheck {
-    /// Accepts `ob_type` if it is the checked type, or derives from it within `max_subclass_depth` bases
-    pub fn type_check<P: ProcessMemory>(
+    pub fn type_check(
         &self,
-        process: &P,
-        version: &Version,
         ob_type: usize,
     ) -> Result<(), Error> {
-        fn read_base<I: InterpreterState, P: ProcessMemory>(
-            process: &P,
-            addr: usize,
-        ) -> Result<usize, Error> {
-            let type_object: <I::Object as Object>::TypeObject = process.copy_struct(addr)?;
-            Ok(type_object.base())
-        }
-
         let TypeCheck::Enabled {
             address,
             name,
-            max_subclass_depth,
         } = *self
         else {
             return Ok(());
         };
-        let mut current = ob_type;
-        for _ in 0..max_subclass_depth {
-            if current == address || current == 0 {
-                break;
-            }
-            current = dispatch_by_version!(version, read_base, process, current)
-                .context("Failed to read tp_base")?;
-        }
-        if current != address {
+        if ob_type != address {
             return Err(format_err!("Object is not a {}", name.to_string_lossy()));
         }
         Ok(())
@@ -120,32 +53,27 @@ impl TypeChecks {
         python_info: &PythonProcessInfo,
         process: &P,
         version: &Version,
-        config: &TypeChecksConfig,
+        enabled: bool,
     ) -> Result<TypeChecks, Error> {
-        let check =
-            |enabled: bool, symbol: &str, name: &'static CStr| -> Result<TypeCheck, Error> {
-                if !enabled {
-                    return Ok(TypeCheck::Disabled);
-                }
-                let address = Self::get_type_address(python_info, process, version, symbol, name)
-                    .with_context(|| format!("Failed to resolve {}", symbol))?;
-                Ok(TypeCheck::Enabled {
-                    address,
-                    name,
-                    max_subclass_depth: config.max_subclass_depth,
-                })
-            };
+        let check = |symbol: &str, name: &'static CStr| -> Result<TypeCheck, Error> {
+            if !enabled {
+                return Ok(TypeCheck::Disabled);
+            }
+            let address = Self::get_type_address(python_info, process, version, symbol, name)
+                .with_context(|| format!("Failed to resolve {}", symbol))?;
+            Ok(TypeCheck::Enabled { address, name })
+        };
         let string_symbol = if version.major == 2 {
             "PyString_Type"
         } else {
             "PyUnicode_Type"
         };
         Ok(TypeChecks {
-            code: check(config.code, "PyCode_Type", c"code")?,
-            frame_strings: check(config.frame_strings, string_symbol, c"str")?,
-            thread_names: check(config.thread_names, string_symbol, c"str")?,
-            locals_strings: check(config.locals_strings, string_symbol, c"str")?,
-            dicts: check(config.dicts, "PyDict_Type", c"dict")?,
+            code: check("PyCode_Type", c"code")?,
+            frame_strings: check(string_symbol, c"str")?,
+            thread_names: check(string_symbol, c"str")?,
+            locals_strings: check(string_symbol, c"str")?,
+            dicts: check("PyDict_Type", c"dict")?,
         })
     }
 
@@ -307,7 +235,6 @@ mod tests {
         let check = |max_subclass_depth| TypeCheck::Enabled {
             address: addr(&base),
             name: c"str",
-            max_subclass_depth,
         };
 
         for depth in 0..4 {
@@ -333,19 +260,18 @@ mod tests {
             .is_ok());
     }
 
-    fn resolve_checks(
+    fn resolve_checks(//todo inline
         info: &PythonProcessInfo,
         major: u64,
-        config: &TypeChecksConfig,
+        enabled: bool,
     ) -> Result<TypeChecks, Error> {
-        TypeChecks::new(info, &LocalProcess, &version(major), config)
+        TypeChecks::new(info, &LocalProcess, &version(major), enabled)
     }
 
-    fn enabled_check(address: usize, name: &'static CStr) -> TypeCheck {
+    fn enabled_check(address: usize, name: &'static CStr) -> TypeCheck { //todo inline
         TypeCheck::Enabled {
             address,
             name,
-            max_subclass_depth: 0,
         }
     }
 

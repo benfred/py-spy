@@ -342,7 +342,6 @@ impl PythonCoreDump {
             &self.core,
             self.addresses.threadstate_address,
             Some(config),
-            &self.version,
             &self.addresses.type_checks,
         )?;
 
