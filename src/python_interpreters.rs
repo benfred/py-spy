@@ -300,7 +300,7 @@ macro_rules! CompactCodeObjectImpl {
     ($py: ident, $bytesobject: ident, $stringobject: ident) => {
         impl Object for $py::PyCodeObject {
             type TypeObject = $py::PyTypeObject;
-            fn ob_type(&self) -> * mut Self::TypeObject {
+            fn ob_type(&self) -> *mut Self::TypeObject {
                 self.ob_base.ob_base.ob_type
             }
         }
@@ -399,7 +399,7 @@ macro_rules! Python3Impl {
         impl Object for $py::PyUnicodeObject {
             type TypeObject = $py::PyTypeObject;
 
-            fn ob_type(&self) -> * mut Self::TypeObject {
+            fn ob_type(&self) -> *mut Self::TypeObject {
                 self._base._base.ob_base.ob_type
             }
         }
@@ -905,7 +905,7 @@ PythonCommonImpl!(v3_10_0, PyUnicodeObject);
 
 impl Object for v3_10_0::PyCodeObject {
     type TypeObject = v3_10_0::PyTypeObject;
-    fn ob_type(&self) -> * mut Self::TypeObject {
+    fn ob_type(&self) -> *mut Self::TypeObject {
         self.ob_base.ob_type
     }
 }

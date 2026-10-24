@@ -1,5 +1,4 @@
 extern crate py_spy;
-use py_spy::type_checks::TypeChecksConfig;
 use py_spy::{Config, Pid, PythonSpy};
 use std::collections::HashSet;
 use std::io::{BufRead, BufReader, Lines, Write};
@@ -201,15 +200,15 @@ fn test_long_sleep() {
 
 #[test]
 fn test_thread_names() {
-    check_thread_names(TypeChecksConfig::disabled());
+    check_thread_names(false);
 }
 
 #[test]
 fn test_thread_names_with_type_checks() {
-    check_thread_names(TypeChecksConfig::enabled());
+    check_thread_names(true);
 }
 
-fn check_thread_names(type_checks: TypeChecksConfig) {
+fn check_thread_names(type_check: bool) {
     #[cfg(target_os = "macos")]
     {
         // We need root permissions here to run this on OSX
@@ -219,7 +218,7 @@ fn check_thread_names(type_checks: TypeChecksConfig) {
     }
     let config = Config {
         include_idle: true,
-        type_checks,
+        type_check,
         ..Default::default()
     };
     let mut runner = TestRunner::new(config, "./tests/scripts/thread_names.py");
@@ -245,7 +244,7 @@ fn check_thread_names(type_checks: TypeChecksConfig) {
 }
 
 #[test]
-fn test_thread_names_subclass_depth() {
+fn test_thread_names_subclass() {
     #[cfg(target_os = "macos")]
     {
         // We need root permissions here to run this on OSX
@@ -262,43 +261,33 @@ fn test_thread_names_subclass_depth() {
         let child = ScriptRunner { child };
         std::thread::sleep(std::time::Duration::from_millis(400));
 
-        for max_subclass_depth in 0..=3 {
-            for thread_names in [false, true] {
-                let config = Config {
-                    include_idle: true,
-                    type_checks: TypeChecksConfig {
-                        thread_names,
-                        max_subclass_depth,
-                        ..TypeChecksConfig::disabled()
-                    },
-                    ..Default::default()
-                };
-                let mut spy = PythonSpy::retry_new(child.id(), &config, 20).unwrap();
-                if spy.version.major != 3 || spy.version.minor < 6 {
-                    return;
-                }
-                let mut names: Vec<Option<String>> = spy
-                    .get_stack_traces()
-                    .unwrap()
-                    .iter()
-                    .map(|trace| trace.thread_name.clone())
-                    .collect();
-                names.sort();
-
-                let expected = if thread_names && name_depth > max_subclass_depth {
-                    vec![None, None]
-                } else {
-                    vec![
-                        Some("MainThread".to_owned()),
-                        Some(format!("SubclassName-{}", name_depth)),
-                    ]
-                };
-                assert_eq!(
-                    names, expected,
-                    "name depth {}, max subclass depth {}, thread name checks {}",
-                    name_depth, max_subclass_depth, thread_names
-                );
+        for type_check in [false, true] {
+            let config = Config {
+                include_idle: true,
+                type_check,
+                ..Default::default()
+            };
+            let mut spy = PythonSpy::retry_new(child.id(), &config, 20).unwrap();
+            if spy.version.major != 3 || spy.version.minor < 6 {
+                return;
             }
+            let mut names: Vec<Option<String>> = spy
+                .get_stack_traces()
+                .unwrap()
+                .iter()
+                .map(|trace| trace.thread_name.clone())
+                .collect();
+            names.sort();
+
+            let expected = vec![
+                Some("MainThread".to_owned()),
+                Some(format!("SubclassName-{}", name_depth)),
+            ];
+            assert_eq!(
+                names, expected,
+                "name depth {}, type check {}",
+                name_depth, type_check
+            );
         }
     }
 }
@@ -521,15 +510,15 @@ fn test_cyrillic() {
 
 #[test]
 fn test_local_vars() {
-    check_local_vars(TypeChecksConfig::disabled());
+    check_local_vars(false);
 }
 
 #[test]
 fn test_local_vars_with_type_checks() {
-    check_local_vars(TypeChecksConfig::enabled());
+    check_local_vars(true);
 }
 
-fn check_local_vars(type_checks: TypeChecksConfig) {
+fn check_local_vars(type_check: bool) {
     #[cfg(target_os = "macos")]
     {
         // We need root permissions here to run this on OSX
@@ -540,7 +529,7 @@ fn check_local_vars(type_checks: TypeChecksConfig) {
 
     let config = Config {
         dump_locals: 1,
-        type_checks,
+        type_check,
         ..Default::default()
     };
     let mut runner = TestRunner::new(config, "./tests/scripts/local_vars.py");

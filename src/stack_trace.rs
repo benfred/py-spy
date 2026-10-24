@@ -98,13 +98,7 @@ where
             .copy_pointer(threads)
             .context("Failed to copy PyThreadState")?;
 
-        let mut trace = get_stack_trace(
-            &thread,
-            process,
-            dump_locals > 0,
-            lineno,
-            type_checks,
-        )?;
+        let mut trace = get_stack_trace(&thread, process, dump_locals > 0, lineno, type_checks)?;
         trace.owns_gil = trace.thread_id == gil_thread_id;
 
         ret.push(trace);
@@ -170,11 +164,7 @@ where
             .copy_pointer(frame.code())
             .context("Failed to copy PyCodeObject")?;
 
-        if checks
-            .code
-            .type_check(code.ob_type() as usize)
-            .is_err()
-        {
+        if checks.code.type_check(code.ob_type() as usize).is_err() {
             frame_ptr = frame.back();
             set_last_frame_as_shim_entry(&mut frames);
             continue;
@@ -185,10 +175,8 @@ where
 
         // Try to get qualname first (available in Python 3.11+), fall back to name
         let name = match code.qualname() {
-            Some(qualname_ptr) => {
-                copy_string(qualname_ptr, process, &checks.frame_strings)
-                    .or_else(|_| copy_string(code.name(), process, &checks.frame_strings))
-            }
+            Some(qualname_ptr) => copy_string(qualname_ptr, process, &checks.frame_strings)
+                .or_else(|_| copy_string(code.name(), process, &checks.frame_strings)),
             None => copy_string(code.name(), process, &checks.frame_strings),
         }
         .context("Failed to copy function name");
@@ -231,14 +219,8 @@ where
 
         let locals = if copy_locals {
             Some(
-                get_locals(
-                    &code,
-                    frame_ptr,
-                    &frame,
-                    process,
-                    &checks.locals_strings,
-                )
-                .context("Failed to get local variables")?,
+                get_locals(&code, frame_ptr, &frame, process, &checks.locals_strings)
+                    .context("Failed to get local variables")?,
             )
         } else {
             None

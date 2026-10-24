@@ -6,7 +6,6 @@ use clap::{
 };
 use remoteprocess::Pid;
 
-
 /// Options on how to collect samples from a python process
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
@@ -350,38 +349,13 @@ impl Config {
                     .action(ArgAction::Set),
             );
 
-        let type_checks = [
-            Arg::new("type_check_code")
-                .long("type-check-code")
-                .help("Skip frames whose code object is not a PyCode_Type")
-                .action(ArgAction::SetTrue),
-            Arg::new("type_check_frame_strings")
-                .long("type-check-frame-strings")
-                .help("Skip frames whose filename or function name is not a str")
-                .action(ArgAction::SetTrue),
-            Arg::new("type_check_thread_names")
-                .long("type-check-thread-names")
-                .help("Only accept str objects when looking up thread names")
-                .action(ArgAction::SetTrue),
-            Arg::new("type_check_locals_strings")
-                .long("type-check-locals-strings")
-                .help("Only accept str objects for local variable names and string values")
-                .action(ArgAction::SetTrue),
-            Arg::new("type_check_dicts")
-                .long("type-check-dicts")
-                .help("Only accept dict objects when looking up thread names or formatting locals")
-                .action(ArgAction::SetTrue),
-            Arg::new("type_check_max_subclass_depth")
-                .long("type-check-max-subclass-depth")
-                .value_name("depth")
-                .help("How many base classes to follow when a type check doesn't match exactly")
-                .default_value("0")
-                .value_parser(value_parser!(usize))
-                .action(ArgAction::Set),
-        ];
-        let record = record.args(type_checks.clone());
-        let top = top.args(type_checks.clone());
-        let dump = dump.args(type_checks);
+        let type_check = Arg::new("type_check")
+            .long("type-check")
+            .help("Skip code objects, strings and dicts that are not exactly of the expected python type")
+            .action(ArgAction::SetTrue);
+        let record = record.arg(type_check.clone());
+        let top = top.arg(type_check.clone());
+        let dump = dump.arg(type_check);
 
         let record = record.arg(native.clone());
         let top = top.arg(native.clone());

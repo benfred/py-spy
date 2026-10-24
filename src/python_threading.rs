@@ -32,22 +32,16 @@ pub fn thread_names_from_interpreter<I: InterpreterState, P: ProcessMemory>(
     let mut ret = HashMap::new();
     for entry in DictIterator::from(process, version, modules as usize, &checks.dicts)? {
         let (key, value) = entry?;
-        let module_name = copy_string(
-            key as *const I::StringObject,
-            process,
-            &checks.thread_names,
-        )?;
+        let module_name =
+            copy_string(key as *const I::StringObject, process, &checks.thread_names)?;
         if module_name == "threading" {
             let module: I::Object = process.copy_struct(value)?;
             let module_type = process.copy_pointer(module.ob_type())?;
             let dictptr: usize = process.copy_struct(value + module_type.dictoffset() as usize)?;
             for i in DictIterator::from(process, version, dictptr, &checks.dicts)? {
                 let (key, value) = i?;
-                let name = copy_string(
-                    key as *const I::StringObject,
-                    process,
-                    &checks.thread_names,
-                )?;
+                let name =
+                    copy_string(key as *const I::StringObject, process, &checks.thread_names)?;
                 if name == "_active" {
                     for i in DictIterator::from(process, version, value, &checks.dicts)? {
                         let (key, value) = i?;

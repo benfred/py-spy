@@ -660,24 +660,13 @@ pub mod tests {
         ret
     }
 
-    fn version37() -> Version {
-        Version {
-            major: 3,
-            minor: 7,
-            patch: 0,
-            release_flags: String::new(),
-            build_metadata: None,
-        }
-    }
-
     #[test]
     fn test_copy_string() {
         let original = "function_name";
         let obj = to_asciiobject(original);
 
         let unicode: &PyUnicodeObject = unsafe { std::mem::transmute(&obj.base) };
-        let copied =
-            copy_string(unicode, &LocalProcess, &version37(), &TypeCheck::Disabled).unwrap();
+        let copied = copy_string(unicode, &LocalProcess, &TypeCheck::Disabled).unwrap();
         assert_eq!(copied, original);
     }
 
@@ -692,20 +681,18 @@ pub mod tests {
         let check = TypeCheck::Enabled {
             address: STRING_TYPE,
             name: c"str",
-            max_subclass_depth: 0,
         };
         assert_eq!(
-            copy_string(unicode, &LocalProcess, &version37(), &check).unwrap(),
+            copy_string(unicode, &LocalProcess, &check).unwrap(),
             "function_name"
         );
         let check = TypeCheck::Enabled {
             address: STRING_TYPE + 0x20,
             name: c"str",
-            max_subclass_depth: 0,
         };
-        assert!(copy_string(unicode, &LocalProcess, &version37(), &check).is_err());
+        assert!(copy_string(unicode, &LocalProcess, &check).is_err());
         assert_eq!(
-            copy_string(unicode, &LocalProcess, &version37(), &TypeCheck::Disabled).unwrap(),
+            copy_string(unicode, &LocalProcess, &TypeCheck::Disabled).unwrap(),
             "function_name"
         );
     }
@@ -725,7 +712,6 @@ pub mod tests {
         let check = TypeCheck::Enabled {
             address: 0x2020,
             name: c"dict",
-            max_subclass_depth: 0,
         };
         let err = DictIterator::from(&LocalProcess, &version, addr, &check).err();
         assert!(err.is_some_and(|e| e.to_string().contains("is not a dict")));
@@ -737,8 +723,7 @@ pub mod tests {
         let original = "cafe😀";
         let obj = to_ucs4object(original);
         let unicode: &PyUnicodeObject = unsafe { std::mem::transmute(&obj.base) };
-        let copied =
-            copy_string(unicode, &LocalProcess, &version37(), &TypeCheck::Disabled).unwrap();
+        let copied = copy_string(unicode, &LocalProcess, &TypeCheck::Disabled).unwrap();
         assert_eq!(copied, original);
     }
 
@@ -753,8 +738,7 @@ pub mod tests {
             copy_nonoverlapping(bad.as_ptr(), dst, 4);
         }
         let unicode: &PyUnicodeObject = unsafe { std::mem::transmute(&obj.base) };
-        let err =
-            copy_string(unicode, &LocalProcess, &version37(), &TypeCheck::Disabled).unwrap_err();
+        let err = copy_string(unicode, &LocalProcess, &TypeCheck::Disabled).unwrap_err();
         assert!(
             err.to_string().contains("Invalid Unicode code point"),
             "unexpected error: {err}"

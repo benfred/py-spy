@@ -479,11 +479,7 @@ mod test {
             release_flags: "".to_owned(),
             build_metadata: None,
         };
-        let enabled = |address, name| TypeCheck::Enabled {
-            address,
-            name,
-            max_subclass_depth: 0,
-        };
+        let enabled = |address, name| TypeCheck::Enabled { address, name };
         let core_dump = |type_checks: TypeChecks| PythonCoreDump {
             core: CoreDump::new(&get_coredump_path("python_3_9_threads")).unwrap(),
             version: version.clone(),

@@ -19,15 +19,9 @@ pub enum TypeCheck {
 }
 
 impl TypeCheck {
-    pub fn type_check(
-        &self,
-        ob_type: usize,
-    ) -> Result<(), Error> {
-        let TypeCheck::Enabled {
-            address,
-            name,
-        } = *self
-        else {
+    pub fn type_check(&self, ob_type: usize) -> Result<(), Error> {
+        // todo check flags
+        let TypeCheck::Enabled { address, name } = *self else {
             return Ok(());
         };
         if ob_type != address {
@@ -221,67 +215,25 @@ mod tests {
     }
 
     #[test]
-    fn test_type_check_follows_bases_up_to_depth() {
-        let base = v3_7_0::PyTypeObject::default();
-        let child = v3_7_0::PyTypeObject {
-            tp_base: &base as *const _ as *mut _,
-            ..Default::default()
-        };
-        let grandchild = v3_7_0::PyTypeObject {
-            tp_base: &child as *const _ as *mut _,
-            ..Default::default()
-        };
-        let addr = |t: &v3_7_0::PyTypeObject| t as *const _ as usize;
-        let check = |max_subclass_depth| TypeCheck::Enabled {
-            address: addr(&base),
+    fn test_type_check_matches_exact_type() {
+        let check = TypeCheck::Enabled {
+            address: 0x2000,
             name: c"str",
         };
-
-        for depth in 0..4 {
-            let check = check(depth);
-            assert!(check
-                .type_check(&LocalProcess, &version(3), addr(&base))
-                .is_ok());
-            assert_eq!(
-                check
-                    .type_check(&LocalProcess, &version(3), addr(&child))
-                    .is_ok(),
-                depth >= 1
-            );
-            assert_eq!(
-                check
-                    .type_check(&LocalProcess, &version(3), addr(&grandchild))
-                    .is_ok(),
-                depth >= 2
-            );
-        }
-        assert!(TypeCheck::Disabled
-            .type_check(&LocalProcess, &version(3), 0x1234)
-            .is_ok());
-    }
-
-    fn resolve_checks(//todo inline
-        info: &PythonProcessInfo,
-        major: u64,
-        enabled: bool,
-    ) -> Result<TypeChecks, Error> {
-        TypeChecks::new(info, &LocalProcess, &version(major), enabled)
-    }
-
-    fn enabled_check(address: usize, name: &'static CStr) -> TypeCheck { //todo inline
-        TypeCheck::Enabled {
-            address,
-            name,
-        }
+        assert!(check.type_check(0x2000).is_ok());
+        let err = check.type_check(0x2020).unwrap_err();
+        assert!(err.to_string().contains("is not a str"));
+        assert!(TypeCheck::Disabled.type_check(0x1234).is_ok());
     }
 
     fn all_enabled([code, string, dict]: [usize; 3]) -> TypeChecks {
+        let enabled = |address, name| TypeCheck::Enabled { address, name };
         TypeChecks {
-            code: enabled_check(code, c"code"),
-            frame_strings: enabled_check(string, c"str"),
-            thread_names: enabled_check(string, c"str"),
-            locals_strings: enabled_check(string, c"str"),
-            dicts: enabled_check(dict, c"dict"),
+            code: enabled(code, c"code"),
+            frame_strings: enabled(string, c"str"),
+            thread_names: enabled(string, c"str"),
+            locals_strings: enabled(string, c"str"),
+            dicts: enabled(dict, c"dict"),
         }
     }
 
@@ -290,12 +242,11 @@ mod tests {
         let objects = type_objects!(v3_7_0);
         let addresses = type_addresses(&objects);
         let info = type_symbols(addresses, "PyUnicode_Type");
-        let config = TypeChecksConfig::enabled();
         assert_eq!(
-            resolve_checks(&info, 3, &config).unwrap(),
+            TypeChecks::new(&info, &LocalProcess, &version(3), true).unwrap(),
             all_enabled(addresses)
         );
-        assert!(resolve_checks(&info, 2, &config).is_err());
+        assert!(TypeChecks::new(&info, &LocalProcess, &version(2), true).is_err());
     }
 
     #[test]
@@ -303,69 +254,30 @@ mod tests {
         let objects = type_objects!(v2_7_15);
         let addresses = type_addresses(&objects);
         let info = type_symbols(addresses, "PyString_Type");
-        let config = TypeChecksConfig::enabled();
         assert_eq!(
-            resolve_checks(&info, 2, &config).unwrap(),
+            TypeChecks::new(&info, &LocalProcess, &version(2), true).unwrap(),
             all_enabled(addresses)
         );
-        assert!(resolve_checks(&info, 3, &config).is_err());
+        assert!(TypeChecks::new(&info, &LocalProcess, &version(3), true).is_err());
     }
 
     #[test]
-    fn test_type_checks_resolve_only_needed_types() {
-        let objects = type_objects!(v3_7_0);
-        let [code, _, _] = type_addresses(&objects);
-        let code_only = python_info_with_symbols([("PyCode_Type".to_owned(), code as u64)].into());
-
-        let disabled = resolve_checks(
-            &python_info_with_symbols(Default::default()),
-            3,
-            &TypeChecksConfig::disabled(),
-        )
-        .unwrap();
-        for check in [
-            disabled.code,
-            disabled.frame_strings,
-            disabled.thread_names,
-            disabled.locals_strings,
-            disabled.dicts,
-        ] {
-            assert_eq!(check, TypeCheck::Disabled);
-        }
-
-        let config = TypeChecksConfig {
-            code: true,
-            ..TypeChecksConfig::disabled()
-        };
+    fn test_type_checks_disabled_resolve_nothing() {
+        let no_symbols = python_info_with_symbols(Default::default());
         assert_eq!(
-            resolve_checks(&code_only, 3, &config).unwrap(),
+            TypeChecks::new(&no_symbols, &LocalProcess, &version(3), false).unwrap(),
             TypeChecks {
-                code: enabled_check(code, c"code"),
+                code: TypeCheck::Disabled,
                 frame_strings: TypeCheck::Disabled,
                 thread_names: TypeCheck::Disabled,
                 locals_strings: TypeCheck::Disabled,
                 dicts: TypeCheck::Disabled,
             }
         );
-        for config in [
-            TypeChecksConfig {
-                frame_strings: true,
-                ..TypeChecksConfig::disabled()
-            },
-            TypeChecksConfig {
-                thread_names: true,
-                ..TypeChecksConfig::disabled()
-            },
-            TypeChecksConfig {
-                locals_strings: true,
-                ..TypeChecksConfig::disabled()
-            },
-            TypeChecksConfig {
-                dicts: true,
-                ..TypeChecksConfig::disabled()
-            },
-        ] {
-            assert!(resolve_checks(&code_only, 3, &config).is_err());
-        }
+
+        let objects = type_objects!(v3_7_0);
+        let [code, _, _] = type_addresses(&objects);
+        let code_only = python_info_with_symbols([("PyCode_Type".to_owned(), code as u64)].into());
+        assert!(TypeChecks::new(&code_only, &LocalProcess, &version(3), true).is_err());
     }
 }
