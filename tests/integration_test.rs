@@ -286,10 +286,7 @@ fn test_thread_names_subclass_depth() {
                 names.sort();
 
                 let expected = if thread_names && name_depth > max_subclass_depth {
-                    vec![
-                        Some("<string type check error>".to_owned()),
-                        Some("MainThread".to_owned()),
-                    ]
+                    vec![None, None]
                 } else {
                     vec![
                         Some("MainThread".to_owned()),

@@ -6,7 +6,7 @@ use remoteprocess::{Pid, ProcessMemory};
 use serde_derive::Serialize;
 
 use crate::config::{Config, LineNo};
-use crate::python_data_access::{copy_bytes, copy_string, copy_string_or_placeholder};
+use crate::python_data_access::{copy_bytes, copy_string};
 use crate::python_interpreters::{
     CodeObject, FrameObject, InterpreterState, Object, ThreadState, TupleObject,
 };
@@ -337,7 +337,8 @@ fn get_locals<C: CodeObject, F: FrameObject, P: ProcessMemory>(
         let nameptr: *const C::StringObject =
             process.copy_struct(varnames.address(code.varnames() as usize, i))?;
 
-        let name = copy_string_or_placeholder(nameptr, process, version, check_names);
+        let name = copy_string(nameptr, process, version, check_names)
+            .context("Failed to copy local variable name")?;
         let addr: usize = process.copy_struct(locals_addr + i * ptr_size)?;
 
         // hack: handle things like None, True, False, small integer constants etc on Python 3.14
