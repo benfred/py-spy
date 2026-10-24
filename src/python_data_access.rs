@@ -435,7 +435,7 @@ where
         let value = copy_string(
             addr as *const I::StringObject,
             process,
-            &checks.locals_strings,
+            &checks.strings,
         )?
         .replace('\'', "\\\"")
         .replace('\n', "\\n");

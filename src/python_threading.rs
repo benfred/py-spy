@@ -33,7 +33,7 @@ pub fn thread_names_from_interpreter<I: InterpreterState, P: ProcessMemory>(
     for entry in DictIterator::from(process, version, modules as usize, &checks.dicts)? {
         let (key, value) = entry?;
         let module_name =
-            copy_string(key as *const I::StringObject, process, &checks.thread_names)?;
+            copy_string(key as *const I::StringObject, process, &checks.strings)?;
         if module_name == "threading" {
             let module: I::Object = process.copy_struct(value)?;
             let module_type = process.copy_pointer(module.ob_type())?;
@@ -41,7 +41,7 @@ pub fn thread_names_from_interpreter<I: InterpreterState, P: ProcessMemory>(
             for i in DictIterator::from(process, version, dictptr, &checks.dicts)? {
                 let (key, value) = i?;
                 let name =
-                    copy_string(key as *const I::StringObject, process, &checks.thread_names)?;
+                    copy_string(key as *const I::StringObject, process, &checks.strings)?;
                 if name == "_active" {
                     for i in DictIterator::from(process, version, value, &checks.dicts)? {
                         let (key, value) = i?;
@@ -72,13 +72,13 @@ pub fn thread_names_from_interpreter<I: InterpreterState, P: ProcessMemory>(
                             let varname = copy_string(
                                 key as *const I::StringObject,
                                 process,
-                                &checks.thread_names,
+                                &checks.strings,
                             )?;
                             if varname == "_name" {
                                 let threadname = copy_string(
                                     value as *const I::StringObject,
                                     process,
-                                    &checks.thread_names,
+                                    &checks.strings,
                                 )?;
                                 ret.insert(threadid as u64, threadname);
                                 break;

@@ -170,14 +170,14 @@ where
             continue;
         }
 
-        let filename = copy_string(code.filename(), process, &checks.frame_strings)
+        let filename = copy_string(code.filename(), process, &checks.strings)
             .context("Failed to copy filename");
 
         // Try to get qualname first (available in Python 3.11+), fall back to name
         let name = match code.qualname() {
-            Some(qualname_ptr) => copy_string(qualname_ptr, process, &checks.frame_strings)
-                .or_else(|_| copy_string(code.name(), process, &checks.frame_strings)),
-            None => copy_string(code.name(), process, &checks.frame_strings),
+            Some(qualname_ptr) => copy_string(qualname_ptr, process, &checks.strings)
+                .or_else(|_| copy_string(code.name(), process, &checks.strings)),
+            None => copy_string(code.name(), process, &checks.strings),
         }
         .context("Failed to copy function name");
 
@@ -219,7 +219,7 @@ where
 
         let locals = if copy_locals {
             Some(
-                get_locals(&code, frame_ptr, &frame, process, &checks.locals_strings)
+                get_locals(&code, frame_ptr, &frame, process, &checks.strings)
                     .context("Failed to get local variables")?,
             )
         } else {

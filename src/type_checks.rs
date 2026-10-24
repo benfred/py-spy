@@ -35,9 +35,7 @@ impl TypeCheck {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TypeChecks {
     pub code: TypeCheck,
-    pub frame_strings: TypeCheck,
-    pub thread_names: TypeCheck,
-    pub locals_strings: TypeCheck,
+    pub strings: TypeCheck,
     pub dicts: TypeCheck,
 }
 
@@ -64,9 +62,7 @@ impl TypeChecks {
         };
         Ok(TypeChecks {
             code: check("PyCode_Type", c"code")?,
-            frame_strings: check(string_symbol, c"str")?,
-            thread_names: check(string_symbol, c"str")?,
-            locals_strings: check(string_symbol, c"str")?,
+            strings: check(string_symbol, c"str")?,
             dicts: check("PyDict_Type", c"dict")?,
         })
     }
@@ -230,9 +226,7 @@ mod tests {
         let enabled = |address, name| TypeCheck::Enabled { address, name };
         TypeChecks {
             code: enabled(code, c"code"),
-            frame_strings: enabled(string, c"str"),
-            thread_names: enabled(string, c"str"),
-            locals_strings: enabled(string, c"str"),
+            strings: enabled(string, c"str"),
             dicts: enabled(dict, c"dict"),
         }
     }
@@ -268,9 +262,7 @@ mod tests {
             TypeChecks::new(&no_symbols, &LocalProcess, &version(3), false).unwrap(),
             TypeChecks {
                 code: TypeCheck::Disabled,
-                frame_strings: TypeCheck::Disabled,
-                thread_names: TypeCheck::Disabled,
-                locals_strings: TypeCheck::Disabled,
+                strings: TypeCheck::Disabled,
                 dicts: TypeCheck::Disabled,
             }
         );
