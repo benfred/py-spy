@@ -22,6 +22,7 @@ pub fn thread_names_from_interpreter<I: InterpreterState, P: ProcessMemory>(
     process: &P,
     version: &Version,
 ) -> Result<HashMap<u64, String>, Error> {
+    let checks = &addresses.type_checks;
     let modules_ptr_ptr = addresses.imports_modules_address as *const *const I::Object;
 
     let modules: *const I::Object = process
@@ -29,18 +30,20 @@ pub fn thread_names_from_interpreter<I: InterpreterState, P: ProcessMemory>(
         .context("Failed to copy modules PyObject")?;
 
     let mut ret = HashMap::new();
-    for entry in DictIterator::from(process, version, modules as usize)? {
+    for entry in DictIterator::from(process, version, modules as usize, &checks.dicts)? {
         let (key, value) = entry?;
-        let module_name = copy_string(key as *const I::StringObject, process)?;
+        let module_name =
+            copy_string(key as *const I::StringObject, process, &checks.strings)?;
         if module_name == "threading" {
             let module: I::Object = process.copy_struct(value)?;
             let module_type = process.copy_pointer(module.ob_type())?;
             let dictptr: usize = process.copy_struct(value + module_type.dictoffset() as usize)?;
-            for i in DictIterator::from(process, version, dictptr)? {
+            for i in DictIterator::from(process, version, dictptr, &checks.dicts)? {
                 let (key, value) = i?;
-                let name = copy_string(key as *const I::StringObject, process)?;
+                let name =
+                    copy_string(key as *const I::StringObject, process, &checks.strings)?;
                 if name == "_active" {
-                    for i in DictIterator::from(process, version, value)? {
+                    for i in DictIterator::from(process, version, value, &checks.dicts)? {
                         let (key, value) = i?;
                         let (threadid, _) = copy_long(process, version, key)?;
 
@@ -55,20 +58,28 @@ pub fn thread_names_from_interpreter<I: InterpreterState, P: ProcessMemory>(
                                 value,
                                 thread.ob_type() as usize,
                                 flags,
+                                &checks.dicts,
                             )?
                         } else {
                             let dict_offset = thread_type.dictoffset();
                             let dict_addr = (value as isize + dict_offset) as usize;
                             let thread_dict_addr: usize = process.copy_struct(dict_addr)?;
-                            DictIterator::from(process, version, thread_dict_addr)?
+                            DictIterator::from(process, version, thread_dict_addr, &checks.dicts)?
                         };
 
                         for i in dict_iter {
                             let (key, value) = i?;
-                            let varname = copy_string(key as *const I::StringObject, process)?;
+                            let varname = copy_string(
+                                key as *const I::StringObject,
+                                process,
+                                &checks.strings,
+                            )?;
                             if varname == "_name" {
-                                let threadname =
-                                    copy_string(value as *const I::StringObject, process)?;
+                                let threadname = copy_string(
+                                    value as *const I::StringObject,
+                                    process,
+                                    &checks.strings,
+                                )?;
                                 ret.insert(threadid as u64, threadname);
                                 break;
                             }

@@ -8,8 +8,9 @@ use serde_derive::Serialize;
 use crate::config::{Config, LineNo};
 use crate::python_data_access::{copy_bytes, copy_string};
 use crate::python_interpreters::{
-    CodeObject, FrameObject, InterpreterState, ThreadState, TupleObject,
+    CodeObject, FrameObject, InterpreterState, Object, ThreadState, TupleObject,
 };
+use crate::type_checks::{TypeCheck, TypeChecks};
 
 /// Call stack for a single python thread
 #[derive(Debug, Clone, Serialize)]
@@ -74,6 +75,7 @@ pub fn get_stack_traces<I, P>(
     process: &P,
     threadstate_address: usize,
     config: Option<&Config>,
+    type_checks: &TypeChecks,
 ) -> Result<Vec<StackTrace>, Error>
 where
     I: InterpreterState,
@@ -96,7 +98,7 @@ where
             .copy_pointer(threads)
             .context("Failed to copy PyThreadState")?;
 
-        let mut trace = get_stack_trace(&thread, process, dump_locals > 0, lineno)?;
+        let mut trace = get_stack_trace(&thread, process, dump_locals > 0, lineno, type_checks)?;
         trace.owns_gil = trace.thread_id == gil_thread_id;
 
         ret.push(trace);
@@ -115,6 +117,7 @@ pub fn get_stack_trace<T, P>(
     process: &P,
     copy_locals: bool,
     lineno: LineNo,
+    checks: &TypeChecks,
 ) -> Result<StackTrace, Error>
 where
     T: ThreadState,
@@ -161,14 +164,20 @@ where
             .copy_pointer(frame.code())
             .context("Failed to copy PyCodeObject")?;
 
-        let filename = copy_string(code.filename(), process).context("Failed to copy filename");
+        if checks.code.type_check(code.ob_type() as usize).is_err() {
+            frame_ptr = frame.back();
+            set_last_frame_as_shim_entry(&mut frames);
+            continue;
+        }
+
+        let filename = copy_string(code.filename(), process, &checks.strings)
+            .context("Failed to copy filename");
 
         // Try to get qualname first (available in Python 3.11+), fall back to name
         let name = match code.qualname() {
-            Some(qualname_ptr) => {
-                copy_string(qualname_ptr, process).or_else(|_| copy_string(code.name(), process))
-            }
-            None => copy_string(code.name(), process),
+            Some(qualname_ptr) => copy_string(qualname_ptr, process, &checks.strings)
+                .or_else(|_| copy_string(code.name(), process, &checks.strings)),
+            None => copy_string(code.name(), process, &checks.strings),
         }
         .context("Failed to copy function name");
 
@@ -210,7 +219,7 @@ where
 
         let locals = if copy_locals {
             Some(
-                get_locals(&code, frame_ptr, &frame, process)
+                get_locals(&code, frame_ptr, &frame, process, &checks.strings)
                     .context("Failed to get local variables")?,
             )
         } else {
@@ -287,6 +296,7 @@ fn get_locals<C: CodeObject, F: FrameObject, P: ProcessMemory>(
     frameptr: *const F,
     frame: &F,
     process: &P,
+    check_names: &TypeCheck,
 ) -> Result<Vec<LocalVariable>, Error> {
     let local_count = code.nlocals() as usize;
     let argcount = code.argcount() as usize;
@@ -303,7 +313,8 @@ fn get_locals<C: CodeObject, F: FrameObject, P: ProcessMemory>(
         let nameptr: *const C::StringObject =
             process.copy_struct(varnames.address(code.varnames() as usize, i))?;
 
-        let name = copy_string(nameptr, process).context("Failed to copy local variable name")?;
+        let name = copy_string(nameptr, process, check_names)
+            .context("Failed to copy local variable name")?;
         let addr: usize = process.copy_struct(locals_addr + i * ptr_size)?;
 
         // hack: handle things like None, True, False, small integer constants etc on Python 3.14

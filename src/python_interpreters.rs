@@ -59,7 +59,7 @@ pub trait FrameObject: Copy {
     }
 }
 
-pub trait CodeObject: Copy {
+pub trait CodeObject: Copy + Object {
     type StringObject: StringObject;
     type BytesObject: BytesObject;
     type TupleObject: TupleObject;
@@ -71,7 +71,6 @@ pub trait CodeObject: Copy {
     fn nlocals(&self) -> i32;
     fn argcount(&self) -> i32;
     fn varnames(&self) -> *mut Self::TupleObject;
-
     fn get_line_number(&self, lasti: i32, table: &[u8]) -> i32;
 
     /// Returns the qualified name (co_qualname) if available (Python 3.11+).
@@ -86,7 +85,7 @@ pub trait BytesObject: Copy {
     fn address(&self, base: usize) -> usize;
 }
 
-pub trait StringObject: Copy {
+pub trait StringObject: Copy + Object {
     fn ascii(&self) -> bool;
     fn kind(&self) -> u32;
     fn size(&self) -> usize;
@@ -200,7 +199,14 @@ macro_rules! PythonCommonImpl {
 
 // We can use this up until python3.10 - where code object lnotab attribute is deprecated
 macro_rules! PythonCodeObjectImpl {
-    ($py: ident, $bytesobject: ident, $stringobject: ident) => {
+    ($py: ident, $bytesobject: ident, $stringobject: ident, $($obtype: tt).+) => {
+        impl Object for $py::PyCodeObject {
+            type TypeObject = $py::PyTypeObject;
+            fn ob_type(&self) -> * mut Self::TypeObject {
+                self.$($obtype).+
+            }
+        }
+
         impl CodeObject for $py::PyCodeObject {
             type BytesObject = $py::$bytesobject;
             type StringObject = $py::$stringobject;
@@ -292,6 +298,13 @@ fn read_signed_varint(index: &mut usize, table: &[u8]) -> Option<isize> {
 // Use for 3.11 and 3.12
 macro_rules! CompactCodeObjectImpl {
     ($py: ident, $bytesobject: ident, $stringobject: ident) => {
+        impl Object for $py::PyCodeObject {
+            type TypeObject = $py::PyTypeObject;
+            fn ob_type(&self) -> *mut Self::TypeObject {
+                self.ob_base.ob_base.ob_type
+            }
+        }
+
         impl CodeObject for $py::PyCodeObject {
             type BytesObject = $py::$bytesobject;
             type StringObject = $py::$stringobject;
@@ -380,6 +393,14 @@ macro_rules! Python3Impl {
             }
             fn address(&self, base: usize) -> usize {
                 base + offset_of(self, &self.ob_sval)
+            }
+        }
+
+        impl Object for $py::PyUnicodeObject {
+            type TypeObject = $py::PyTypeObject;
+
+            fn ob_type(&self) -> *mut Self::TypeObject {
+                self._base._base.ob_base.ob_type
             }
         }
 
@@ -882,6 +903,13 @@ CompactCodeObjectImpl!(v3_11_0, PyBytesObject, PyUnicodeObject);
 Python3Impl!(v3_10_0);
 PythonCommonImpl!(v3_10_0, PyUnicodeObject);
 
+impl Object for v3_10_0::PyCodeObject {
+    type TypeObject = v3_10_0::PyTypeObject;
+    fn ob_type(&self) -> *mut Self::TypeObject {
+        self.ob_base.ob_type
+    }
+}
+
 impl CodeObject for v3_10_0::PyCodeObject {
     type BytesObject = v3_10_0::PyBytesObject;
     type StringObject = v3_10_0::PyUnicodeObject;
@@ -943,43 +971,51 @@ impl CodeObject for v3_10_0::PyCodeObject {
 
 // Python 3.9
 PythonCommonImpl!(v3_9_5, PyUnicodeObject);
-PythonCodeObjectImpl!(v3_9_5, PyBytesObject, PyUnicodeObject);
+PythonCodeObjectImpl!(v3_9_5, PyBytesObject, PyUnicodeObject, ob_base.ob_type);
 Python3Impl!(v3_9_5);
 
 // Python 3.8
 PythonCommonImpl!(v3_8_0, PyUnicodeObject);
-PythonCodeObjectImpl!(v3_8_0, PyBytesObject, PyUnicodeObject);
+PythonCodeObjectImpl!(v3_8_0, PyBytesObject, PyUnicodeObject, ob_base.ob_type);
 Python3Impl!(v3_8_0);
 
 // Python 3.7
 PythonCommonImpl!(v3_7_0, PyUnicodeObject);
-PythonCodeObjectImpl!(v3_7_0, PyBytesObject, PyUnicodeObject);
+PythonCodeObjectImpl!(v3_7_0, PyBytesObject, PyUnicodeObject, ob_base.ob_type);
 Python3Impl!(v3_7_0);
 
 // Python 3.6
 PythonCommonImpl!(v3_6_6, PyUnicodeObject);
-PythonCodeObjectImpl!(v3_6_6, PyBytesObject, PyUnicodeObject);
+PythonCodeObjectImpl!(v3_6_6, PyBytesObject, PyUnicodeObject, ob_base.ob_type);
 Python3Impl!(v3_6_6);
 
 // python 3.5 and python 3.4
 PythonCommonImpl!(v3_5_5, PyUnicodeObject);
-PythonCodeObjectImpl!(v3_5_5, PyBytesObject, PyUnicodeObject);
+PythonCodeObjectImpl!(v3_5_5, PyBytesObject, PyUnicodeObject, ob_base.ob_type);
 Python3Impl!(v3_5_5);
 
 // python 3.3
 PythonCommonImpl!(v3_3_7, PyUnicodeObject);
-PythonCodeObjectImpl!(v3_3_7, PyBytesObject, PyUnicodeObject);
+PythonCodeObjectImpl!(v3_3_7, PyBytesObject, PyUnicodeObject, ob_base.ob_type);
 Python3Impl!(v3_3_7);
 
 // Python 2.7
 PythonCommonImpl!(v2_7_15, PyStringObject);
-PythonCodeObjectImpl!(v2_7_15, PyStringObject, PyStringObject);
+PythonCodeObjectImpl!(v2_7_15, PyStringObject, PyStringObject, ob_type);
 impl BytesObject for v2_7_15::PyStringObject {
     fn size(&self) -> usize {
         self.ob_size as usize
     }
     fn address(&self, base: usize) -> usize {
         base + offset_of(self, &self.ob_sval)
+    }
+}
+
+impl Object for v2_7_15::PyStringObject {
+    type TypeObject = v2_7_15::_typeobject;
+
+    fn ob_type(&self) -> *mut Self::TypeObject {
+        self.ob_type
     }
 }
 

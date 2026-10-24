@@ -25,6 +25,7 @@ mod sampler;
 mod speedscope;
 mod stack_trace;
 mod timer;
+mod type_checks;
 mod utils;
 mod version;
 
@@ -405,7 +406,8 @@ fn pyspy_main() -> Result<(), Error> {
     #[cfg(target_os = "linux")]
     {
         if let Some(ref core_filename) = config.core_filename {
-            let core = coredump::PythonCoreDump::new(std::path::Path::new(&core_filename))?;
+            let core =
+                coredump::PythonCoreDump::new(std::path::Path::new(&core_filename), &config)?;
             let traces = core.get_stack(&config)?;
             return core.print_traces(&traces, &config);
         }
