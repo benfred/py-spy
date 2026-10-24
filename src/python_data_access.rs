@@ -32,7 +32,7 @@ pub fn copy_string<T: StringObject, P: ProcessMemory>(
     check: &TypeCheck,
 ) -> Result<String, Error> {
     let obj = process.copy_pointer(ptr)?;
-    check.type_check(process, version, obj.ob_type())?;
+    check.type_check(process, version, obj.ob_type() as usize)?;
     if obj.size() == 0 {
         return Ok(String::new());
     }

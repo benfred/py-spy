@@ -59,7 +59,7 @@ pub trait FrameObject: Copy {
     }
 }
 
-pub trait CodeObject: Copy {
+pub trait CodeObject: Copy + Object {
     type StringObject: StringObject;
     type BytesObject: BytesObject;
     type TupleObject: TupleObject;
@@ -71,8 +71,6 @@ pub trait CodeObject: Copy {
     fn nlocals(&self) -> i32;
     fn argcount(&self) -> i32;
     fn varnames(&self) -> *mut Self::TupleObject;
-    fn ob_type(&self) -> usize;
-
     fn get_line_number(&self, lasti: i32, table: &[u8]) -> i32;
 
     /// Returns the qualified name (co_qualname) if available (Python 3.11+).
@@ -87,8 +85,7 @@ pub trait BytesObject: Copy {
     fn address(&self, base: usize) -> usize;
 }
 
-pub trait StringObject: Copy {
-    fn ob_type(&self) -> usize;
+pub trait StringObject: Copy + Object {
     fn ascii(&self) -> bool;
     fn kind(&self) -> u32;
     fn size(&self) -> usize;
@@ -207,14 +204,18 @@ macro_rules! PythonCommonImpl {
 // We can use this up until python3.10 - where code object lnotab attribute is deprecated
 macro_rules! PythonCodeObjectImpl {
     ($py: ident, $bytesobject: ident, $stringobject: ident, $($obtype: tt).+) => {
+        impl Object for $py::PyCodeObject {
+            type TypeObject = $py::PyTypeObject;
+            fn ob_type(&self) -> * mut Self::TypeObject {
+                self.$($obtype).+
+            }
+        }
+
         impl CodeObject for $py::PyCodeObject {
             type BytesObject = $py::$bytesobject;
             type StringObject = $py::$stringobject;
             type TupleObject = $py::PyTupleObject;
 
-            fn ob_type(&self) -> usize {
-                self.$($obtype).+ as usize
-            }
             fn name(&self) -> *mut Self::StringObject {
                 self.co_name as *mut Self::StringObject
             }
@@ -301,14 +302,18 @@ fn read_signed_varint(index: &mut usize, table: &[u8]) -> Option<isize> {
 // Use for 3.11 and 3.12
 macro_rules! CompactCodeObjectImpl {
     ($py: ident, $bytesobject: ident, $stringobject: ident) => {
+        impl Object for $py::PyCodeObject {
+            type TypeObject = $py::PyTypeObject;
+            fn ob_type(&self) -> * mut Self::TypeObject {
+                self.ob_base.ob_base.ob_type
+            }
+        }
+
         impl CodeObject for $py::PyCodeObject {
             type BytesObject = $py::$bytesobject;
             type StringObject = $py::$stringobject;
             type TupleObject = $py::PyTupleObject;
 
-            fn ob_type(&self) -> usize {
-                self.ob_base.ob_base.ob_type as usize
-            }
             fn name(&self) -> *mut Self::StringObject {
                 self.co_name as *mut Self::StringObject
             }
@@ -395,10 +400,15 @@ macro_rules! Python3Impl {
             }
         }
 
-        impl StringObject for $py::PyUnicodeObject {
-            fn ob_type(&self) -> usize {
-                self._base._base.ob_base.ob_type as usize
+        impl Object for $py::PyUnicodeObject {
+            type TypeObject = $py::PyTypeObject;
+
+            fn ob_type(&self) -> * mut Self::TypeObject {
+                self._base._base.ob_base.ob_type
             }
+        }
+
+        impl StringObject for $py::PyUnicodeObject {
             fn ascii(&self) -> bool {
                 self._base._base.state.ascii() != 0
             }
@@ -912,14 +922,18 @@ CompactCodeObjectImpl!(v3_11_0, PyBytesObject, PyUnicodeObject);
 Python3Impl!(v3_10_0);
 PythonCommonImpl!(v3_10_0, PyUnicodeObject);
 
+impl Object for v3_10_0::PyCodeObject {
+    type TypeObject = v3_10_0::PyTypeObject;
+    fn ob_type(&self) -> * mut Self::TypeObject {
+        self.ob_base.ob_type
+    }
+}
+
 impl CodeObject for v3_10_0::PyCodeObject {
     type BytesObject = v3_10_0::PyBytesObject;
     type StringObject = v3_10_0::PyUnicodeObject;
     type TupleObject = v3_10_0::PyTupleObject;
 
-    fn ob_type(&self) -> usize {
-        self.ob_base.ob_type as usize
-    }
     fn name(&self) -> *mut Self::StringObject {
         self.co_name as *mut Self::StringObject
     }
@@ -1016,10 +1030,15 @@ impl BytesObject for v2_7_15::PyStringObject {
     }
 }
 
-impl StringObject for v2_7_15::PyStringObject {
-    fn ob_type(&self) -> usize {
-        self.ob_type as usize
+impl Object for v2_7_15::PyStringObject {
+    type TypeObject = v2_7_15::_typeobject;
+
+    fn ob_type(&self) -> *mut Self::TypeObject {
+        self.ob_type
     }
+}
+
+impl StringObject for v2_7_15::PyStringObject {
     fn ascii(&self) -> bool {
         true
     }

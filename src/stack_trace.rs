@@ -8,7 +8,7 @@ use serde_derive::Serialize;
 use crate::config::{Config, LineNo};
 use crate::python_data_access::{copy_bytes, copy_string, copy_string_or_placeholder};
 use crate::python_interpreters::{
-    CodeObject, FrameObject, InterpreterState, ThreadState, TupleObject,
+    CodeObject, FrameObject, InterpreterState, Object, ThreadState, TupleObject,
 };
 use crate::type_checks::{TypeCheck, TypeChecks};
 use crate::version::Version;
@@ -176,7 +176,7 @@ where
 
         if checks
             .code
-            .type_check(process, version, code.ob_type())
+            .type_check(process, version, code.ob_type() as usize)
             .is_err()
         {
             frame_ptr = frame.back();
