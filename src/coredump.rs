@@ -511,11 +511,12 @@ mod test {
             dump_locals: 1,
             ..Default::default()
         };
-        let checked = core_dump(Some(Types {
+        let types = Types {
             code: 0x55a827436c00,
-        }))
-        .get_stack(&config)
-        .unwrap();
+            string: 0x55a82744dd00,
+            dict: 0x55a827456060,
+        };
+        let checked = core_dump(Some(types)).get_stack(&config).unwrap();
         let unchecked = python_core.get_stack(&config).unwrap();
         assert_eq!(checked.len(), unchecked.len());
         for (checked, unchecked) in checked.iter().zip(&unchecked) {
@@ -523,9 +524,12 @@ mod test {
             assert_eq!(checked.frames, unchecked.frames);
         }
 
-        let err = core_dump(Some(Types { code: 0x239 }))
-            .get_stack(&config)
-            .unwrap_err();
+        let err = core_dump(Some(Types {
+            code: 0x239,
+            ..types
+        }))
+        .get_stack(&config)
+        .unwrap_err();
         assert!(format!("{err:#}").contains("is not a code object"));
     }
 }

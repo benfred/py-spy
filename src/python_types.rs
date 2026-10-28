@@ -16,6 +16,8 @@ use crate::version::Version;
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Types {
     pub code: usize,
+    pub string: usize,
+    pub dict: usize,
 }
 
 impl Types {
@@ -40,8 +42,15 @@ impl Types {
         process: &P,
         version: &Version,
     ) -> Result<Types, Error> {
+        let string_symbol = if version.major == 2 {
+            "PyString_Type"
+        } else {
+            "PyUnicode_Type"
+        };
         Ok(Types {
             code: Types::get_type_address(python_info, process, version, "PyCode_Type", c"code")?,
+            string: Types::get_type_address(python_info, process, version, string_symbol, c"str")?,
+            dict: Types::get_type_address(python_info, process, version, "PyDict_Type", c"dict")?,
         })
     }
 
@@ -110,8 +119,12 @@ mod tests {
     }
 
     fn version_3_7() -> Version {
+        version(3)
+    }
+
+    fn version(major: u64) -> Version {
         Version {
-            major: 3,
+            major,
             minor: 7,
             patch: 0,
             release_flags: String::new(),
@@ -150,5 +163,45 @@ mod tests {
     fn test_get_code_type_address_without_symbol() {
         let info = python_info_with_symbols(Default::default());
         assert!(get_code_type_address(&info).is_err());
+    }
+
+    macro_rules! type_objects {
+        ($py: ident) => {
+            [c"code", c"str", c"dict"].map(|name| $py::PyTypeObject {
+                tp_name: name.as_ptr(),
+                ..Default::default()
+            })
+        };
+    }
+
+    fn type_symbols<T>(objects: &[T; 3], string_symbol: &str) -> (PythonProcessInfo, Types) {
+        let [code, string, dict] = objects.each_ref().map(|t| t as *const T as usize);
+        let info = python_info_with_symbols(
+            [
+                ("PyCode_Type".to_owned(), code as u64),
+                (string_symbol.to_owned(), string as u64),
+                ("PyDict_Type".to_owned(), dict as u64),
+            ]
+            .into(),
+        );
+        (info, Types { code, string, dict })
+    }
+
+    #[test]
+    fn test_types_from_symbols_python3() {
+        let objects = type_objects!(v3_7_0);
+        let (info, expected) = type_symbols(&objects, "PyUnicode_Type");
+        let types = Types::from_symbols(&info, &LocalProcess, &version(3)).unwrap();
+        assert_eq!(types, expected);
+        assert!(Types::from_symbols(&info, &LocalProcess, &version(2)).is_err());
+    }
+
+    #[test]
+    fn test_types_from_symbols_python2() {
+        let objects = type_objects!(v2_7_15);
+        let (info, expected) = type_symbols(&objects, "PyString_Type");
+        let types = Types::from_symbols(&info, &LocalProcess, &version(2)).unwrap();
+        assert_eq!(types, expected);
+        assert!(Types::from_symbols(&info, &LocalProcess, &version(3)).is_err());
     }
 }
