@@ -342,7 +342,7 @@ impl PythonCoreDump {
             &self.core,
             self.addresses.threadstate_address,
             Some(config),
-            self.addresses.types.as_ref(),
+            &self.addresses.type_checks,
         )?;
 
         let thread_names = thread_names_from_interpreter::<I, CoreDump>(
@@ -366,7 +366,7 @@ impl PythonCoreDump {
                             &self.version,
                             local.addr,
                             max_length,
-                            self.addresses.types.as_ref(),
+                            &self.addresses.type_checks,
                         );
                         local.repr = Some(repr.unwrap_or_else(|_| "?".to_owned()));
                     }
@@ -463,7 +463,7 @@ mod elfcore {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::python_process_info::Types;
+    use crate::python_process_info::{TypeChecks, Types};
     use py_spy_testdata::get_coredump_path;
 
     #[cfg(target_pointer_width = "64")]
@@ -479,17 +479,17 @@ mod test {
             release_flags: "".to_owned(),
             build_metadata: None,
         };
-        let core_dump = |types| PythonCoreDump {
+        let core_dump = |type_checks| PythonCoreDump {
             core: CoreDump::new(&get_coredump_path("python_3_9_threads")).unwrap(),
             version: version.clone(),
             addresses: PythonProcessLayout {
                 interpreter_address: 0x000055a8293dbe20,
                 threadstate_address: 0x000055a82745fe18,
                 imports_modules_address: 0x55a8293dc178,
-                types,
+                type_checks,
             },
         };
-        let python_core = core_dump(None);
+        let python_core = core_dump(TypeChecks::Disabled);
 
         let config = Config::default();
         let traces = python_core.get_stack(&config).unwrap();
@@ -516,9 +516,10 @@ mod test {
             code: 0x55a827436c00,
             string: 0x55a82744dd00,
             dict: 0x55a827456060,
-            allow_subclasses: false,
         };
-        let checked = core_dump(Some(types)).get_stack(&config).unwrap();
+        let checked = core_dump(TypeChecks::Strict(types))
+            .get_stack(&config)
+            .unwrap();
         let unchecked = python_core.get_stack(&config).unwrap();
         assert_eq!(checked.len(), unchecked.len());
         for (checked, unchecked) in checked.iter().zip(&unchecked) {
@@ -526,7 +527,7 @@ mod test {
             assert_eq!(checked.frames, unchecked.frames);
         }
 
-        let err = core_dump(Some(Types {
+        let err = core_dump(TypeChecks::Strict(Types {
             code: 0x239,
             ..types
         }))

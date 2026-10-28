@@ -5,7 +5,7 @@ use crate::python_bindings::v3_13_0;
 use crate::python_interpreters::{
     BytesObject, InterpreterState, ListObject, Object, StringObject, TupleObject, TypeObject,
 };
-use crate::python_process_info::Types;
+use crate::python_process_info::TypeChecks;
 use crate::utils::offset_of;
 use crate::version::Version;
 use remoteprocess::ProcessMemory;
@@ -14,12 +14,10 @@ use remoteprocess::ProcessMemory;
 pub fn copy_string<T: StringObject, P: ProcessMemory>(
     ptr: *const T,
     process: &P,
-    types: Option<&Types>,
+    type_checks: &TypeChecks,
 ) -> Result<String, Error> {
     let obj = process.copy_pointer(ptr)?;
-    if let Some(types) = types {
-        types.check_string(process, &obj)?;
-    }
+    type_checks.check_string(process, &obj)?;
     if obj.size() == 0 {
         return Ok(String::new());
     }
@@ -176,7 +174,7 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
         addr: usize,
         tp_addr: usize,
         flags: usize,
-        types: Option<&Types>,
+        type_checks: &TypeChecks,
     ) -> Result<DictIterator<'a, P>, Error> {
         // Handles logic of _PyObject_ManagedDictPointer in python 3.11
         let mut values_addr: usize =
@@ -235,7 +233,7 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
                 values: values_addr,
             })
         } else if dict_addr != 0 {
-            DictIterator::from(process, version, dict_addr, types)
+            DictIterator::from(process, version, dict_addr, type_checks)
         } else {
             Err(format_err!("neither values or dict is set in managed dict"))
         }
@@ -245,7 +243,7 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
         process: &'a P,
         version: &'a Version,
         addr: usize,
-        types: Option<&Types>,
+        type_checks: &TypeChecks,
     ) -> Result<DictIterator<'a, P>, Error> {
         match version {
             Version {
@@ -255,9 +253,7 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
             } => {
                 let dict: crate::python_bindings::v3_11_0::PyDictObject =
                     process.copy_struct(addr)?;
-                if let Some(types) = types {
-                    types.check_dict(process, dict.ob_base.ob_type)?;
-                }
+                type_checks.check_dict(process, dict.ob_base.ob_type)?;
                 let keys = process.copy_pointer(dict.ma_keys)?;
 
                 let entries_addr = dict.ma_keys as usize
@@ -275,9 +271,7 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
             _ => {
                 let dict: crate::python_bindings::v3_7_0::PyDictObject =
                     process.copy_struct(addr)?;
-                if let Some(types) = types {
-                    types.check_dict(process, dict.ob_base.ob_type)?;
-                }
+                type_checks.check_dict(process, dict.ob_base.ob_type)?;
                 // Getting this going generically is tricky: there is a lot of variation on how dictionaries are handled
                 // instead this just focuses on a single version, which works for python
                 // 3.6/3.7/3.8/3.9/3.10
@@ -387,7 +381,7 @@ pub fn format_variable<I, P>(
     version: &Version,
     addr: usize,
     max_length: isize,
-    types: Option<&Types>,
+    type_checks: &TypeChecks,
 ) -> Result<String, Error>
 where
     I: InterpreterState,
@@ -438,7 +432,7 @@ where
     } else if flags & PY_TPFLAGS_STRING_SUBCLASS != 0
         || (version.major == 2 && (flags & PY_TPFLAGS_BYTES_SUBCLASS != 0))
     {
-        let value = copy_string(addr as *const I::StringObject, process, types)?
+        let value = copy_string(addr as *const I::StringObject, process, type_checks)?
             .replace('\'', "\\\"")
             .replace('\n', "\\n");
         if let Some((offset, _)) = value.char_indices().nth((max_length - 5) as usize) {
@@ -450,10 +444,11 @@ where
         if version.major == 3 && version.minor >= 6 {
             let mut values = Vec::new();
             let mut remaining = max_length - 2;
-            for entry in DictIterator::from(process, version, addr, types)? {
+            for entry in DictIterator::from(process, version, addr, type_checks)? {
                 let (key, value) = entry?;
-                let key = format_variable::<I, P>(process, version, key, remaining, types)?;
-                let value = format_variable::<I, P>(process, version, value, remaining, types)?;
+                let key = format_variable::<I, P>(process, version, key, remaining, type_checks)?;
+                let value =
+                    format_variable::<I, P>(process, version, value, remaining, type_checks)?;
                 remaining -= (key.len() + value.len()) as isize + 4;
                 if remaining <= 5 {
                     values.push("...".to_owned());
@@ -474,8 +469,13 @@ where
         for i in 0..object.size() {
             let valueptr: *mut I::Object =
                 process.copy_struct(addr + i * std::mem::size_of::<*mut I::Object>())?;
-            let value =
-                format_variable::<I, P>(process, version, valueptr as usize, remaining, types)?;
+            let value = format_variable::<I, P>(
+                process,
+                version,
+                valueptr as usize,
+                remaining,
+                type_checks,
+            )?;
             remaining -= value.len() as isize + 2;
             if remaining <= 5 {
                 values.push("...".to_owned());
@@ -490,8 +490,13 @@ where
         let mut remaining = max_length - 2;
         for i in 0..object.size() {
             let value_addr: *mut I::Object = process.copy_struct(object.address(addr, i))?;
-            let value =
-                format_variable::<I, P>(process, version, value_addr as usize, remaining, types)?;
+            let value = format_variable::<I, P>(
+                process,
+                version,
+                value_addr as usize,
+                remaining,
+                type_checks,
+            )?;
             remaining -= value.len() as isize + 2;
             if remaining <= 5 {
                 values.push("...".to_owned());
@@ -668,7 +673,7 @@ pub mod tests {
         let obj = to_asciiobject(original);
 
         let unicode: &PyUnicodeObject = unsafe { std::mem::transmute(&obj.base) };
-        let copied = copy_string(unicode, &LocalProcess, None).unwrap();
+        let copied = copy_string(unicode, &LocalProcess, &TypeChecks::Disabled).unwrap();
         assert_eq!(copied, original);
     }
 
@@ -678,7 +683,7 @@ pub mod tests {
         let original = "cafe😀";
         let obj = to_ucs4object(original);
         let unicode: &PyUnicodeObject = unsafe { std::mem::transmute(&obj.base) };
-        let copied = copy_string(unicode, &LocalProcess, None).unwrap();
+        let copied = copy_string(unicode, &LocalProcess, &TypeChecks::Disabled).unwrap();
         assert_eq!(copied, original);
     }
 
@@ -693,7 +698,7 @@ pub mod tests {
             copy_nonoverlapping(bad.as_ptr(), dst, 4);
         }
         let unicode: &PyUnicodeObject = unsafe { std::mem::transmute(&obj.base) };
-        let err = copy_string(unicode, &LocalProcess, None).unwrap_err();
+        let err = copy_string(unicode, &LocalProcess, &TypeChecks::Disabled).unwrap_err();
         assert!(
             err.to_string().contains("Invalid Unicode code point"),
             "unexpected error: {err}"
