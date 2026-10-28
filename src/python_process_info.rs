@@ -53,6 +53,36 @@ pub struct Types {
     pub code: usize,
 }
 
+impl Types {
+    pub fn new<P: ProcessMemory>(
+        python_info: &PythonProcessInfo,
+        process: &P,
+        version: &Version,
+        config: &Config,
+    ) -> Result<Option<Types>, Error> {
+        if !config.type_checks {
+            return Ok(None);
+        }
+        Types::from_symbols(python_info, process, version).map(Some)
+    }
+
+    fn from_symbols<P: ProcessMemory>(
+        python_info: &PythonProcessInfo,
+        process: &P,
+        version: &Version,
+    ) -> Result<Types, Error> {
+        Ok(Types {
+            code: PythonProcessLayout::get_type_address(
+                python_info,
+                process,
+                version,
+                "PyCode_Type",
+                c"code",
+            )?,
+        })
+    }
+}
+
 impl PythonProcessInfo {
     pub fn new(process: &remoteprocess::Process) -> Result<PythonProcessInfo, Error> {
         let filename = process
@@ -521,19 +551,7 @@ impl PythonProcessLayout {
     where
         P: ProcessMemory,
     {
-        let types = if config.type_checks {
-            Some(Types {
-                code: PythonProcessLayout::get_type_address(
-                    python_info,
-                    process,
-                    version,
-                    "PyCode_Type",
-                    c"code",
-                )?,
-            })
-        } else {
-            None
-        };
+        let types = Types::new(python_info, process, version, config)?;
 
         // get the address of the main PyInterpreterState object from loaded symbols if we can
         // (this tends to be faster than scanning through the bss section)
