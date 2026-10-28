@@ -10,6 +10,7 @@ use crate::python_data_access::{copy_bytes, copy_string};
 use crate::python_interpreters::{
     CodeObject, FrameObject, InterpreterState, Object, ThreadState, TupleObject,
 };
+use crate::python_process_info::Types;
 
 /// Call stack for a single python thread
 #[derive(Debug, Clone, Serialize)]
@@ -74,7 +75,7 @@ pub fn get_stack_traces<I, P>(
     process: &P,
     threadstate_address: usize,
     config: Option<&Config>,
-    code_type_address: Option<usize>,
+    types: Option<Types>,
 ) -> Result<Vec<StackTrace>, Error>
 where
     I: InterpreterState,
@@ -97,8 +98,7 @@ where
             .copy_pointer(threads)
             .context("Failed to copy PyThreadState")?;
 
-        let mut trace =
-            get_stack_trace(&thread, process, dump_locals > 0, lineno, code_type_address)?;
+        let mut trace = get_stack_trace(&thread, process, dump_locals > 0, lineno, types)?;
         trace.owns_gil = trace.thread_id == gil_thread_id;
 
         ret.push(trace);
@@ -117,7 +117,7 @@ pub fn get_stack_trace<T, P>(
     process: &P,
     copy_locals: bool,
     lineno: LineNo,
-    code_type_address: Option<usize>,
+    types: Option<Types>,
 ) -> Result<StackTrace, Error>
 where
     T: ThreadState,
@@ -164,7 +164,7 @@ where
             .copy_pointer(frame.code())
             .context("Failed to copy PyCodeObject")?;
 
-        if code_type_address.is_some_and(|addr| addr != code.ob_type() as usize) {
+        if types.is_some_and(|types| types.code != code.ob_type() as usize) {
             frame_ptr = frame.back();
             set_last_frame_as_shim_entry(&mut frames);
             continue;

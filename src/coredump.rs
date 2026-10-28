@@ -342,7 +342,7 @@ impl PythonCoreDump {
             &self.core,
             self.addresses.threadstate_address,
             Some(config),
-            self.addresses.code_type_address,
+            self.addresses.types,
         )?;
 
         let thread_names = thread_names_from_interpreter::<I, CoreDump>(
@@ -462,6 +462,7 @@ mod elfcore {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::python_process_info::Types;
     use py_spy_testdata::get_coredump_path;
 
     #[cfg(target_pointer_width = "64")]
@@ -477,14 +478,14 @@ mod test {
             release_flags: "".to_owned(),
             build_metadata: None,
         };
-        let core_dump = |code_type_address| PythonCoreDump {
+        let core_dump = |types| PythonCoreDump {
             core: CoreDump::new(&get_coredump_path("python_3_9_threads")).unwrap(),
             version: version.clone(),
             addresses: PythonProcessLayout {
                 interpreter_address: 0x000055a8293dbe20,
                 threadstate_address: 0x000055a82745fe18,
                 imports_modules_address: 0x55a8293dc178,
-                code_type_address,
+                types,
             },
         };
         let python_core = core_dump(None);
@@ -510,7 +511,11 @@ mod test {
             dump_locals: 1,
             ..Default::default()
         };
-        let checked = core_dump(Some(0x55a827436c00)).get_stack(&config).unwrap();
+        let checked = core_dump(Some(Types {
+            code: 0x55a827436c00,
+        }))
+        .get_stack(&config)
+        .unwrap();
         let unchecked = python_core.get_stack(&config).unwrap();
         assert_eq!(checked.len(), unchecked.len());
         for (checked, unchecked) in checked.iter().zip(&unchecked) {

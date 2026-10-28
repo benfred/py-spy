@@ -3,6 +3,7 @@ use regex::Regex;
 use regex::RegexBuilder;
 #[cfg(windows)]
 use std::collections::HashMap;
+use std::ffi::CStr;
 use std::mem::size_of;
 use std::path::Path;
 use std::slice;
@@ -43,7 +44,13 @@ pub struct PythonProcessLayout {
     pub interpreter_address: usize,
     pub threadstate_address: usize,
     pub imports_modules_address: usize,
-    pub code_type_address: Option<usize>,
+    pub types: Option<Types>,
+}
+
+/// Addresses of static python type objects, used to check the types of objects we read
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct Types {
+    pub code: usize,
 }
 
 impl PythonProcessInfo {
@@ -495,38 +502,6 @@ macro_rules! dispatch_by_version {
     }
 }
 
-/// Resolves PyCode_Type, so code objects can be checked against it.
-/// Fails unless `tp_name` matches, so a wrongly resolved address is never used.
-fn get_code_type_address<P: ProcessMemory>(
-    python_info: &PythonProcessInfo,
-    process: &P,
-    version: &Version,
-) -> Result<usize, Error> {
-    fn read_tp_name<I: InterpreterState, P: ProcessMemory>(
-        process: &P,
-        addr: usize,
-    ) -> Result<usize, Error> {
-        let type_object: <I::Object as Object>::TypeObject = process.copy_struct(addr)?;
-        Ok(type_object.name() as usize)
-    }
-
-    let addr = *python_info
-        .get_symbol("PyCode_Type")
-        .ok_or_else(|| format_err!("Failed to find PyCode_Type symbol"))? as usize;
-
-    let tp_name_ptr = dispatch_by_version!(version, read_tp_name, process, addr)
-        .context("Failed to read type object")?;
-
-    let tp_name = c"code".to_bytes_with_nul();
-    let name = process
-        .copy(tp_name_ptr, tp_name.len())
-        .context("Failed to read tp_name")?;
-    if name != tp_name {
-        return Err(format_err!("Unexpected tp_name"));
-    }
-    Ok(addr)
-}
-
 impl PythonProcessLayout {
     /// Loads addresses and offsets from a target python process. These addresses include
     /// the address of the python interpreter, the address of which thread holds the GIL,
@@ -546,24 +521,23 @@ impl PythonProcessLayout {
     where
         P: ProcessMemory,
     {
-        let code_type_address = if config.type_checks {
-            Some(
-                get_code_type_address(python_info, process, version)
-                    .context("Failed to resolve PyCode_Type")?,
-            )
+        let types = if config.type_checks {
+            Some(Types {
+                code: PythonProcessLayout::get_type_address(
+                    python_info,
+                    process,
+                    version,
+                    "PyCode_Type",
+                    c"code",
+                )?,
+            })
         } else {
             None
         };
 
         // get the address of the main PyInterpreterState object from loaded symbols if we can
         // (this tends to be faster than scanning through the bss section)
-        match PythonProcessLayout::from_symbols(
-            python_info,
-            process,
-            version,
-            config,
-            code_type_address,
-        ) {
+        match PythonProcessLayout::from_symbols(python_info, process, version, config, types) {
             Ok(addr) => {
                 // Check that the symbol address is valid before returning by attempting to load a stack trace
                 match dispatch_by_version!(
@@ -573,7 +547,7 @@ impl PythonProcessLayout {
                     process,
                     addr.threadstate_address,
                     None,
-                    code_type_address
+                    types
                 ) {
                     Ok(_) => {
                         return Ok(addr);
@@ -592,7 +566,42 @@ impl PythonProcessLayout {
         }
 
         // If we can't load up the symbols, try scanning the python and libpython binaries
-        PythonProcessLayout::from_binaries(python_info, process, version, config, code_type_address)
+        PythonProcessLayout::from_binaries(python_info, process, version, config, types)
+    }
+
+    /// Resolves a static python type, so objects read as that type can be checked against it.
+    /// Fails unless `tp_name` matches, so a wrongly resolved address is never used.
+    fn get_type_address<P: ProcessMemory>(
+        python_info: &PythonProcessInfo,
+        process: &P,
+        version: &Version,
+        symbol: &str,
+        tp_name: &CStr,
+    ) -> Result<usize, Error> {
+        fn read_tp_name<I: InterpreterState, P: ProcessMemory>(
+            process: &P,
+            addr: usize,
+        ) -> Result<usize, Error> {
+            let type_object: <I::Object as Object>::TypeObject = process.copy_struct(addr)?;
+            Ok(type_object.name() as usize)
+        }
+
+        let addr = *python_info
+            .get_symbol(symbol)
+            .ok_or_else(|| format_err!("Failed to find {} symbol", symbol))?
+            as usize;
+
+        let tp_name_ptr = dispatch_by_version!(version, read_tp_name, process, addr)
+            .with_context(|| format!("Failed to read {} type object", symbol))?;
+
+        let tp_name = tp_name.to_bytes_with_nul();
+        let name = process
+            .copy(tp_name_ptr, tp_name.len())
+            .with_context(|| format!("Failed to read {} tp_name", symbol))?;
+        if name != tp_name {
+            return Err(format_err!("Unexpected {} tp_name", symbol));
+        }
+        Ok(addr)
     }
 
     // initializes a new PythonProcessLayout from loaded symbols
@@ -601,7 +610,7 @@ impl PythonProcessLayout {
         process: &P,
         version: &Version,
         config: &Config,
-        code_type_address: Option<usize>,
+        types: Option<Types>,
     ) -> Result<PythonProcessLayout, Error>
     where
         P: ProcessMemory,
@@ -618,7 +627,7 @@ impl PythonProcessLayout {
                         process,
                         version,
                         config,
-                        code_type_address,
+                        types,
                     );
                 }
             }
@@ -637,7 +646,7 @@ impl PythonProcessLayout {
                         process,
                         version,
                         config,
-                        code_type_address,
+                        types,
                     );
                 }
             }
@@ -652,7 +661,7 @@ impl PythonProcessLayout {
                         process,
                         version,
                         config,
-                        code_type_address,
+                        types,
                     );
                 }
             }
@@ -669,21 +678,15 @@ impl PythonProcessLayout {
         process: &P,
         version: &Version,
         config: &Config,
-        code_type_address: Option<usize>,
+        types: Option<Types>,
     ) -> Result<PythonProcessLayout, Error>
     where
         P: ProcessMemory,
     {
         // try scanning the BSS section of the binary for things that might be the interpreterstate
         let err = if let Some(ref pb) = python_info.python_binary {
-            match PythonProcessLayout::from_binary(
-                pb,
-                python_info,
-                process,
-                version,
-                config,
-                code_type_address,
-            ) {
+            match PythonProcessLayout::from_binary(pb, python_info, process, version, config, types)
+            {
                 Ok(addr) => return Ok(addr),
                 err => Some(err),
             }
@@ -700,7 +703,7 @@ impl PythonProcessLayout {
                 process,
                 version,
                 config,
-                code_type_address,
+                types,
             ) {
                 Ok(addr) => Ok(addr),
                 lib_err => err.unwrap_or(lib_err),
@@ -716,7 +719,7 @@ impl PythonProcessLayout {
         process: &P,
         version: &Version,
         config: &Config,
-        code_type_address: Option<usize>,
+        types: Option<Types>,
     ) -> Result<PythonProcessLayout, Error>
     where
         P: ProcessMemory,
@@ -730,7 +733,7 @@ impl PythonProcessLayout {
                 process,
                 version,
                 config,
-                code_type_address,
+                types,
             ) {
                 return Ok(addr);
             }
@@ -745,7 +748,7 @@ impl PythonProcessLayout {
             process,
             version,
             config,
-            code_type_address,
+            types,
         )
     }
 
@@ -756,7 +759,7 @@ impl PythonProcessLayout {
         process: &P,
         version: &Version,
         config: &Config,
-        code_type_address: Option<usize>,
+        types: Option<Types>,
     ) -> Result<PythonProcessLayout, Error>
     where
         P: ProcessMemory,
@@ -785,7 +788,7 @@ impl PythonProcessLayout {
                 get_imports_modules_address,
                 interpreter_address
             )?,
-            code_type_address,
+            types,
         })
     }
 
@@ -795,7 +798,7 @@ impl PythonProcessLayout {
         process: &P,
         version: &Version,
         config: &Config,
-        code_type_address: Option<usize>,
+        types: Option<Types>,
     ) -> Result<PythonProcessLayout, Error>
     where
         P: ProcessMemory,
@@ -824,7 +827,7 @@ impl PythonProcessLayout {
                     interpreter_address,
                     threadstate_address,
                     imports_modules_address,
-                    code_type_address,
+                    types,
                 })
             }};
         }
@@ -865,7 +868,7 @@ fn scan_memory<P>(
     process: &P,
     version: &Version,
     config: &Config,
-    code_type_address: Option<usize>,
+    types: Option<Types>,
 ) -> Result<PythonProcessLayout, Error>
 where
     P: ProcessMemory,
@@ -884,7 +887,7 @@ where
                 process,
                 version,
                 config,
-                code_type_address
+                types
             )
         }
         _ => {
@@ -897,7 +900,7 @@ where
                 process,
                 version,
                 config,
-                code_type_address
+                types
             )
         }
     }
@@ -910,7 +913,7 @@ fn scan_memory_for_debug_offsets<I, P>(
     process: &P,
     version: &Version,
     config: &Config,
-    code_type_address: Option<usize>,
+    types: Option<Types>,
 ) -> Result<PythonProcessLayout, Error>
 where
     I: InterpreterState,
@@ -938,7 +941,7 @@ where
                 process,
                 version,
                 &config,
-                code_type_address,
+                types,
             ) {
                 Ok(address_book) => address_book,
                 Err(_) => continue,
@@ -950,7 +953,7 @@ where
                 process,
                 address_book.threadstate_address,
                 None,
-                code_type_address,
+                types,
             )
             .is_ok()
             {
@@ -971,7 +974,7 @@ fn scan_memory_for_python_interpreter<I, P>(
     process: &P,
     version: &Version,
     config: &Config,
-    code_type_address: Option<usize>,
+    types: Option<Types>,
 ) -> Result<PythonProcessLayout, Error>
 where
     I: InterpreterState,
@@ -1017,7 +1020,7 @@ where
                 process,
                 version,
                 &config,
-                code_type_address,
+                types,
             ) {
                 Ok(layout) => layout,
                 Err(_) => continue,
@@ -1029,7 +1032,7 @@ where
                 process,
                 layout.threadstate_address,
                 None,
-                code_type_address,
+                types,
             )
             .is_ok()
             {
@@ -1279,6 +1282,16 @@ mod tests {
         }
     }
 
+    fn get_code_type_address(info: &PythonProcessInfo) -> Result<usize, Error> {
+        PythonProcessLayout::get_type_address(
+            info,
+            &LocalProcess,
+            &version_3_7(),
+            "PyCode_Type",
+            c"code",
+        )
+    }
+
     fn code_type_resolves(tp_name: &[u8]) -> bool {
         let py_type = v3_7_0::PyTypeObject {
             tp_name: tp_name.as_ptr() as *const std::os::raw::c_char,
@@ -1286,7 +1299,7 @@ mod tests {
         };
         let addr = &py_type as *const v3_7_0::PyTypeObject as usize;
         let info = python_info_with_symbols([("PyCode_Type".to_owned(), addr as u64)].into());
-        get_code_type_address(&info, &LocalProcess, &version_3_7()).is_ok_and(|a| a == addr)
+        get_code_type_address(&info).is_ok_and(|a| a == addr)
     }
 
     #[test]
@@ -1305,7 +1318,7 @@ mod tests {
     #[test]
     fn test_get_code_type_address_without_symbol() {
         let info = python_info_with_symbols(Default::default());
-        assert!(get_code_type_address(&info, &LocalProcess, &version_3_7()).is_err());
+        assert!(get_code_type_address(&info).is_err());
     }
 
     #[cfg(target_os = "macos")]

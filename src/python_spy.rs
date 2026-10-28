@@ -259,7 +259,7 @@ impl PythonSpy {
                 &self.process,
                 self.config.dump_locals > 0,
                 self.config.lineno,
-                self.addresses.code_type_address,
+                self.addresses.types,
             )
             .with_context(|| {
                 format!(
