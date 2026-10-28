@@ -8,7 +8,7 @@ use serde_derive::Serialize;
 use crate::config::{Config, LineNo};
 use crate::python_data_access::{copy_bytes, copy_string};
 use crate::python_interpreters::{
-    CodeObject, FrameObject, InterpreterState, Object, ThreadState, TupleObject,
+    CodeObject, FrameObject, InterpreterState, ThreadState, TupleObject,
 };
 use crate::python_types::Types;
 
@@ -164,7 +164,7 @@ where
             .copy_pointer(frame.code())
             .context("Failed to copy PyCodeObject")?;
 
-        if types.is_some_and(|types| types.code != code.ob_type() as usize) {
+        if types.is_some_and(|types| !types.is_code(&code)) {
             frame_ptr = frame.back();
             set_last_frame_as_shim_entry(&mut frames);
             continue;
