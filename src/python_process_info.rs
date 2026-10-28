@@ -549,7 +549,18 @@ impl TypeChecks {
         process: &P,
         string: &S,
     ) -> Result<(), Error> {
-        if !self.is_type(process, string.ob_type(), |t| t.string, S::SUBCLASS_FLAG) {
+        let ob_type = string.ob_type();
+        let is_string = match self {
+            TypeChecks::Disabled => true,
+            TypeChecks::Strict(types) => ob_type as usize == types.string,
+            TypeChecks::AllowSubclasses(types) => {
+                ob_type as usize == types.string
+                    || process
+                        .copy_pointer(ob_type)
+                        .is_ok_and(|ty| ty.flags() & S::SUBCLASS_FLAG != 0)
+            }
+        };
+        if !is_string {
             return Err(format_err!("Object is not a string"));
         }
         Ok(())
@@ -560,29 +571,20 @@ impl TypeChecks {
         process: &P,
         ob_type: *mut T,
     ) -> Result<(), Error> {
-        if !self.is_type(process, ob_type, |t| t.dict, PY_TPFLAGS_DICT_SUBCLASS) {
+        let is_dict = match self {
+            TypeChecks::Disabled => true,
+            TypeChecks::Strict(types) => ob_type as usize == types.dict,
+            TypeChecks::AllowSubclasses(types) => {
+                ob_type as usize == types.dict
+                    || process
+                        .copy_pointer(ob_type)
+                        .is_ok_and(|ty| ty.flags() & PY_TPFLAGS_DICT_SUBCLASS != 0)
+            }
+        };
+        if !is_dict {
             return Err(format_err!("Object is not a dict"));
         }
         Ok(())
-    }
-
-    fn is_type<T: TypeObject, P: ProcessMemory>(
-        &self,
-        process: &P,
-        ob_type: *mut T,
-        expected: fn(&Types) -> usize,
-        subclass_flag: usize,
-    ) -> bool {
-        match self {
-            TypeChecks::Disabled => true,
-            TypeChecks::Strict(types) => ob_type as usize == expected(types),
-            TypeChecks::AllowSubclasses(types) => {
-                ob_type as usize == expected(types)
-                    || process
-                        .copy_pointer(ob_type)
-                        .is_ok_and(|ty| ty.flags() & subclass_flag != 0)
-            }
-        }
     }
 }
 
