@@ -71,6 +71,7 @@ pub trait CodeObject: Copy + Object {
     fn nlocals(&self) -> i32;
     fn argcount(&self) -> i32;
     fn varnames(&self) -> *mut Self::TupleObject;
+
     fn get_line_number(&self, lasti: i32, table: &[u8]) -> i32;
 
     /// Returns the qualified name (co_qualname) if available (Python 3.11+).
@@ -85,7 +86,7 @@ pub trait BytesObject: Copy {
     fn address(&self, base: usize) -> usize;
 }
 
-pub trait StringObject: Copy + Object {
+pub trait StringObject: Copy {
     fn ascii(&self) -> bool;
     fn kind(&self) -> u32;
     fn size(&self) -> usize;
@@ -393,14 +394,6 @@ macro_rules! Python3Impl {
             }
             fn address(&self, base: usize) -> usize {
                 base + offset_of(self, &self.ob_sval)
-            }
-        }
-
-        impl Object for $py::PyUnicodeObject {
-            type TypeObject = $py::PyTypeObject;
-
-            fn ob_type(&self) -> *mut Self::TypeObject {
-                self._base._base.ob_base.ob_type
             }
         }
 
@@ -1008,14 +1001,6 @@ impl BytesObject for v2_7_15::PyStringObject {
     }
     fn address(&self, base: usize) -> usize {
         base + offset_of(self, &self.ob_sval)
-    }
-}
-
-impl Object for v2_7_15::PyStringObject {
-    type TypeObject = v2_7_15::_typeobject;
-
-    fn ob_type(&self) -> *mut Self::TypeObject {
-        self.ob_type
     }
 }
 

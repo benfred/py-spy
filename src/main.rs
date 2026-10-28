@@ -25,7 +25,6 @@ mod sampler;
 mod speedscope;
 mod stack_trace;
 mod timer;
-mod type_checks;
 mod utils;
 mod version;
 

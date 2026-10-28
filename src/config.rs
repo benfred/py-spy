@@ -21,7 +21,7 @@ pub struct Config {
     pub native: bool,
 
     #[doc(hidden)]
-    pub type_check: bool,
+    pub type_checks: bool,
 
     // The following config options only apply when using py-spy as an application
     #[doc(hidden)]
@@ -128,7 +128,7 @@ impl Default for Config {
             sampling_rate: 100,
             duration: RecordDuration::Unlimited,
             native: false,
-            type_check: false,
+            type_checks: false,
             gil_only: false,
             include_idle: false,
             include_thread_ids: false,
@@ -349,13 +349,13 @@ impl Config {
                     .action(ArgAction::Set),
             );
 
-        let type_check = Arg::new("type_check")
+        let type_checks = Arg::new("type_checks")
             .long("type-check")
-            .help("Skip code objects, strings and dicts that are not exactly of the expected python type")
+            .help("Skip code objects that are not exactly of the PyCode_Type python type")
             .action(ArgAction::SetTrue);
-        let record = record.arg(type_check.clone());
-        let top = top.arg(type_check.clone());
-        let dump = dump.arg(type_check);
+        let record = record.arg(type_checks.clone());
+        let top = top.arg(type_checks.clone());
+        let dump = dump.arg(type_checks);
 
         let record = record.arg(native.clone());
         let top = top.arg(native.clone());
@@ -478,7 +478,7 @@ impl Config {
         });
 
         config.full_filenames = matches.get_flag("full_filenames");
-        config.type_check = matches.get_flag("type_check");
+        config.type_checks = matches.get_flag("type_checks");
         if cfg!(feature = "unwind") {
             config.native = matches.get_flag("native");
         }
@@ -623,10 +623,10 @@ mod tests {
     #[test]
     fn test_parse_type_check_args() {
         let config = get_config("py-spy dump --pid 1234").unwrap();
-        assert_eq!(config.type_check, false);
+        assert_eq!(config.type_checks, false);
 
         let config = get_config("py-spy record --pid 1234 --type-check").unwrap();
-        assert_eq!(config.type_check, true);
+        assert_eq!(config.type_checks, true);
     }
 
     #[test]
