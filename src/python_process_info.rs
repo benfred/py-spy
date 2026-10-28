@@ -512,11 +512,20 @@ impl Types {
         process: &P,
         version: &Version,
         config: &Config,
+        interpreter_address: usize,
     ) -> Result<Option<Types>, Error> {
         if !config.type_checks {
             return Ok(None);
         }
-        Types::from_symbols(python_info, process, version).map(Some)
+        Types::from_symbols(python_info, process, version)
+            .or_else(|err| {
+                info!(
+                    "Failed to get types from symbols {:?}, reading interpreter state",
+                    err
+                );
+                Types::from_types(process, version, interpreter_address)
+            })
+            .map(Some)
     }
 
     pub fn check_code<C: CodeObject>(&self, code: &C) -> Result<(), Error> {
@@ -550,8 +559,84 @@ impl Types {
         })
     }
 
-    /// Resolves a static python type, so objects read as that type can be checked against it.
-    /// Fails unless `tp_name` matches, so a wrongly resolved address is never used.
+    /// Resolves the static types registered on the interpreter state, which lets this work
+    /// without symbols. Python versions before 3.12 don't keep these on the interpreter state.
+    fn from_types<P: ProcessMemory>(
+        process: &P,
+        version: &Version,
+        interpreter_address: usize,
+    ) -> Result<Types, Error> {
+        macro_rules! managed_static_types {
+            ($py: ident) => {{
+                let builtins: $py::types_state__bindgen_ty_1 = process.copy_struct(
+                    interpreter_address + std::mem::offset_of!($py::_is, types.builtins),
+                )?;
+                builtins
+                    .initialized
+                    .iter()
+                    .take(builtins.num_initialized)
+                    .map(|state| state.type_ as usize)
+                    .collect::<Vec<usize>>()
+            }};
+        }
+
+        let builtins = match version {
+            Version {
+                major: 3,
+                minor: 12,
+                ..
+            } => {
+                let count: usize = process.copy_struct(
+                    interpreter_address
+                        + std::mem::offset_of!(v3_12_0::_is, types.num_builtins_initialized),
+                )?;
+                let builtins: [v3_12_0::static_builtin_state; 200] = process.copy_struct(
+                    interpreter_address + std::mem::offset_of!(v3_12_0::_is, types.builtins),
+                )?;
+                builtins
+                    .iter()
+                    .take(count)
+                    .map(|state| state.type_ as usize)
+                    .collect()
+            }
+            Version {
+                major: 3,
+                minor: 13,
+                ..
+            } => managed_static_types!(v3_13_0),
+            Version {
+                major: 3,
+                minor: 14,
+                ..
+            } => managed_static_types!(v3_14_0),
+            Version {
+                major: 3,
+                minor: 15,
+                ..
+            } => managed_static_types!(v3_15_0),
+            _ => return Err(format_err!("Interpreter state has no types")),
+        };
+
+        let find = |tp_name: &CStr| {
+            builtins
+                .iter()
+                .copied()
+                .find(|&addr| Types::check_tp_name(process, version, addr, tp_name).is_ok())
+                .ok_or_else(|| {
+                    format_err!(
+                        "Failed to find {} type in interpreter state",
+                        tp_name.to_string_lossy()
+                    )
+                })
+        };
+        Ok(Types {
+            code: find(c"code")?,
+            string: find(c"str")?,
+            dict: find(c"dict")?,
+        })
+    }
+
+    /// Resolves a static python type from its symbol, so objects read as that type can be checked against it.
     fn get_type_address<P: ProcessMemory>(
         python_info: &PythonProcessInfo,
         process: &P,
@@ -559,6 +644,22 @@ impl Types {
         symbol: &str,
         tp_name: &CStr,
     ) -> Result<usize, Error> {
+        let addr = *python_info
+            .get_symbol(symbol)
+            .ok_or_else(|| format_err!("Failed to find {} symbol", symbol))?
+            as usize;
+        Types::check_tp_name(process, version, addr, tp_name)
+            .with_context(|| format!("Failed to check {} type", symbol))?;
+        Ok(addr)
+    }
+
+    /// Fails unless the type object at `addr` is named `tp_name`, so a wrongly resolved address is never used.
+    fn check_tp_name<P: ProcessMemory>(
+        process: &P,
+        version: &Version,
+        addr: usize,
+        tp_name: &CStr,
+    ) -> Result<(), Error> {
         fn read_tp_name<I: InterpreterState, P: ProcessMemory>(
             process: &P,
             addr: usize,
@@ -567,22 +668,17 @@ impl Types {
             Ok(type_object.name() as usize)
         }
 
-        let addr = *python_info
-            .get_symbol(symbol)
-            .ok_or_else(|| format_err!("Failed to find {} symbol", symbol))?
-            as usize;
-
         let tp_name_ptr = dispatch_by_version!(version, read_tp_name, process, addr)
-            .with_context(|| format!("Failed to read {} type object", symbol))?;
+            .context("Failed to read type object")?;
 
         let tp_name = tp_name.to_bytes_with_nul();
         let name = process
             .copy(tp_name_ptr, tp_name.len())
-            .with_context(|| format!("Failed to read {} tp_name", symbol))?;
+            .context("Failed to read tp_name")?;
         if name != tp_name {
-            return Err(format_err!("Unexpected {} tp_name", symbol));
+            return Err(format_err!("Unexpected tp_name"));
         }
-        Ok(addr)
+        Ok(())
     }
 }
 
@@ -605,17 +701,29 @@ impl PythonProcessLayout {
     where
         P: ProcessMemory,
     {
-        let types = Types::new(python_info, process, version, config)?;
-
-        // get the address of the main PyInterpreterState object from loaded symbols if we can
-        // (this tends to be faster than scanning through the bss section)
-        match PythonProcessLayout::from_symbols(
+        let mut layout = PythonProcessLayout::find(python_info, process, version, config)?;
+        layout.types = Types::new(
             python_info,
             process,
             version,
             config,
-            types.as_ref(),
-        ) {
+            layout.interpreter_address,
+        )?;
+        Ok(layout)
+    }
+
+    fn find<P>(
+        python_info: &PythonProcessInfo,
+        process: &P,
+        version: &Version,
+        config: &Config,
+    ) -> Result<PythonProcessLayout, Error>
+    where
+        P: ProcessMemory,
+    {
+        // get the address of the main PyInterpreterState object from loaded symbols if we can
+        // (this tends to be faster than scanning through the bss section)
+        match PythonProcessLayout::from_symbols(python_info, process, version, config) {
             Ok(addr) => {
                 // Check that the symbol address is valid before returning by attempting to load a stack trace
                 match dispatch_by_version!(
@@ -625,7 +733,7 @@ impl PythonProcessLayout {
                     process,
                     addr.threadstate_address,
                     None,
-                    types.as_ref()
+                    None
                 ) {
                     Ok(_) => {
                         return Ok(addr);
@@ -644,7 +752,7 @@ impl PythonProcessLayout {
         }
 
         // If we can't load up the symbols, try scanning the python and libpython binaries
-        PythonProcessLayout::from_binaries(python_info, process, version, config, types.as_ref())
+        PythonProcessLayout::from_binaries(python_info, process, version, config)
     }
 
     // initializes a new PythonProcessLayout from loaded symbols
@@ -653,7 +761,6 @@ impl PythonProcessLayout {
         process: &P,
         version: &Version,
         config: &Config,
-        types: Option<&Types>,
     ) -> Result<PythonProcessLayout, Error>
     where
         P: ProcessMemory,
@@ -670,7 +777,6 @@ impl PythonProcessLayout {
                         process,
                         version,
                         config,
-                        types,
                     );
                 }
             }
@@ -689,7 +795,6 @@ impl PythonProcessLayout {
                         process,
                         version,
                         config,
-                        types,
                     );
                 }
             }
@@ -704,7 +809,6 @@ impl PythonProcessLayout {
                         process,
                         version,
                         config,
-                        types,
                     );
                 }
             }
@@ -721,15 +825,13 @@ impl PythonProcessLayout {
         process: &P,
         version: &Version,
         config: &Config,
-        types: Option<&Types>,
     ) -> Result<PythonProcessLayout, Error>
     where
         P: ProcessMemory,
     {
         // try scanning the BSS section of the binary for things that might be the interpreterstate
         let err = if let Some(ref pb) = python_info.python_binary {
-            match PythonProcessLayout::from_binary(pb, python_info, process, version, config, types)
-            {
+            match PythonProcessLayout::from_binary(pb, python_info, process, version, config) {
                 Ok(addr) => return Ok(addr),
                 err => Some(err),
             }
@@ -740,14 +842,7 @@ impl PythonProcessLayout {
         // Before giving up, try again if there is a libpython.so
         if let Some(ref lpb) = python_info.libpython_binary {
             info!("Failed to get interpreter from binary BSS, scanning libpython BSS");
-            match PythonProcessLayout::from_binary(
-                lpb,
-                python_info,
-                process,
-                version,
-                config,
-                types,
-            ) {
+            match PythonProcessLayout::from_binary(lpb, python_info, process, version, config) {
                 Ok(addr) => Ok(addr),
                 lib_err => err.unwrap_or(lib_err),
             }
@@ -762,7 +857,6 @@ impl PythonProcessLayout {
         process: &P,
         version: &Version,
         config: &Config,
-        types: Option<&Types>,
     ) -> Result<PythonProcessLayout, Error>
     where
         P: ProcessMemory,
@@ -776,7 +870,6 @@ impl PythonProcessLayout {
                 process,
                 version,
                 config,
-                types,
             ) {
                 return Ok(addr);
             }
@@ -791,7 +884,6 @@ impl PythonProcessLayout {
             process,
             version,
             config,
-            types,
         )
     }
 
@@ -802,7 +894,6 @@ impl PythonProcessLayout {
         process: &P,
         version: &Version,
         config: &Config,
-        types: Option<&Types>,
     ) -> Result<PythonProcessLayout, Error>
     where
         P: ProcessMemory,
@@ -831,7 +922,7 @@ impl PythonProcessLayout {
                 get_imports_modules_address,
                 interpreter_address
             )?,
-            types: types.copied(),
+            types: None,
         })
     }
 
@@ -841,7 +932,6 @@ impl PythonProcessLayout {
         process: &P,
         version: &Version,
         config: &Config,
-        types: Option<&Types>,
     ) -> Result<PythonProcessLayout, Error>
     where
         P: ProcessMemory,
@@ -870,7 +960,7 @@ impl PythonProcessLayout {
                     interpreter_address,
                     threadstate_address,
                     imports_modules_address,
-                    types: types.copied(),
+                    types: None,
                 })
             }};
         }
@@ -911,7 +1001,6 @@ fn scan_memory<P>(
     process: &P,
     version: &Version,
     config: &Config,
-    types: Option<&Types>,
 ) -> Result<PythonProcessLayout, Error>
 where
     P: ProcessMemory,
@@ -929,8 +1018,7 @@ where
                 size,
                 process,
                 version,
-                config,
-                types
+                config
             )
         }
         _ => {
@@ -942,8 +1030,7 @@ where
                 python_info,
                 process,
                 version,
-                config,
-                types
+                config
             )
         }
     }
@@ -956,7 +1043,6 @@ fn scan_memory_for_debug_offsets<I, P>(
     process: &P,
     version: &Version,
     config: &Config,
-    types: Option<&Types>,
 ) -> Result<PythonProcessLayout, Error>
 where
     I: InterpreterState,
@@ -984,7 +1070,6 @@ where
                 process,
                 version,
                 &config,
-                types,
             ) {
                 Ok(address_book) => address_book,
                 Err(_) => continue,
@@ -996,7 +1081,7 @@ where
                 process,
                 address_book.threadstate_address,
                 None,
-                types,
+                None,
             )
             .is_ok()
             {
@@ -1017,7 +1102,6 @@ fn scan_memory_for_python_interpreter<I, P>(
     process: &P,
     version: &Version,
     config: &Config,
-    types: Option<&Types>,
 ) -> Result<PythonProcessLayout, Error>
 where
     I: InterpreterState,
@@ -1063,7 +1147,6 @@ where
                 process,
                 version,
                 &config,
-                types,
             ) {
                 Ok(layout) => layout,
                 Err(_) => continue,
@@ -1075,7 +1158,7 @@ where
                 process,
                 layout.threadstate_address,
                 None,
-                types,
+                None,
             )
             .is_ok()
             {
@@ -1391,6 +1474,60 @@ mod tests {
         let types = Types::from_symbols(&info, &LocalProcess, &version(3)).unwrap();
         assert_eq!(types, expected);
         assert!(Types::from_symbols(&info, &LocalProcess, &version(2)).is_err());
+    }
+
+    // the interpreter state is too large for the stack, and bindgen structs are valid when zeroed
+    fn zeroed_box<T>() -> Box<T> {
+        let layout = std::alloc::Layout::new::<T>();
+        unsafe { Box::from_raw(std::alloc::alloc_zeroed(layout) as *mut T) }
+    }
+
+    fn python3(minor: u64) -> Version {
+        Version {
+            minor,
+            ..version(3)
+        }
+    }
+
+    #[test]
+    fn test_types_from_types_python3_13() {
+        let objects = type_objects!(v3_13_0);
+        let int_type = v3_13_0::PyTypeObject {
+            tp_name: c"int".as_ptr(),
+            ..Default::default()
+        };
+        let [code, string, dict] = objects.each_ref();
+        let registered = [&int_type, dict, string, code];
+
+        let mut interp: Box<v3_13_0::_is> = zeroed_box();
+        for (state, ty) in interp.types.builtins.initialized.iter_mut().zip(registered) {
+            state.type_ = ty as *const _ as *mut _;
+        }
+        interp.types.builtins.num_initialized = registered.len();
+        let addr = &*interp as *const v3_13_0::_is as usize;
+
+        let (_, expected) = type_symbols(&objects, "PyUnicode_Type");
+        let types = Types::from_types(&LocalProcess, &python3(13), addr).unwrap();
+        assert_eq!(types, expected);
+
+        interp.types.builtins.num_initialized = registered.len() - 1;
+        assert!(Types::from_types(&LocalProcess, &python3(13), addr).is_err());
+    }
+
+    #[test]
+    fn test_types_from_types_python3_12() {
+        let objects = type_objects!(v3_12_0);
+        let mut interp: Box<v3_12_0::_is> = zeroed_box();
+        for (state, ty) in interp.types.builtins.iter_mut().zip(&objects) {
+            state.type_ = ty as *const _ as *mut _;
+        }
+        interp.types.num_builtins_initialized = objects.len();
+        let addr = &*interp as *const v3_12_0::_is as usize;
+
+        let (_, expected) = type_symbols(&objects, "PyUnicode_Type");
+        let types = Types::from_types(&LocalProcess, &python3(12), addr).unwrap();
+        assert_eq!(types, expected);
+        assert!(Types::from_types(&LocalProcess, &python3(11), addr).is_err());
     }
 
     #[test]
