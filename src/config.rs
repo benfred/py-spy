@@ -20,6 +20,9 @@ pub struct Config {
     /// the native stack traces
     pub native: bool,
 
+    #[doc(hidden)]
+    pub type_checks: TypesConfig,
+
     // The following config options only apply when using py-spy as an application
     #[doc(hidden)]
     pub command: String,
@@ -63,6 +66,18 @@ pub struct Config {
     pub refresh_seconds: f64,
     #[doc(hidden)]
     pub core_filename: Option<String>,
+}
+
+/// How to check the types of objects read from the python process
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum TypesConfig {
+    /// Don't check types
+    Disabled,
+    /// Only accept objects that are exactly of the expected type
+    #[allow(dead_code)]
+    Strict,
+    /// Like strict, but accept subclasses of str and dict
+    AllowSubclasses,
 }
 
 #[allow(non_camel_case_types)]
@@ -125,6 +140,7 @@ impl Default for Config {
             sampling_rate: 100,
             duration: RecordDuration::Unlimited,
             native: false,
+            type_checks: TypesConfig::Disabled,
             gil_only: false,
             include_idle: false,
             include_thread_ids: false,
@@ -345,6 +361,16 @@ impl Config {
                     .action(ArgAction::Set),
             );
 
+        let type_checks = Arg::new("type_checks")
+            .long("type-check")
+            .help(
+                "Fail on code objects, strings and dicts that are not of the expected python type",
+            )
+            .action(ArgAction::SetTrue);
+        let record = record.arg(type_checks.clone());
+        let top = top.arg(type_checks.clone());
+        let dump = dump.arg(type_checks);
+
         let record = record.arg(native.clone());
         let top = top.arg(native.clone());
         let dump = dump.arg(native.clone());
@@ -466,6 +492,11 @@ impl Config {
         });
 
         config.full_filenames = matches.get_flag("full_filenames");
+        config.type_checks = if matches.get_flag("type_checks") {
+            TypesConfig::AllowSubclasses
+        } else {
+            TypesConfig::Disabled
+        };
         if cfg!(feature = "unwind") {
             config.native = matches.get_flag("native");
         }
@@ -605,6 +636,15 @@ mod tests {
             get_config("py-spy dump").unwrap_err().kind(),
             clap::error::ErrorKind::MissingRequiredArgument
         );
+    }
+
+    #[test]
+    fn test_parse_type_check_args() {
+        let config = get_config("py-spy dump --pid 1234").unwrap();
+        assert_eq!(config.type_checks, TypesConfig::Disabled);
+
+        let config = get_config("py-spy record --pid 1234 --type-check").unwrap();
+        assert_eq!(config.type_checks, TypesConfig::AllowSubclasses);
     }
 
     #[test]
