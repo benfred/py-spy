@@ -259,7 +259,7 @@ impl PythonSpy {
                 &self.process,
                 self.config.dump_locals > 0,
                 self.config.lineno,
-                self.addresses.types,
+                self.addresses.types.as_ref(),
             )
             .with_context(|| {
                 format!(
@@ -343,6 +343,7 @@ impl PythonSpy {
                             &self.version,
                             local.addr,
                             max_length,
+                            self.addresses.types.as_ref(),
                         );
                         local.repr = Some(repr.unwrap_or_else(|_| "?".to_owned()));
                     }

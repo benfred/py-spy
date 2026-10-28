@@ -342,7 +342,7 @@ impl PythonCoreDump {
             &self.core,
             self.addresses.threadstate_address,
             Some(config),
-            self.addresses.types,
+            self.addresses.types.as_ref(),
         )?;
 
         let thread_names = thread_names_from_interpreter::<I, CoreDump>(
@@ -366,6 +366,7 @@ impl PythonCoreDump {
                             &self.version,
                             local.addr,
                             max_length,
+                            self.addresses.types.as_ref(),
                         );
                         local.repr = Some(repr.unwrap_or_else(|_| "?".to_owned()));
                     }
@@ -462,7 +463,7 @@ mod elfcore {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::python_types::Types;
+    use crate::python_process_info::Types;
     use py_spy_testdata::get_coredump_path;
 
     #[cfg(target_pointer_width = "64")]

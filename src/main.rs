@@ -21,7 +21,6 @@ mod python_interpreters;
 mod python_process_info;
 mod python_spy;
 mod python_threading;
-mod python_types;
 mod sampler;
 mod speedscope;
 mod stack_trace;

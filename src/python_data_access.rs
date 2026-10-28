@@ -5,6 +5,7 @@ use crate::python_bindings::v3_13_0;
 use crate::python_interpreters::{
     BytesObject, InterpreterState, ListObject, Object, StringObject, TupleObject, TypeObject,
 };
+use crate::python_process_info::Types;
 use crate::utils::offset_of;
 use crate::version::Version;
 use remoteprocess::ProcessMemory;
@@ -13,8 +14,12 @@ use remoteprocess::ProcessMemory;
 pub fn copy_string<T: StringObject, P: ProcessMemory>(
     ptr: *const T,
     process: &P,
+    types: Option<&Types>,
 ) -> Result<String, Error> {
     let obj = process.copy_pointer(ptr)?;
+    if let Some(types) = types {
+        types.check_string(&obj)?;
+    }
     if obj.size() == 0 {
         return Ok(String::new());
     }
@@ -374,6 +379,7 @@ pub fn format_variable<I, P>(
     version: &Version,
     addr: usize,
     max_length: isize,
+    types: Option<&Types>,
 ) -> Result<String, Error>
 where
     I: InterpreterState,
@@ -424,7 +430,7 @@ where
     } else if flags & PY_TPFLAGS_STRING_SUBCLASS != 0
         || (version.major == 2 && (flags & PY_TPFLAGS_BYTES_SUBCLASS != 0))
     {
-        let value = copy_string(addr as *const I::StringObject, process)?
+        let value = copy_string(addr as *const I::StringObject, process, types)?
             .replace('\'', "\\\"")
             .replace('\n', "\\n");
         if let Some((offset, _)) = value.char_indices().nth((max_length - 5) as usize) {
@@ -438,8 +444,8 @@ where
             let mut remaining = max_length - 2;
             for entry in DictIterator::from(process, version, addr)? {
                 let (key, value) = entry?;
-                let key = format_variable::<I, P>(process, version, key, remaining)?;
-                let value = format_variable::<I, P>(process, version, value, remaining)?;
+                let key = format_variable::<I, P>(process, version, key, remaining, types)?;
+                let value = format_variable::<I, P>(process, version, value, remaining, types)?;
                 remaining -= (key.len() + value.len()) as isize + 4;
                 if remaining <= 5 {
                     values.push("...".to_owned());
@@ -460,7 +466,8 @@ where
         for i in 0..object.size() {
             let valueptr: *mut I::Object =
                 process.copy_struct(addr + i * std::mem::size_of::<*mut I::Object>())?;
-            let value = format_variable::<I, P>(process, version, valueptr as usize, remaining)?;
+            let value =
+                format_variable::<I, P>(process, version, valueptr as usize, remaining, types)?;
             remaining -= value.len() as isize + 2;
             if remaining <= 5 {
                 values.push("...".to_owned());
@@ -475,7 +482,8 @@ where
         let mut remaining = max_length - 2;
         for i in 0..object.size() {
             let value_addr: *mut I::Object = process.copy_struct(object.address(addr, i))?;
-            let value = format_variable::<I, P>(process, version, value_addr as usize, remaining)?;
+            let value =
+                format_variable::<I, P>(process, version, value_addr as usize, remaining, types)?;
             remaining -= value.len() as isize + 2;
             if remaining <= 5 {
                 values.push("...".to_owned());
@@ -652,7 +660,7 @@ pub mod tests {
         let obj = to_asciiobject(original);
 
         let unicode: &PyUnicodeObject = unsafe { std::mem::transmute(&obj.base) };
-        let copied = copy_string(unicode, &LocalProcess).unwrap();
+        let copied = copy_string(unicode, &LocalProcess, None).unwrap();
         assert_eq!(copied, original);
     }
 
@@ -662,7 +670,7 @@ pub mod tests {
         let original = "cafe😀";
         let obj = to_ucs4object(original);
         let unicode: &PyUnicodeObject = unsafe { std::mem::transmute(&obj.base) };
-        let copied = copy_string(unicode, &LocalProcess).unwrap();
+        let copied = copy_string(unicode, &LocalProcess, None).unwrap();
         assert_eq!(copied, original);
     }
 
@@ -677,7 +685,7 @@ pub mod tests {
             copy_nonoverlapping(bad.as_ptr(), dst, 4);
         }
         let unicode: &PyUnicodeObject = unsafe { std::mem::transmute(&obj.base) };
-        let err = copy_string(unicode, &LocalProcess).unwrap_err();
+        let err = copy_string(unicode, &LocalProcess, None).unwrap_err();
         assert!(
             err.to_string().contains("Invalid Unicode code point"),
             "unexpected error: {err}"

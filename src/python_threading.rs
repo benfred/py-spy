@@ -31,14 +31,22 @@ pub fn thread_names_from_interpreter<I: InterpreterState, P: ProcessMemory>(
     let mut ret = HashMap::new();
     for entry in DictIterator::from(process, version, modules as usize)? {
         let (key, value) = entry?;
-        let module_name = copy_string(key as *const I::StringObject, process)?;
+        let module_name = copy_string(
+            key as *const I::StringObject,
+            process,
+            addresses.types.as_ref(),
+        )?;
         if module_name == "threading" {
             let module: I::Object = process.copy_struct(value)?;
             let module_type = process.copy_pointer(module.ob_type())?;
             let dictptr: usize = process.copy_struct(value + module_type.dictoffset() as usize)?;
             for i in DictIterator::from(process, version, dictptr)? {
                 let (key, value) = i?;
-                let name = copy_string(key as *const I::StringObject, process)?;
+                let name = copy_string(
+                    key as *const I::StringObject,
+                    process,
+                    addresses.types.as_ref(),
+                )?;
                 if name == "_active" {
                     for i in DictIterator::from(process, version, value)? {
                         let (key, value) = i?;
@@ -65,10 +73,17 @@ pub fn thread_names_from_interpreter<I: InterpreterState, P: ProcessMemory>(
 
                         for i in dict_iter {
                             let (key, value) = i?;
-                            let varname = copy_string(key as *const I::StringObject, process)?;
+                            let varname = copy_string(
+                                key as *const I::StringObject,
+                                process,
+                                addresses.types.as_ref(),
+                            )?;
                             if varname == "_name" {
-                                let threadname =
-                                    copy_string(value as *const I::StringObject, process)?;
+                                let threadname = copy_string(
+                                    value as *const I::StringObject,
+                                    process,
+                                    addresses.types.as_ref(),
+                                )?;
                                 ret.insert(threadid as u64, threadname);
                                 break;
                             }
