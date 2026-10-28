@@ -516,6 +516,7 @@ mod test {
             code: 0x55a827436c00,
             string: 0x55a82744dd00,
             dict: 0x55a827456060,
+            allow_subclasses: false,
         };
         let checked = core_dump(Some(types)).get_stack(&config).unwrap();
         let unchecked = python_core.get_stack(&config).unwrap();

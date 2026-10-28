@@ -18,7 +18,7 @@ pub fn copy_string<T: StringObject, P: ProcessMemory>(
 ) -> Result<String, Error> {
     let obj = process.copy_pointer(ptr)?;
     if let Some(types) = types {
-        types.check_string(&obj)?;
+        types.check_string(process, &obj)?;
     }
     if obj.size() == 0 {
         return Ok(String::new());
@@ -176,6 +176,7 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
         addr: usize,
         tp_addr: usize,
         flags: usize,
+        types: Option<&Types>,
     ) -> Result<DictIterator<'a, P>, Error> {
         // Handles logic of _PyObject_ManagedDictPointer in python 3.11
         let mut values_addr: usize =
@@ -234,7 +235,7 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
                 values: values_addr,
             })
         } else if dict_addr != 0 {
-            DictIterator::from(process, version, dict_addr)
+            DictIterator::from(process, version, dict_addr, types)
         } else {
             Err(format_err!("neither values or dict is set in managed dict"))
         }
@@ -244,6 +245,7 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
         process: &'a P,
         version: &'a Version,
         addr: usize,
+        types: Option<&Types>,
     ) -> Result<DictIterator<'a, P>, Error> {
         match version {
             Version {
@@ -253,6 +255,9 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
             } => {
                 let dict: crate::python_bindings::v3_11_0::PyDictObject =
                     process.copy_struct(addr)?;
+                if let Some(types) = types {
+                    types.check_dict(process, dict.ob_base.ob_type)?;
+                }
                 let keys = process.copy_pointer(dict.ma_keys)?;
 
                 let entries_addr = dict.ma_keys as usize
@@ -270,6 +275,9 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
             _ => {
                 let dict: crate::python_bindings::v3_7_0::PyDictObject =
                     process.copy_struct(addr)?;
+                if let Some(types) = types {
+                    types.check_dict(process, dict.ob_base.ob_type)?;
+                }
                 // Getting this going generically is tricky: there is a lot of variation on how dictionaries are handled
                 // instead this just focuses on a single version, which works for python
                 // 3.6/3.7/3.8/3.9/3.10
@@ -369,9 +377,9 @@ const PY_TPFLAGS_INT_SUBCLASS: usize = 1 << 23;
 const PY_TPFLAGS_LONG_SUBCLASS: usize = 1 << 24;
 const PY_TPFLAGS_LIST_SUBCLASS: usize = 1 << 25;
 const PY_TPFLAGS_TUPLE_SUBCLASS: usize = 1 << 26;
-const PY_TPFLAGS_BYTES_SUBCLASS: usize = 1 << 27;
-const PY_TPFLAGS_STRING_SUBCLASS: usize = 1 << 28;
-const PY_TPFLAGS_DICT_SUBCLASS: usize = 1 << 29;
+pub const PY_TPFLAGS_BYTES_SUBCLASS: usize = 1 << 27;
+pub const PY_TPFLAGS_STRING_SUBCLASS: usize = 1 << 28;
+pub const PY_TPFLAGS_DICT_SUBCLASS: usize = 1 << 29;
 
 /// Converts a python variable in the other process to a human readable string
 pub fn format_variable<I, P>(
@@ -442,7 +450,7 @@ where
         if version.major == 3 && version.minor >= 6 {
             let mut values = Vec::new();
             let mut remaining = max_length - 2;
-            for entry in DictIterator::from(process, version, addr)? {
+            for entry in DictIterator::from(process, version, addr, types)? {
                 let (key, value) = entry?;
                 let key = format_variable::<I, P>(process, version, key, remaining, types)?;
                 let value = format_variable::<I, P>(process, version, value, remaining, types)?;

@@ -16,11 +16,12 @@ use remoteprocess::Pid;
 use remoteprocess::ProcessMemory;
 
 use crate::binary_parser::{parse_binary, BinaryInfo};
-use crate::config::Config;
+use crate::config::{Config, TypesConfig};
 use crate::python_bindings::{
     pyruntime, v2_7_15, v3_10_0, v3_11_0, v3_12_0, v3_13_0, v3_14_0, v3_15_0, v3_3_7, v3_5_5,
     v3_6_6, v3_7_0, v3_8_0, v3_9_5,
 };
+use crate::python_data_access::PY_TPFLAGS_DICT_SUBCLASS;
 use crate::python_interpreters::{
     CodeObject, InterpreterState, Object, StringObject, ThreadState, TypeObject,
 };
@@ -504,6 +505,8 @@ pub struct Types {
     pub code: usize,
     pub string: usize,
     pub dict: usize,
+    /// Accept subclasses of str and dict, like PyUnicode_Check and PyDict_Check do
+    pub allow_subclasses: bool,
 }
 
 impl Types {
@@ -513,10 +516,12 @@ impl Types {
         version: &Version,
         config: &Config,
     ) -> Result<Option<Types>, Error> {
-        if !config.type_checks {
-            return Ok(None);
-        }
-        Types::from_symbols(python_info, process, version).map(Some)
+        let allow_subclasses = match config.type_checks {
+            TypesConfig::Disabled => return Ok(None),
+            TypesConfig::Strict => false,
+            TypesConfig::AllowSubclasses => true,
+        };
+        Types::from_symbols(python_info, process, version, allow_subclasses).map(Some)
     }
 
     pub fn check_code<C: CodeObject>(&self, code: &C) -> Result<(), Error> {
@@ -526,17 +531,49 @@ impl Types {
         Ok(())
     }
 
-    pub fn check_string<S: StringObject>(&self, string: &S) -> Result<(), Error> {
-        if string.ob_type() as usize != self.string {
+    pub fn check_string<S: StringObject, P: ProcessMemory>(
+        &self,
+        process: &P,
+        string: &S,
+    ) -> Result<(), Error> {
+        if !self.is_type(process, string.ob_type(), self.string, S::SUBCLASS_FLAG) {
             return Err(format_err!("Object is not a string"));
         }
         Ok(())
+    }
+
+    pub fn check_dict<T: TypeObject, P: ProcessMemory>(
+        &self,
+        process: &P,
+        ob_type: *mut T,
+    ) -> Result<(), Error> {
+        if !self.is_type(process, ob_type, self.dict, PY_TPFLAGS_DICT_SUBCLASS) {
+            return Err(format_err!("Object is not a dict"));
+        }
+        Ok(())
+    }
+
+    fn is_type<T: TypeObject, P: ProcessMemory>(
+        &self,
+        process: &P,
+        ob_type: *mut T,
+        expected: usize,
+        subclass_flag: usize,
+    ) -> bool {
+        if ob_type as usize == expected {
+            return true;
+        }
+        self.allow_subclasses
+            && process
+                .copy_pointer(ob_type)
+                .is_ok_and(|ty| ty.flags() & subclass_flag != 0)
     }
 
     fn from_symbols<P: ProcessMemory>(
         python_info: &PythonProcessInfo,
         process: &P,
         version: &Version,
+        allow_subclasses: bool,
     ) -> Result<Types, Error> {
         let string_symbol = if version.major == 2 {
             "PyString_Type"
@@ -547,6 +584,7 @@ impl Types {
             code: Types::get_type_address(python_info, process, version, "PyCode_Type", c"code")?,
             string: Types::get_type_address(python_info, process, version, string_symbol, c"str")?,
             dict: Types::get_type_address(python_info, process, version, "PyDict_Type", c"dict")?,
+            allow_subclasses,
         })
     }
 
@@ -1292,6 +1330,7 @@ pub fn is_python_framework(pathname: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::python_data_access::PY_TPFLAGS_STRING_SUBCLASS;
     use remoteprocess::LocalProcess;
 
     fn python_info_with_symbols(
@@ -1381,25 +1420,88 @@ mod tests {
             ]
             .into(),
         );
-        (info, Types { code, string, dict })
+        let types = Types {
+            code,
+            string,
+            dict,
+            allow_subclasses: false,
+        };
+        (info, types)
     }
 
     #[test]
     fn test_types_from_symbols_python3() {
         let objects = type_objects!(v3_7_0);
         let (info, expected) = type_symbols(&objects, "PyUnicode_Type");
-        let types = Types::from_symbols(&info, &LocalProcess, &version(3)).unwrap();
+        let types = Types::from_symbols(&info, &LocalProcess, &version(3), false).unwrap();
         assert_eq!(types, expected);
-        assert!(Types::from_symbols(&info, &LocalProcess, &version(2)).is_err());
+        assert!(Types::from_symbols(&info, &LocalProcess, &version(2), false).is_err());
+    }
+
+    #[test]
+    fn test_check_string_and_dict_subclasses() {
+        let str_type = v3_7_0::PyTypeObject::default();
+        let dict_type = v3_7_0::PyTypeObject::default();
+        let str_subclass = v3_7_0::PyTypeObject {
+            tp_flags: PY_TPFLAGS_STRING_SUBCLASS as _,
+            ..Default::default()
+        };
+        let dict_subclass = v3_7_0::PyTypeObject {
+            tp_flags: PY_TPFLAGS_DICT_SUBCLASS as _,
+            ..Default::default()
+        };
+        let other_type = v3_7_0::PyTypeObject::default();
+        let ptr = |t: &v3_7_0::PyTypeObject| t as *const _ as *mut v3_7_0::PyTypeObject;
+        let string_of = |t: &v3_7_0::PyTypeObject| {
+            let mut s = v3_7_0::PyUnicodeObject::default();
+            s._base._base.ob_base.ob_type = ptr(t);
+            s
+        };
+
+        let strict = Types {
+            code: 0,
+            string: ptr(&str_type) as usize,
+            dict: ptr(&dict_type) as usize,
+            allow_subclasses: false,
+        };
+        let subclasses = Types {
+            allow_subclasses: true,
+            ..strict
+        };
+
+        for types in [&strict, &subclasses] {
+            assert!(types
+                .check_string(&LocalProcess, &string_of(&str_type))
+                .is_ok());
+            assert!(types
+                .check_string(&LocalProcess, &string_of(&other_type))
+                .is_err());
+            assert!(types
+                .check_string(&LocalProcess, &string_of(&dict_subclass))
+                .is_err());
+            assert!(types.check_dict(&LocalProcess, ptr(&dict_type)).is_ok());
+            assert!(types.check_dict(&LocalProcess, ptr(&other_type)).is_err());
+            assert!(types.check_dict(&LocalProcess, ptr(&str_subclass)).is_err());
+        }
+
+        let str_sub = string_of(&str_subclass);
+        assert!(strict.check_string(&LocalProcess, &str_sub).is_err());
+        assert!(subclasses.check_string(&LocalProcess, &str_sub).is_ok());
+        assert!(strict
+            .check_dict(&LocalProcess, ptr(&dict_subclass))
+            .is_err());
+        assert!(subclasses
+            .check_dict(&LocalProcess, ptr(&dict_subclass))
+            .is_ok());
     }
 
     #[test]
     fn test_types_from_symbols_python2() {
         let objects = type_objects!(v2_7_15);
         let (info, expected) = type_symbols(&objects, "PyString_Type");
-        let types = Types::from_symbols(&info, &LocalProcess, &version(2)).unwrap();
+        let types = Types::from_symbols(&info, &LocalProcess, &version(2), false).unwrap();
         assert_eq!(types, expected);
-        assert!(Types::from_symbols(&info, &LocalProcess, &version(3)).is_err());
+        assert!(Types::from_symbols(&info, &LocalProcess, &version(3), false).is_err());
     }
 
     #[cfg(target_os = "macos")]

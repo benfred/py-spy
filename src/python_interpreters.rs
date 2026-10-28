@@ -15,6 +15,7 @@ use crate::python_bindings::{
     v2_7_15, v3_10_0, v3_11_0, v3_12_0, v3_13_0, v3_14_0, v3_15_0, v3_3_7, v3_5_5, v3_6_6, v3_7_0,
     v3_8_0, v3_9_5,
 };
+use crate::python_data_access::{PY_TPFLAGS_BYTES_SUBCLASS, PY_TPFLAGS_STRING_SUBCLASS};
 use crate::utils::offset_of;
 
 pub trait InterpreterState: Copy {
@@ -87,6 +88,9 @@ pub trait BytesObject: Copy {
 }
 
 pub trait StringObject: Copy + Object {
+    /// The `tp_flags` bit set on subclasses of this string type
+    const SUBCLASS_FLAG: usize;
+
     fn ascii(&self) -> bool;
     fn kind(&self) -> u32;
     fn size(&self) -> usize;
@@ -406,6 +410,8 @@ macro_rules! Python3Impl {
         }
 
         impl StringObject for $py::PyUnicodeObject {
+            const SUBCLASS_FLAG: usize = PY_TPFLAGS_STRING_SUBCLASS;
+
             fn ascii(&self) -> bool {
                 self._base._base.state.ascii() != 0
             }
@@ -1021,6 +1027,8 @@ impl Object for v2_7_15::PyStringObject {
 }
 
 impl StringObject for v2_7_15::PyStringObject {
+    const SUBCLASS_FLAG: usize = PY_TPFLAGS_BYTES_SUBCLASS;
+
     fn ascii(&self) -> bool {
         true
     }
