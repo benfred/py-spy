@@ -522,5 +522,10 @@ mod test {
             assert_eq!(checked.thread_name, unchecked.thread_name);
             assert_eq!(checked.frames, unchecked.frames);
         }
+
+        let err = core_dump(Some(Types { code: 0x239 }))
+            .get_stack(&config)
+            .unwrap_err();
+        assert!(format!("{err:#}").contains("is not a code object"));
     }
 }

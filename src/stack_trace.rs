@@ -165,9 +165,7 @@ where
             .context("Failed to copy PyCodeObject")?;
 
         if types.is_some_and(|types| !types.is_code(&code)) {
-            frame_ptr = frame.back();
-            set_last_frame_as_shim_entry(&mut frames);
-            continue;
+            return Err(format_err!("Object is not a code object"));
         }
 
         let filename = copy_string(code.filename(), process).context("Failed to copy filename");
