@@ -3,6 +3,7 @@ use regex::Regex;
 use regex::RegexBuilder;
 #[cfg(windows)]
 use std::collections::HashMap;
+use std::ffi::CStr;
 use std::mem::size_of;
 use std::path::Path;
 use std::slice;
@@ -15,12 +16,15 @@ use remoteprocess::Pid;
 use remoteprocess::ProcessMemory;
 
 use crate::binary_parser::{parse_binary, BinaryInfo};
-use crate::config::Config;
+use crate::config::{Config, TypesConfig};
 use crate::python_bindings::{
     pyruntime, v2_7_15, v3_10_0, v3_11_0, v3_12_0, v3_13_0, v3_14_0, v3_15_0, v3_3_7, v3_5_5,
     v3_6_6, v3_7_0, v3_8_0, v3_9_5,
 };
-use crate::python_interpreters::{InterpreterState, ThreadState};
+use crate::python_data_access::PY_TPFLAGS_DICT_SUBCLASS;
+use crate::python_interpreters::{
+    CodeObject, InterpreterState, Object, StringObject, ThreadState, TypeObject,
+};
 use crate::stack_trace::get_stack_traces;
 use crate::version::Version;
 
@@ -43,6 +47,7 @@ pub struct PythonProcessLayout {
     pub interpreter_address: usize,
     pub threadstate_address: usize,
     pub imports_modules_address: usize,
+    pub type_checks: TypeChecks,
 }
 
 impl PythonProcessInfo {
@@ -494,6 +499,149 @@ macro_rules! dispatch_by_version {
     }
 }
 
+/// Addresses of static python type objects, used to check the types of objects we read
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct Types {
+    pub code: usize,
+    pub string: usize,
+    pub dict: usize,
+}
+
+/// Checks the types of objects read from the python process, as configured by `TypesConfig`
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum TypeChecks {
+    Disabled,
+    Strict(Types),
+    /// Also accepts subclasses of str and dict, like PyUnicode_Check and PyDict_Check do
+    AllowSubclasses(Types),
+}
+
+impl TypeChecks {
+    pub fn new<P: ProcessMemory>(
+        python_info: &PythonProcessInfo,
+        process: &P,
+        version: &Version,
+        config: &Config,
+    ) -> Result<TypeChecks, Error> {
+        Ok(match config.type_checks {
+            TypesConfig::Disabled => TypeChecks::Disabled,
+            TypesConfig::Strict => {
+                TypeChecks::Strict(Types::from_symbols(python_info, process, version)?)
+            }
+            TypesConfig::AllowSubclasses => {
+                TypeChecks::AllowSubclasses(Types::from_symbols(python_info, process, version)?)
+            }
+        })
+    }
+
+    pub fn check_code<C: CodeObject>(&self, code: &C) -> Result<(), Error> {
+        let (TypeChecks::Strict(types) | TypeChecks::AllowSubclasses(types)) = self else {
+            return Ok(());
+        };
+        if code.ob_type() as usize != types.code {
+            return Err(format_err!("Object is not a code object"));
+        }
+        Ok(())
+    }
+
+    pub fn check_string<S: StringObject, P: ProcessMemory>(
+        &self,
+        process: &P,
+        string: &S,
+    ) -> Result<(), Error> {
+        let ob_type = string.ob_type();
+        let is_string = match self {
+            TypeChecks::Disabled => true,
+            TypeChecks::Strict(types) => ob_type as usize == types.string,
+            TypeChecks::AllowSubclasses(types) => {
+                ob_type as usize == types.string
+                    || process
+                        .copy_pointer(ob_type)
+                        .is_ok_and(|ty| ty.flags() & S::SUBCLASS_FLAG != 0)
+            }
+        };
+        if !is_string {
+            return Err(format_err!("Object is not a string"));
+        }
+        Ok(())
+    }
+
+    pub fn check_dict<T: TypeObject, P: ProcessMemory>(
+        &self,
+        process: &P,
+        ob_type: *mut T,
+    ) -> Result<(), Error> {
+        let is_dict = match self {
+            TypeChecks::Disabled => true,
+            TypeChecks::Strict(types) => ob_type as usize == types.dict,
+            TypeChecks::AllowSubclasses(types) => {
+                ob_type as usize == types.dict
+                    || process
+                        .copy_pointer(ob_type)
+                        .is_ok_and(|ty| ty.flags() & PY_TPFLAGS_DICT_SUBCLASS != 0)
+            }
+        };
+        if !is_dict {
+            return Err(format_err!("Object is not a dict"));
+        }
+        Ok(())
+    }
+}
+
+impl Types {
+    fn from_symbols<P: ProcessMemory>(
+        python_info: &PythonProcessInfo,
+        process: &P,
+        version: &Version,
+    ) -> Result<Types, Error> {
+        let string_symbol = if version.major == 2 {
+            "PyString_Type"
+        } else {
+            "PyUnicode_Type"
+        };
+        Ok(Types {
+            code: Types::get_type_address(python_info, process, version, "PyCode_Type", c"code")?,
+            string: Types::get_type_address(python_info, process, version, string_symbol, c"str")?,
+            dict: Types::get_type_address(python_info, process, version, "PyDict_Type", c"dict")?,
+        })
+    }
+
+    /// Resolves a static python type, so objects read as that type can be checked against it.
+    /// Fails unless `tp_name` matches, so a wrongly resolved address is never used.
+    fn get_type_address<P: ProcessMemory>(
+        python_info: &PythonProcessInfo,
+        process: &P,
+        version: &Version,
+        symbol: &str,
+        tp_name: &CStr,
+    ) -> Result<usize, Error> {
+        fn read_tp_name<I: InterpreterState, P: ProcessMemory>(
+            process: &P,
+            addr: usize,
+        ) -> Result<usize, Error> {
+            let type_object: <I::Object as Object>::TypeObject = process.copy_struct(addr)?;
+            Ok(type_object.name() as usize)
+        }
+
+        let addr = *python_info
+            .get_symbol(symbol)
+            .ok_or_else(|| format_err!("Failed to find {} symbol", symbol))?
+            as usize;
+
+        let tp_name_ptr = dispatch_by_version!(version, read_tp_name, process, addr)
+            .with_context(|| format!("Failed to read {} type object", symbol))?;
+
+        let tp_name = tp_name.to_bytes_with_nul();
+        let name = process
+            .copy(tp_name_ptr, tp_name.len())
+            .with_context(|| format!("Failed to read {} tp_name", symbol))?;
+        if name != tp_name {
+            return Err(format_err!("Unexpected {} tp_name", symbol));
+        }
+        Ok(addr)
+    }
+}
+
 impl PythonProcessLayout {
     /// Loads addresses and offsets from a target python process. These addresses include
     /// the address of the python interpreter, the address of which thread holds the GIL,
@@ -513,9 +661,12 @@ impl PythonProcessLayout {
     where
         P: ProcessMemory,
     {
+        let type_checks = TypeChecks::new(python_info, process, version, config)?;
+
         // get the address of the main PyInterpreterState object from loaded symbols if we can
         // (this tends to be faster than scanning through the bss section)
-        match PythonProcessLayout::from_symbols(python_info, process, version, config) {
+        match PythonProcessLayout::from_symbols(python_info, process, version, config, &type_checks)
+        {
             Ok(addr) => {
                 // Check that the symbol address is valid before returning by attempting to load a stack trace
                 match dispatch_by_version!(
@@ -524,7 +675,8 @@ impl PythonProcessLayout {
                     addr.interpreter_address,
                     process,
                     addr.threadstate_address,
-                    None
+                    None,
+                    &type_checks
                 ) {
                     Ok(_) => {
                         return Ok(addr);
@@ -543,7 +695,7 @@ impl PythonProcessLayout {
         }
 
         // If we can't load up the symbols, try scanning the python and libpython binaries
-        PythonProcessLayout::from_binaries(python_info, process, version, config)
+        PythonProcessLayout::from_binaries(python_info, process, version, config, &type_checks)
     }
 
     // initializes a new PythonProcessLayout from loaded symbols
@@ -552,6 +704,7 @@ impl PythonProcessLayout {
         process: &P,
         version: &Version,
         config: &Config,
+        type_checks: &TypeChecks,
     ) -> Result<PythonProcessLayout, Error>
     where
         P: ProcessMemory,
@@ -568,6 +721,7 @@ impl PythonProcessLayout {
                         process,
                         version,
                         config,
+                        type_checks,
                     );
                 }
             }
@@ -586,6 +740,7 @@ impl PythonProcessLayout {
                         process,
                         version,
                         config,
+                        type_checks,
                     );
                 }
             }
@@ -600,6 +755,7 @@ impl PythonProcessLayout {
                         process,
                         version,
                         config,
+                        type_checks,
                     );
                 }
             }
@@ -616,13 +772,21 @@ impl PythonProcessLayout {
         process: &P,
         version: &Version,
         config: &Config,
+        type_checks: &TypeChecks,
     ) -> Result<PythonProcessLayout, Error>
     where
         P: ProcessMemory,
     {
         // try scanning the BSS section of the binary for things that might be the interpreterstate
         let err = if let Some(ref pb) = python_info.python_binary {
-            match PythonProcessLayout::from_binary(pb, python_info, process, version, config) {
+            match PythonProcessLayout::from_binary(
+                pb,
+                python_info,
+                process,
+                version,
+                config,
+                type_checks,
+            ) {
                 Ok(addr) => return Ok(addr),
                 err => Some(err),
             }
@@ -633,7 +797,14 @@ impl PythonProcessLayout {
         // Before giving up, try again if there is a libpython.so
         if let Some(ref lpb) = python_info.libpython_binary {
             info!("Failed to get interpreter from binary BSS, scanning libpython BSS");
-            match PythonProcessLayout::from_binary(lpb, python_info, process, version, config) {
+            match PythonProcessLayout::from_binary(
+                lpb,
+                python_info,
+                process,
+                version,
+                config,
+                type_checks,
+            ) {
                 Ok(addr) => Ok(addr),
                 lib_err => err.unwrap_or(lib_err),
             }
@@ -648,6 +819,7 @@ impl PythonProcessLayout {
         process: &P,
         version: &Version,
         config: &Config,
+        type_checks: &TypeChecks,
     ) -> Result<PythonProcessLayout, Error>
     where
         P: ProcessMemory,
@@ -661,6 +833,7 @@ impl PythonProcessLayout {
                 process,
                 version,
                 config,
+                type_checks,
             ) {
                 return Ok(addr);
             }
@@ -675,6 +848,7 @@ impl PythonProcessLayout {
             process,
             version,
             config,
+            type_checks,
         )
     }
 
@@ -685,6 +859,7 @@ impl PythonProcessLayout {
         process: &P,
         version: &Version,
         config: &Config,
+        type_checks: &TypeChecks,
     ) -> Result<PythonProcessLayout, Error>
     where
         P: ProcessMemory,
@@ -713,6 +888,7 @@ impl PythonProcessLayout {
                 get_imports_modules_address,
                 interpreter_address
             )?,
+            type_checks: *type_checks,
         })
     }
 
@@ -722,6 +898,7 @@ impl PythonProcessLayout {
         process: &P,
         version: &Version,
         config: &Config,
+        type_checks: &TypeChecks,
     ) -> Result<PythonProcessLayout, Error>
     where
         P: ProcessMemory,
@@ -750,6 +927,7 @@ impl PythonProcessLayout {
                     interpreter_address,
                     threadstate_address,
                     imports_modules_address,
+                    type_checks: *type_checks,
                 })
             }};
         }
@@ -790,6 +968,7 @@ fn scan_memory<P>(
     process: &P,
     version: &Version,
     config: &Config,
+    type_checks: &TypeChecks,
 ) -> Result<PythonProcessLayout, Error>
 where
     P: ProcessMemory,
@@ -807,7 +986,8 @@ where
                 size,
                 process,
                 version,
-                config
+                config,
+                type_checks
             )
         }
         _ => {
@@ -819,7 +999,8 @@ where
                 python_info,
                 process,
                 version,
-                config
+                config,
+                type_checks
             )
         }
     }
@@ -832,6 +1013,7 @@ fn scan_memory_for_debug_offsets<I, P>(
     process: &P,
     version: &Version,
     config: &Config,
+    type_checks: &TypeChecks,
 ) -> Result<PythonProcessLayout, Error>
 where
     I: InterpreterState,
@@ -859,6 +1041,7 @@ where
                 process,
                 version,
                 &config,
+                type_checks,
             ) {
                 Ok(address_book) => address_book,
                 Err(_) => continue,
@@ -870,6 +1053,7 @@ where
                 process,
                 address_book.threadstate_address,
                 None,
+                type_checks,
             )
             .is_ok()
             {
@@ -890,6 +1074,7 @@ fn scan_memory_for_python_interpreter<I, P>(
     process: &P,
     version: &Version,
     config: &Config,
+    type_checks: &TypeChecks,
 ) -> Result<PythonProcessLayout, Error>
 where
     I: InterpreterState,
@@ -935,6 +1120,7 @@ where
                 process,
                 version,
                 &config,
+                type_checks,
             ) {
                 Ok(layout) => layout,
                 Err(_) => continue,
@@ -946,6 +1132,7 @@ where
                 process,
                 layout.threadstate_address,
                 None,
+                type_checks,
             )
             .is_ok()
             {
@@ -1162,6 +1349,176 @@ pub fn is_python_framework(pathname: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::python_data_access::PY_TPFLAGS_STRING_SUBCLASS;
+    use remoteprocess::LocalProcess;
+
+    fn python_info_with_symbols(
+        symbols: std::collections::HashMap<String, u64>,
+    ) -> PythonProcessInfo {
+        PythonProcessInfo {
+            python_binary: Some(BinaryInfo {
+                symbols,
+                bss_addr: 0,
+                bss_size: 0,
+                pyruntime_addr: 0,
+                pyruntime_size: 0,
+                addr: 0,
+                size: 0,
+            }),
+            libpython_binary: None,
+            maps: Box::new(Vec::<MapRange>::new()),
+            python_filename: std::path::PathBuf::new(),
+            #[cfg(target_os = "linux")]
+            dockerized: false,
+        }
+    }
+
+    fn version_3_7() -> Version {
+        version(3)
+    }
+
+    fn version(major: u64) -> Version {
+        Version {
+            major,
+            minor: 7,
+            patch: 0,
+            release_flags: String::new(),
+            build_metadata: None,
+        }
+    }
+
+    fn get_code_type_address(info: &PythonProcessInfo) -> Result<usize, Error> {
+        Types::get_type_address(info, &LocalProcess, &version_3_7(), "PyCode_Type", c"code")
+    }
+
+    fn code_type_resolves(tp_name: &[u8]) -> bool {
+        let py_type = v3_7_0::PyTypeObject {
+            tp_name: tp_name.as_ptr() as *const std::os::raw::c_char,
+            ..Default::default()
+        };
+        let addr = &py_type as *const v3_7_0::PyTypeObject as usize;
+        let info = python_info_with_symbols([("PyCode_Type".to_owned(), addr as u64)].into());
+        get_code_type_address(&info).is_ok_and(|a| a == addr)
+    }
+
+    #[test]
+    fn test_get_code_type_address() {
+        assert!(code_type_resolves(b"code\0"));
+        for tp_name in [
+            b"dict\0".as_slice(),
+            b"codesomethingelse\0",
+            b"cod\0",
+            b"\0",
+        ] {
+            assert!(!code_type_resolves(tp_name));
+        }
+    }
+
+    #[test]
+    fn test_get_code_type_address_without_symbol() {
+        let info = python_info_with_symbols(Default::default());
+        assert!(get_code_type_address(&info).is_err());
+    }
+
+    macro_rules! type_objects {
+        ($py: ident) => {
+            [c"code", c"str", c"dict"].map(|name| $py::PyTypeObject {
+                tp_name: name.as_ptr(),
+                ..Default::default()
+            })
+        };
+    }
+
+    fn type_symbols<T>(objects: &[T; 3], string_symbol: &str) -> (PythonProcessInfo, Types) {
+        let [code, string, dict] = objects.each_ref().map(|t| t as *const T as usize);
+        let info = python_info_with_symbols(
+            [
+                ("PyCode_Type".to_owned(), code as u64),
+                (string_symbol.to_owned(), string as u64),
+                ("PyDict_Type".to_owned(), dict as u64),
+            ]
+            .into(),
+        );
+        (info, Types { code, string, dict })
+    }
+
+    #[test]
+    fn test_types_from_symbols_python3() {
+        let objects = type_objects!(v3_7_0);
+        let (info, expected) = type_symbols(&objects, "PyUnicode_Type");
+        let types = Types::from_symbols(&info, &LocalProcess, &version(3)).unwrap();
+        assert_eq!(types, expected);
+        assert!(Types::from_symbols(&info, &LocalProcess, &version(2)).is_err());
+    }
+
+    #[test]
+    fn test_check_string_and_dict_subclasses() {
+        let str_type = v3_7_0::PyTypeObject::default();
+        let dict_type = v3_7_0::PyTypeObject::default();
+        let str_subclass = v3_7_0::PyTypeObject {
+            tp_flags: PY_TPFLAGS_STRING_SUBCLASS as _,
+            ..Default::default()
+        };
+        let dict_subclass = v3_7_0::PyTypeObject {
+            tp_flags: PY_TPFLAGS_DICT_SUBCLASS as _,
+            ..Default::default()
+        };
+        let other_type = v3_7_0::PyTypeObject::default();
+        let ptr = |t: &v3_7_0::PyTypeObject| t as *const _ as *mut v3_7_0::PyTypeObject;
+        let string_of = |t: &v3_7_0::PyTypeObject| {
+            let mut s = v3_7_0::PyUnicodeObject::default();
+            s._base._base.ob_base.ob_type = ptr(t);
+            s
+        };
+
+        let types = Types {
+            code: 0,
+            string: ptr(&str_type) as usize,
+            dict: ptr(&dict_type) as usize,
+        };
+        let strict = TypeChecks::Strict(types);
+        let subclasses = TypeChecks::AllowSubclasses(types);
+
+        for type_checks in [&strict, &subclasses] {
+            assert!(type_checks
+                .check_string(&LocalProcess, &string_of(&str_type))
+                .is_ok());
+            assert!(type_checks
+                .check_string(&LocalProcess, &string_of(&other_type))
+                .is_err());
+            assert!(type_checks
+                .check_string(&LocalProcess, &string_of(&dict_subclass))
+                .is_err());
+            assert!(type_checks
+                .check_dict(&LocalProcess, ptr(&dict_type))
+                .is_ok());
+            assert!(type_checks
+                .check_dict(&LocalProcess, ptr(&other_type))
+                .is_err());
+            assert!(type_checks
+                .check_dict(&LocalProcess, ptr(&str_subclass))
+                .is_err());
+        }
+
+        let str_sub = string_of(&str_subclass);
+        assert!(strict.check_string(&LocalProcess, &str_sub).is_err());
+        assert!(subclasses.check_string(&LocalProcess, &str_sub).is_ok());
+        assert!(strict
+            .check_dict(&LocalProcess, ptr(&dict_subclass))
+            .is_err());
+        assert!(subclasses
+            .check_dict(&LocalProcess, ptr(&dict_subclass))
+            .is_ok());
+    }
+
+    #[test]
+    fn test_types_from_symbols_python2() {
+        let objects = type_objects!(v2_7_15);
+        let (info, expected) = type_symbols(&objects, "PyString_Type");
+        let types = Types::from_symbols(&info, &LocalProcess, &version(2)).unwrap();
+        assert_eq!(types, expected);
+        assert!(Types::from_symbols(&info, &LocalProcess, &version(3)).is_err());
+    }
 
     #[cfg(target_os = "macos")]
     #[test]
