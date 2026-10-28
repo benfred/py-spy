@@ -462,7 +462,7 @@ mod elfcore {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::python_process_info::Types;
+    use crate::python_types::Types;
     use py_spy_testdata::get_coredump_path;
 
     #[cfg(target_pointer_width = "64")]

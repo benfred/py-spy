@@ -10,7 +10,7 @@ use crate::python_data_access::{copy_bytes, copy_string};
 use crate::python_interpreters::{
     CodeObject, FrameObject, InterpreterState, Object, ThreadState, TupleObject,
 };
-use crate::python_process_info::Types;
+use crate::python_types::Types;
 
 /// Call stack for a single python thread
 #[derive(Debug, Clone, Serialize)]

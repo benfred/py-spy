@@ -45,6 +45,7 @@ mod python_interpreters;
 pub mod python_process_info;
 pub mod python_spy;
 mod python_threading;
+pub mod python_types;
 pub mod sampler;
 pub mod stack_trace;
 pub mod timer;
