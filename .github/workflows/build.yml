@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
-          python-version: 3.11
+          python-version: 3.14
       - uses: pre-commit/action@v3.0.1
 
   build:
@@ -45,7 +45,7 @@ jobs:
         run: cargo build --release --verbose --lib --no-default-features
       - uses: actions/setup-python@v7
         with:
-          python-version: 3.11
+          python-version: 3.14
       - name: Install optional numpy dependency
         run: pip install numpy>=2
       - name: Test
@@ -402,7 +402,7 @@ jobs:
         if: runner.os == 'Linux'
       - uses: actions/setup-python@v7
         with:
-          python-version: 3.9
+          python-version: 3.14
       - name: Push to PyPi
         env:
           TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
