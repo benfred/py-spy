@@ -15,7 +15,7 @@ jobs:
           ssh-key: ${{ secrets.SSH_PRIVATE_KEY }}
       - uses: actions/setup-python@v7
         with:
-          python-version: 3.9
+          python-version: 3.14
       - name: Install
         run: pip install --upgrade requests pyyaml
       - name: Scan for new python versions
