@@ -183,7 +183,7 @@ pub struct PythonCoreDump {
 }
 
 impl PythonCoreDump {
-    pub fn new<P: AsRef<Path>>(filename: P) -> Result<PythonCoreDump, Error> {
+    pub fn new<P: AsRef<Path>>(filename: P, config: &Config) -> Result<PythonCoreDump, Error> {
         let core = CoreDump::new(filename)?;
         let maps = &core.maps;
 
@@ -240,8 +240,7 @@ impl PythonCoreDump {
             get_python_version(&python_info, &core).context("failed to get python version")?;
         info!("Got python version {}", version);
 
-        let config = Config::default();
-        let addresses = PythonProcessLayout::new(&python_info, &core, &version, &config)?;
+        let addresses = PythonProcessLayout::new(&python_info, &core, &version, config)?;
 
         // lets us figure out which thread has the GIL
         info!(
@@ -343,6 +342,7 @@ impl PythonCoreDump {
             &self.core,
             self.addresses.threadstate_address,
             Some(config),
+            &self.addresses.type_checks,
         )?;
 
         let thread_names = thread_names_from_interpreter::<I, CoreDump>(
@@ -366,6 +366,7 @@ impl PythonCoreDump {
                             &self.version,
                             local.addr,
                             max_length,
+                            &self.addresses.type_checks,
                         );
                         local.repr = Some(repr.unwrap_or_else(|_| "?".to_owned()));
                     }
@@ -462,6 +463,7 @@ mod elfcore {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::python_process_info::{TypeChecks, Types};
     use py_spy_testdata::get_coredump_path;
 
     #[cfg(target_pointer_width = "64")]
@@ -470,7 +472,6 @@ mod test {
         // we won't have the python binary for the core dump here,
         // so we can't (yet) figure out the interpreter address & version.
         // Manually specify here to test out instead
-        let core = CoreDump::new(&get_coredump_path("python_3_9_threads")).unwrap();
         let version = Version {
             major: 3,
             minor: 9,
@@ -478,16 +479,17 @@ mod test {
             release_flags: "".to_owned(),
             build_metadata: None,
         };
-        let addresses = PythonProcessLayout {
-            interpreter_address: 0x000055a8293dbe20,
-            threadstate_address: 0x000055a82745fe18,
-            imports_modules_address: 0x55a8293dc178,
+        let core_dump = |type_checks| PythonCoreDump {
+            core: CoreDump::new(&get_coredump_path("python_3_9_threads")).unwrap(),
+            version: version.clone(),
+            addresses: PythonProcessLayout {
+                interpreter_address: 0x000055a8293dbe20,
+                threadstate_address: 0x000055a82745fe18,
+                imports_modules_address: 0x55a8293dc178,
+                type_checks,
+            },
         };
-        let python_core = PythonCoreDump {
-            core,
-            version,
-            addresses,
-        };
+        let python_core = core_dump(TypeChecks::Disabled);
 
         let config = Config::default();
         let traces = python_core.get_stack(&config).unwrap();
@@ -505,5 +507,32 @@ mod test {
         assert_eq!(child_thread.frames[0].name, "dump_sum");
         assert_eq!(child_thread.frames[0].line, 16);
         assert_eq!(child_thread.thread_name, Some("child_thread".to_owned()));
+
+        let config = Config {
+            dump_locals: 1,
+            ..Default::default()
+        };
+        let types = Types {
+            code: 0x55a827436c00,
+            string: 0x55a82744dd00,
+            dict: 0x55a827456060,
+        };
+        let checked = core_dump(TypeChecks::Strict(types))
+            .get_stack(&config)
+            .unwrap();
+        let unchecked = python_core.get_stack(&config).unwrap();
+        assert_eq!(checked.len(), unchecked.len());
+        for (checked, unchecked) in checked.iter().zip(&unchecked) {
+            assert_eq!(checked.thread_name, unchecked.thread_name);
+            assert_eq!(checked.frames, unchecked.frames);
+        }
+
+        let err = core_dump(TypeChecks::Strict(Types {
+            code: 0x239,
+            ..types
+        }))
+        .get_stack(&config)
+        .unwrap_err();
+        assert!(format!("{err:#}").contains("is not a code object"));
     }
 }
