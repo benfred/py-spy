@@ -337,7 +337,6 @@ macro_rules! implement_interpreter_traits {
             }
 
             fn is_python_frame(&self) -> bool {
-                //let owner = if_python_3_12_or_later!($py, self.owner as $py::_frameowner, self);
                 #[allow(unused_variables)]
                 let owner = if_python_3_12_or_later!($py, self.owner as $py::_frameowner, self);
                 let valid_frame = if_python_3_14_or_later!(
