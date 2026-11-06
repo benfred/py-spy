@@ -325,8 +325,7 @@ macro_rules! PythonTraitImpl {
                     if_python_3_12_or_later!(
                         $py,
                         self.owner as $py::_frameowner == $py::_frameowner_FRAME_OWNED_BY_CSTACK,
-                        if_python_3_11_or_later!($py, self.is_entry != 0, false) // TODO: should default be 'true' or 'false' for older versions of python?
-                                                                                 // 'true' is consistent with previous behaviour - but like 'false' seems to make more sense to me
+                        if_python_3_11_or_later!($py, self.is_entry != 0, true)
                     )
                 )
             }
@@ -334,7 +333,7 @@ macro_rules! PythonTraitImpl {
             fn is_python_frame(&self) -> bool {
                 // TODO: python3.14  also checks for _frameowner_FRAME_OWNED_BY_CSTACK
                 // https://github.com/python/cpython/blob/v3.14.0/Modules/_remote_debugging_module.c#L2134-L2148
-                !(self.code().is_null() || self.is_entry())
+                if_python_3_12_or_later!($py, !(self.code().is_null() || self.is_entry()), true)
             }
         }
 
