@@ -115,16 +115,22 @@ pub trait TypeObject: Copy {
 }
 
 /// Acts like a compile time 'if' statement on a python version - evaluates to '$newer' if
-/// the python version is at least v3_14_0, and `$older` otherwise
-macro_rules! if_python_3_14_or_later {
+/// the python version is at least v3_15_0, and `$older` otherwise
+macro_rules! if_python_3_15_or_later {
     (v3_15_0, $newer: expr, $older: expr) => {
-        $newer
-    };
-    (v3_14_0, $newer: expr, $older: expr) => {
         $newer
     };
     ($py: ident, $newer: expr, $older: expr) => {
         $older
+    };
+}
+
+macro_rules! if_python_3_14_or_later {
+    (v3_14_0, $newer: expr, $older: expr) => {
+        $newer
+    };
+    ($py: ident, $newer: expr, $older: expr) => {
+        if_python_3_15_or_later!($py, $newer, $older)
     };
 }
 
@@ -213,7 +219,7 @@ macro_rules! frame_object_type {
 }
 
 // Common implementation of all python interpreter traits
-macro_rules! PythonTraitImpl {
+macro_rules! implement_interpreter_traits {
     ($py: ident) => {
         impl InterpreterState for $py::PyInterpreterState {
             type ThreadState = $py::PyThreadState;
@@ -331,9 +337,30 @@ macro_rules! PythonTraitImpl {
             }
 
             fn is_python_frame(&self) -> bool {
-                // TODO: python3.14  also checks for _frameowner_FRAME_OWNED_BY_CSTACK
-                // https://github.com/python/cpython/blob/v3.14.0/Modules/_remote_debugging_module.c#L2134-L2148
-                if_python_3_12_or_later!($py, !(self.code().is_null() || self.is_entry()), true)
+                //let owner = if_python_3_12_or_later!($py, self.owner as $py::_frameowner, self);
+                #[allow(unused_variables)]
+                let owner = if_python_3_12_or_later!($py, self.owner as $py::_frameowner, self);
+                let valid_frame = if_python_3_14_or_later!(
+                    $py,
+                    if_python_3_15_or_later!(
+                        $py,
+                        // python 3.15 https://github.com/python/cpython/blob/v3.15.0/Modules/_remote_debugging/frames.c#L167-L188
+                        owner != $py::_frameowner_FRAME_OWNED_BY_INTERPRETER,
+                        // python 3.14 https://github.com/python/cpython/blob/v3.14.0/Modules/_remote_debugging_module.c#L2134-L2148
+                        owner != $py::_frameowner_FRAME_OWNED_BY_INTERPRETER
+                            && owner != $py::_frameowner_FRAME_OWNED_BY_CSTACK
+                    ),
+                    if_python_3_12_or_later!(
+                        $py,
+                        // python 3.12/3.13
+                        // https://github.com/python/cpython/blob/v3.12.0/Python/ceval.c#L688-L692
+                        // https://github.com/python/cpython/blob/v3.13.0/Modules/_testexternalinspection.c#L502-L525
+                        owner != $py::_frameowner_FRAME_OWNED_BY_CSTACK,
+                        true
+                    )
+                );
+
+                !self.code().is_null() && valid_frame
             }
         }
 
@@ -493,24 +520,24 @@ macro_rules! PythonTraitImpl {
     };
 }
 
-PythonTraitImpl!(v3_15_0);
-PythonTraitImpl!(v3_14_0);
-PythonTraitImpl!(v3_13_0);
-PythonTraitImpl!(v3_12_0);
-PythonTraitImpl!(v3_11_0);
-PythonTraitImpl!(v3_10_0);
-PythonTraitImpl!(v3_9_5);
-PythonTraitImpl!(v3_8_0);
-PythonTraitImpl!(v3_7_0);
-PythonTraitImpl!(v3_6_6);
-PythonTraitImpl!(v3_5_5);
-PythonTraitImpl!(v3_3_7);
-PythonTraitImpl!(v2_7_15);
+implement_interpreter_traits!(v3_15_0);
+implement_interpreter_traits!(v3_14_0);
+implement_interpreter_traits!(v3_13_0);
+implement_interpreter_traits!(v3_12_0);
+implement_interpreter_traits!(v3_11_0);
+implement_interpreter_traits!(v3_10_0);
+implement_interpreter_traits!(v3_9_5);
+implement_interpreter_traits!(v3_8_0);
+implement_interpreter_traits!(v3_7_0);
+implement_interpreter_traits!(v3_6_6);
+implement_interpreter_traits!(v3_5_5);
+implement_interpreter_traits!(v3_3_7);
+implement_interpreter_traits!(v2_7_15);
 
+// Lookup line numbers for python 3.11+
 fn compact_get_line_number<C: CodeObject>(code: &C, lasti: i32, table: &[u8]) -> i32 {
-    // unpack compressed table format from python 3.11
+    // unpack compressed table format from python 3.11+
     // https://github.com/python/cpython/pull/91666/files
-    // TODO: adjust out of scope let lasti = lasti - std::mem::offset_of!(Self, co_code_adaptive) as i32;
     let mut line_number: i32 = code.first_lineno();
     let mut bytecode_address: i32 = 0;
 
@@ -552,6 +579,7 @@ fn compact_get_line_number<C: CodeObject>(code: &C, lasti: i32, table: &[u8]) ->
     line_number
 }
 
+// Lookup line numbers for python 3.10
 fn python_3_10_get_line_number<C: CodeObject>(code: &C, lasti: i32, table: &[u8]) -> i32 {
     // in Python 3.10 we need to double the lasti instruction value here (and no I don't know why)
     // https://github.com/python/cpython/blob/7b88f63e1dd4006b1a08b9c9f087dd13449ecc76/Python/ceval.c#L5999
@@ -584,7 +612,7 @@ fn python_3_10_get_line_number<C: CodeObject>(code: &C, lasti: i32, table: &[u8]
     line_number
 }
 
-/// handles python 3.9 and older
+// Lookup line numbers for python 3.9 and earlier
 fn legacy_get_line_number<C: CodeObject>(code: &C, lasti: i32, table: &[u8]) -> i32 {
     let lasti = lasti as i32;
 
