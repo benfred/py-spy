@@ -1291,6 +1291,7 @@ pub fn is_python_framework(pathname: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::python_bindings::{v2_7_15, v3_7_0};
     use crate::python_data_access::PY_TPFLAGS_STRING_SUBCLASS;
     use remoteprocess::LocalProcess;
 
