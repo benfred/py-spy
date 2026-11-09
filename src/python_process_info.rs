@@ -17,13 +17,11 @@ use remoteprocess::ProcessMemory;
 
 use crate::binary_parser::{parse_binary, BinaryInfo};
 use crate::config::{Config, TypesConfig};
-use crate::python_bindings::{
-    pyruntime, v2_7_15, v3_10_0, v3_11_0, v3_12_0, v3_13_0, v3_14_0, v3_15_0, v3_3_7, v3_5_5,
-    v3_6_6, v3_7_0, v3_8_0, v3_9_5,
-};
+use crate::python_bindings::{pyruntime, v3_12_0, v3_13_0, v3_14_0, v3_15_0};
 use crate::python_data_access::PY_TPFLAGS_DICT_SUBCLASS;
 use crate::python_interpreters::{
-    CodeObject, InterpreterState, Object, StringObject, ThreadState, TypeObject,
+    dispatch_by_version, CodeObject, InterpreterState, Object, StringObject, ThreadState,
+    TypeObject,
 };
 use crate::stack_trace::get_stack_traces;
 use crate::version::Version;
@@ -441,62 +439,6 @@ where
     Err(format_err!(
         "Failed to find python version from target process"
     ))
-}
-
-/// Dispatches to various templatized function calls taking a InterpreterState,
-/// by matching the an input Version struct
-macro_rules! dispatch_by_version {
-    ($version: ident, $function: ident, $($args:tt)*) => {
-        match $version {
-            Version {
-                major: 2, minor: 3..=7, ..
-            } => $function::<v2_7_15::_is, P>($($args)*),
-            Version {
-                major: 3, minor: 3, ..
-            } => $function::<v3_3_7::_is, P>($($args)*),
-            Version {
-                major: 3, minor: 4..=5, ..
-            } => $function::<v3_5_5::_is, P>($($args)*),
-            Version {
-                major: 3, minor: 6, ..
-            } => $function::<v3_6_6::_is, P>($($args)*),
-            Version {
-                major: 3, minor: 7, ..
-            } => $function::<v3_7_0::_is, P>($($args)*),
-            Version {
-                major: 3, minor: 8, ..
-            } => $function::<v3_8_0::_is, P>($($args)*),
-            Version {
-                major: 3, minor: 9, ..
-            } => $function::<v3_9_5::_is, P>($($args)*),
-            Version { major: 3, minor: 10, ..
-            } => $function::<v3_10_0::_is, P>($($args)*),
-            Version {
-                major: 3, minor: 11, ..
-            } => $function::<v3_11_0::_is, P>($($args)*),
-            Version {
-                major: 3,
-                minor: 12,
-                ..
-            } => $function::<v3_12_0::_is, P>($($args)*),
-            Version {
-                major: 3,
-                minor: 13,
-                ..
-            } => $function::<v3_13_0::_is, P>($($args)*),
-            Version {
-                major: 3,
-                minor: 14,
-                ..
-            } => $function::<v3_14_0::_is, P>($($args)*),
-            Version {
-                major: 3,
-                minor: 15,
-                ..
-            } => $function::<v3_15_0::_is, P>($($args)*),
-            _ => Err(format_err!("Unsupported version of Python: {}", $version)),
-        }
-    }
 }
 
 /// Addresses of static python type objects, used to check the types of objects we read

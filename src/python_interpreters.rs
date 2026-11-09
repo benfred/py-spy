@@ -533,6 +533,70 @@ implement_interpreter_traits!(v3_5_5);
 implement_interpreter_traits!(v3_3_7);
 implement_interpreter_traits!(v2_7_15);
 
+/// Dispatches to various templatized function calls taking a InterpreterState,
+/// by matching the an input Version struct
+macro_rules! dispatch_by_version {
+    ($version: expr, $function: ident, $($args:tt)*) => {{
+        use crate::python_bindings::{
+            v2_7_15, v3_10_0, v3_11_0, v3_12_0, v3_13_0, v3_14_0, v3_15_0, v3_3_7, v3_5_5,
+            v3_6_6, v3_7_0, v3_8_0, v3_9_5,
+        };
+
+        use crate::version::Version;
+
+        match $version {
+            Version {
+                major: 2, minor: 3..=7, ..
+            } => $function::<v2_7_15::_is, P>($($args)*),
+            Version {
+                major: 3, minor: 3, ..
+            } => $function::<v3_3_7::_is, P>($($args)*),
+            Version {
+                major: 3, minor: 4..=5, ..
+            } => $function::<v3_5_5::_is, P>($($args)*),
+            Version {
+                major: 3, minor: 6, ..
+            } => $function::<v3_6_6::_is, P>($($args)*),
+            Version {
+                major: 3, minor: 7, ..
+            } => $function::<v3_7_0::_is, P>($($args)*),
+            Version {
+                major: 3, minor: 8, ..
+            } => $function::<v3_8_0::_is, P>($($args)*),
+            Version {
+                major: 3, minor: 9, ..
+            } => $function::<v3_9_5::_is, P>($($args)*),
+            Version { major: 3, minor: 10, ..
+            } => $function::<v3_10_0::_is, P>($($args)*),
+            Version {
+                major: 3, minor: 11, ..
+            } => $function::<v3_11_0::_is, P>($($args)*),
+            Version {
+                major: 3,
+                minor: 12,
+                ..
+            } => $function::<v3_12_0::_is, P>($($args)*),
+            Version {
+                major: 3,
+                minor: 13,
+                ..
+            } => $function::<v3_13_0::_is, P>($($args)*),
+            Version {
+                major: 3,
+                minor: 14,
+                ..
+            } => $function::<v3_14_0::_is, P>($($args)*),
+            Version {
+                major: 3,
+                minor: 15,
+                ..
+            } => $function::<v3_15_0::_is, P>($($args)*),
+            _ => Err(format_err!("Unsupported version of Python: {}", $version)),
+        }
+    }}
+}
+pub(crate) use dispatch_by_version;
+
 // Lookup line numbers for python 3.11+
 fn compact_get_line_number<C: CodeObject>(code: &C, lasti: i32, table: &[u8]) -> i32 {
     // unpack compressed table format from python 3.11+

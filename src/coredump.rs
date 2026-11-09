@@ -14,12 +14,8 @@ use remoteprocess::ProcessMemory;
 use crate::binary_parser::{parse_binary, BinaryInfo};
 use crate::config::Config;
 use crate::dump::print_trace;
-use crate::python_bindings::{
-    v2_7_15, v3_10_0, v3_11_0, v3_12_0, v3_13_0, v3_14_0, v3_15_0, v3_3_7, v3_5_5, v3_6_6, v3_7_0,
-    v3_8_0, v3_9_5,
-};
 use crate::python_data_access::format_variable;
-use crate::python_interpreters::InterpreterState;
+use crate::python_interpreters::{dispatch_by_version, InterpreterState};
 use crate::python_process_info::{
     get_python_version, is_python_lib, ContainsAddr, PythonProcessInfo, PythonProcessLayout,
 };
@@ -272,68 +268,14 @@ impl PythonCoreDump {
             ));
         }
 
-        // different versions have different layouts, check as appropriate
-        match self.version {
-            Version {
-                major: 2,
-                minor: 3..=7,
-                ..
-            } => self._get_stack::<v2_7_15::_is>(config),
-            Version {
-                major: 3, minor: 3, ..
-            } => self._get_stack::<v3_3_7::_is>(config),
-            Version {
-                major: 3,
-                minor: 4..=5,
-                ..
-            } => self._get_stack::<v3_5_5::_is>(config),
-            Version {
-                major: 3, minor: 6, ..
-            } => self._get_stack::<v3_6_6::_is>(config),
-            Version {
-                major: 3, minor: 7, ..
-            } => self._get_stack::<v3_7_0::_is>(config),
-            Version {
-                major: 3, minor: 8, ..
-            } => self._get_stack::<v3_8_0::_is>(config),
-            Version {
-                major: 3, minor: 9, ..
-            } => self._get_stack::<v3_9_5::_is>(config),
-            Version {
-                major: 3,
-                minor: 10,
-                ..
-            } => self._get_stack::<v3_10_0::_is>(config),
-            Version {
-                major: 3,
-                minor: 11,
-                ..
-            } => self._get_stack::<v3_11_0::_is>(config),
-            Version {
-                major: 3,
-                minor: 12,
-                ..
-            } => self._get_stack::<v3_12_0::_is>(config),
-            Version {
-                major: 3,
-                minor: 13,
-                ..
-            } => self._get_stack::<v3_13_0::_is>(config),
-            Version {
-                major: 3,
-                minor: 14,
-                ..
-            } => self._get_stack::<v3_14_0::_is>(config),
-            Version {
-                major: 3,
-                minor: 15,
-                ..
-            } => self._get_stack::<v3_15_0::_is>(config),
-            _ => Err(format_err!(
-                "Unsupported version of Python: {}",
-                self.version
-            )),
+        type P = CoreDump;
+        fn get_traces<I: InterpreterState, P: ProcessMemory>(
+            core: &PythonCoreDump,
+            config: &Config,
+        ) -> Result<Vec<StackTrace>, Error> {
+            core._get_stack::<I>(config)
         }
+        dispatch_by_version!(self.version, get_traces, self, config)
     }
 
     fn _get_stack<I: InterpreterState>(&self, config: &Config) -> Result<Vec<StackTrace>, Error> {
