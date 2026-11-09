@@ -1274,7 +1274,7 @@ pub fn get_windows_python_symbols(
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 pub fn is_python_lib(pathname: &str) -> bool {
     lazy_static! {
-        static ref RE: Regex = Regex::new(r"/libpython\d.\d\d?(m|d|u)?.so").unwrap();
+        static ref RE: Regex = Regex::new(r"/libpython\d.\d\d?t?(m|d|u)?.so").unwrap();
     }
     RE.is_match(pathname)
 }
@@ -1282,7 +1282,7 @@ pub fn is_python_lib(pathname: &str) -> bool {
 #[cfg(target_os = "macos")]
 pub fn is_python_lib(pathname: &str) -> bool {
     lazy_static! {
-        static ref RE: Regex = Regex::new(r"/libpython\d.\d\d?(m|d|u)?.(dylib|so)$").unwrap();
+        static ref RE: Regex = Regex::new(r"/libpython\d.\d\d?t?(m|d|u)?.(dylib|so)$").unwrap();
     }
     RE.is_match(pathname) || is_python_framework(pathname)
 }
@@ -1290,7 +1290,7 @@ pub fn is_python_lib(pathname: &str) -> bool {
 #[cfg(windows)]
 pub fn is_python_lib(pathname: &str) -> bool {
     lazy_static! {
-        static ref RE: Regex = RegexBuilder::new(r"\\python\d\d\d?(m|d|u)?.dll$")
+        static ref RE: Regex = RegexBuilder::new(r"\\python\d\d\dt??(m|d|u)?.dll$")
             .case_insensitive(true)
             .build()
             .unwrap();
