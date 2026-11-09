@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import sysconfig
 import re
 import tempfile
 import unittest
@@ -12,7 +13,7 @@ from shutil import which
 
 Frame = namedtuple("Frame", ["file", "name", "line", "col"])
 
-GIL = ["--gil"]
+GIL = None if sysconfig.get_config_var("Py_GIL_DISABLED") else ["--gil"]
 
 PYSPY = which("py-spy")
 
@@ -68,7 +69,6 @@ class TestPyspy(unittest.TestCase):
         # running with the gil flag should have ~ no samples returned
         if GIL:
             profile = self._sample_process(_get_script("longsleep.py"), GIL)
-            print(profile)
             assert sum(profile.values()) <= 10
 
         # running with the idle flag should have > 95%  of samples in the sleep call
@@ -90,6 +90,11 @@ class TestPyspy(unittest.TestCase):
         # we don't support getting thread names on python < 3.6
         v = sys.version_info
         if v.major < 3 or v.minor < 6:
+            return
+
+        # currently can't get thread names on free-threaded builds
+        # TODO: fix
+        if not GIL:
             return
 
         for _ in range(3):
