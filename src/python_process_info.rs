@@ -1290,7 +1290,7 @@ pub fn is_python_lib(pathname: &str) -> bool {
 #[cfg(windows)]
 pub fn is_python_lib(pathname: &str) -> bool {
     lazy_static! {
-        static ref RE: Regex = RegexBuilder::new(r"\\python\d\d\dt??(m|d|u)?.dll$")
+        static ref RE: Regex = RegexBuilder::new(r"\\python\d\d\d?t?(m|d|u)?.dll$")
             .case_insensitive(true)
             .build()
             .unwrap();
