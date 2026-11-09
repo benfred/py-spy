@@ -426,6 +426,7 @@ mod test {
                 threadstate_address: 0x000055a82745fe18,
                 imports_modules_address: 0x55a8293dc178,
                 type_checks,
+                free_threaded: false,
             },
         };
         let python_core = core_dump(TypeChecks::Disabled);
