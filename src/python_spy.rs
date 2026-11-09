@@ -24,7 +24,7 @@ pub struct PythonSpy {
     pub pid: Pid,
     pub process: Process,
     pub version: Version,
-    pub addresses: PythonProcessLayout,
+    pub layout: PythonProcessLayout,
     pub config: Config,
     #[cfg(feature = "unwind")]
     pub native: Option<NativeStack>,
@@ -54,11 +54,8 @@ impl PythonSpy {
         let version = get_python_version(&python_info, &process)?;
         info!("python version {} detected", version);
 
-        let addresses = PythonProcessLayout::new(&python_info, &process, &version, config)?;
-        info!(
-            "Found interpreter at 0x{:016x}",
-            addresses.interpreter_address
-        );
+        let layout = PythonProcessLayout::new(&python_info, &process, &version, config)?;
+        info!("Found interpreter at 0x{:016x}", layout.interpreter_address);
 
         #[cfg(feature = "unwind")]
         let native = if config.native {
@@ -75,7 +72,7 @@ impl PythonSpy {
             pid,
             process,
             version,
-            addresses,
+            layout,
             #[cfg(feature = "unwind")]
             native,
             #[cfg(target_os = "linux")]
@@ -123,7 +120,7 @@ impl PythonSpy {
         ) -> Result<Vec<StackTrace>, Error> {
             spy._get_stack_traces::<I>()
         }
-        dispatch_by_version!(&self.version, get_traces, self)
+        dispatch_by_version!(&self.version, self.layout.free_threaded, get_traces, self)
     }
 
     // implementation of get_stack_traces, where we have a type for the InterpreterState
@@ -156,7 +153,7 @@ impl PythonSpy {
         };
 
         // Find PyThreadState, and loop over all the python threads
-        let threadstate_ptr_ptr = I::threadstate_ptr_ptr(self.addresses.interpreter_address);
+        let threadstate_ptr_ptr = I::threadstate_ptr_ptr(self.layout.interpreter_address);
         let threads_head = self
             .process
             .copy_pointer(threadstate_ptr_ptr)
@@ -164,7 +161,7 @@ impl PythonSpy {
 
         // get the threadid of the gil if appropriate
         let gil_thread_id =
-            get_gil_threadid::<I, Process>(self.addresses.threadstate_address, &self.process)
+            get_gil_threadid::<I, Process>(self.layout.threadstate_address, &self.process)
                 .context("failed to get gil_thread_id")?;
 
         let mut did_thread_name_lookup = false;
@@ -198,7 +195,7 @@ impl PythonSpy {
                 &self.process,
                 self.config.dump_locals > 0,
                 self.config.lineno,
-                &self.addresses.type_checks,
+                &self.layout.type_checks,
             )
             .with_context(|| {
                 format!(
@@ -282,7 +279,7 @@ impl PythonSpy {
                             &self.version,
                             local.addr,
                             max_length,
-                            &self.addresses.type_checks,
+                            &self.layout,
                         );
                         local.repr = Some(repr.unwrap_or_else(|_| "?".to_owned()));
                     }

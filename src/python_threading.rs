@@ -18,39 +18,32 @@ use remoteprocess::ProcessMemory;
 /// Returns a hashmap of threadid: threadname, by inspecting the '_active' variable in the
 /// 'threading' module.
 pub fn thread_names_from_interpreter<I: InterpreterState, P: ProcessMemory>(
-    addresses: &PythonProcessLayout,
+    layout: &PythonProcessLayout,
     process: &P,
     version: &Version,
 ) -> Result<HashMap<u64, String>, Error> {
-    let modules_ptr_ptr = addresses.imports_modules_address as *const *const I::Object;
+    let modules_ptr_ptr = layout.imports_modules_address as *const *const I::Object;
 
     let modules: *const I::Object = process
         .copy_pointer(modules_ptr_ptr)
         .context("Failed to copy modules PyObject")?;
 
     let mut ret = HashMap::new();
-    for entry in DictIterator::from(process, version, modules as usize, &addresses.type_checks)? {
+    for entry in DictIterator::from(process, version, modules as usize, &layout.type_checks)? {
         let (key, value) = entry?;
-        let module_name = copy_string(
-            key as *const I::StringObject,
-            process,
-            &addresses.type_checks,
-        )?;
+        let module_name = copy_string(key as *const I::StringObject, process, &layout.type_checks)?;
         if module_name == "threading" {
             let module: I::Object = process.copy_struct(value)?;
             let module_type = process.copy_pointer(module.ob_type())?;
             let dictptr: usize = process.copy_struct(value + module_type.dictoffset() as usize)?;
-            for i in DictIterator::from(process, version, dictptr, &addresses.type_checks)? {
+            for i in DictIterator::from(process, version, dictptr, &layout.type_checks)? {
                 let (key, value) = i?;
-                let name = copy_string(
-                    key as *const I::StringObject,
-                    process,
-                    &addresses.type_checks,
-                )?;
+                let name =
+                    copy_string(key as *const I::StringObject, process, &layout.type_checks)?;
                 if name == "_active" {
-                    for i in DictIterator::from(process, version, value, &addresses.type_checks)? {
+                    for i in DictIterator::from(process, version, value, &layout.type_checks)? {
                         let (key, value) = i?;
-                        let (threadid, _) = copy_long(process, version, key)?;
+                        let (threadid, _) = copy_long(process, version, layout, key)?;
 
                         let thread: I::Object = process.copy_struct(value)?;
                         let thread_type = process.copy_pointer(thread.ob_type())?;
@@ -63,7 +56,7 @@ pub fn thread_names_from_interpreter<I: InterpreterState, P: ProcessMemory>(
                                 value,
                                 thread.ob_type() as usize,
                                 flags,
-                                &addresses.type_checks,
+                                &layout.type_checks,
                             )?
                         } else {
                             let dict_offset = thread_type.dictoffset();
@@ -73,7 +66,7 @@ pub fn thread_names_from_interpreter<I: InterpreterState, P: ProcessMemory>(
                                 process,
                                 version,
                                 thread_dict_addr,
-                                &addresses.type_checks,
+                                &layout.type_checks,
                             )?
                         };
 
@@ -82,13 +75,13 @@ pub fn thread_names_from_interpreter<I: InterpreterState, P: ProcessMemory>(
                             let varname = copy_string(
                                 key as *const I::StringObject,
                                 process,
-                                &addresses.type_checks,
+                                &layout.type_checks,
                             )?;
                             if varname == "_name" {
                                 let threadname = copy_string(
                                     value as *const I::StringObject,
                                     process,
-                                    &addresses.type_checks,
+                                    &layout.type_checks,
                                 )?;
                                 ret.insert(threadid as u64, threadname);
                                 break;
@@ -109,7 +102,7 @@ pub fn thread_names_from_interpreter<I: InterpreterState, P: ProcessMemory>(
 fn _thread_name_lookup<I: InterpreterState>(
     spy: &PythonSpy,
 ) -> Result<HashMap<u64, String>, Error> {
-    thread_names_from_interpreter::<I, Process>(&spy.addresses, &spy.process, &spy.version)
+    thread_names_from_interpreter::<I, Process>(&spy.layout, &spy.process, &spy.version)
 }
 
 // try getting the threadnames, but don't sweat it if we can't. Since this relies on dictionary

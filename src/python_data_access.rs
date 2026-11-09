@@ -5,7 +5,7 @@ use crate::python_bindings::v3_13_0;
 use crate::python_interpreters::{
     BytesObject, InterpreterState, ListObject, Object, StringObject, TupleObject, TypeObject,
 };
-use crate::python_process_info::TypeChecks;
+use crate::python_process_info::{PythonProcessLayout, TypeChecks};
 use crate::version::Version;
 use remoteprocess::ProcessMemory;
 
@@ -82,6 +82,7 @@ pub fn copy_bytes<T: BytesObject, P: ProcessMemory>(
 pub fn copy_long<P: ProcessMemory>(
     process: &P,
     version: &Version,
+    layout: &PythonProcessLayout,
     addr: usize,
 ) -> Result<(i64, bool), Error> {
     let (size, negative, digit, value_size) = match version {
@@ -91,20 +92,37 @@ pub fn copy_long<P: ProcessMemory>(
             ..
         } => {
             // PyLongObject format changed in python 3.12
-            let value = process
-                .copy_pointer(addr as *const crate::python_bindings::v3_12_0::PyLongObject)?;
-            let size = value.long_value.lv_tag >> 3;
-            let negative: i64 = if (value.long_value.lv_tag & 3) == 2 {
-                -1
+            if layout.free_threaded {
+                let value = process
+                    .copy_pointer(addr as *const crate::python_bindings::v3_14_0t::PyLongObject)?;
+                let size = value.long_value.lv_tag >> 3;
+                let negative: i64 = if (value.long_value.lv_tag & 3) == 2 {
+                    -1
+                } else {
+                    1
+                };
+                (
+                    size,
+                    negative,
+                    value.long_value.ob_digit[0] as u32,
+                    std::mem::size_of_val(&value),
+                )
             } else {
-                1
-            };
-            (
-                size,
-                negative,
-                value.long_value.ob_digit[0] as u32,
-                std::mem::size_of_val(&value),
-            )
+                let value = process
+                    .copy_pointer(addr as *const crate::python_bindings::v3_12_0::PyLongObject)?;
+                let size = value.long_value.lv_tag >> 3;
+                let negative: i64 = if (value.long_value.lv_tag & 3) == 2 {
+                    -1
+                } else {
+                    1
+                };
+                (
+                    size,
+                    negative,
+                    value.long_value.ob_digit[0] as u32,
+                    std::mem::size_of_val(&value),
+                )
+            }
         }
         _ => {
             // this is PyLongObject for a specific version of python, but this works since it's binary compatible
@@ -392,7 +410,7 @@ pub fn format_variable<I, P>(
     version: &Version,
     addr: usize,
     max_length: isize,
-    type_checks: &TypeChecks,
+    layout: &PythonProcessLayout,
 ) -> Result<String, Error>
 where
     I: InterpreterState,
@@ -430,7 +448,7 @@ where
         format_int(copy_int(process, addr)?)
     } else if flags & PY_TPFLAGS_LONG_SUBCLASS != 0 {
         // we don't handle arbitrary sized integer values (max is 2**60)
-        let (value, overflowed) = copy_long(process, version, addr)?;
+        let (value, overflowed) = copy_long(process, version, layout, addr)?;
         if overflowed {
             if value > 0 {
                 "+bigint".to_owned()
@@ -443,7 +461,7 @@ where
     } else if flags & PY_TPFLAGS_STRING_SUBCLASS != 0
         || (version.major == 2 && (flags & PY_TPFLAGS_BYTES_SUBCLASS != 0))
     {
-        let value = copy_string(addr as *const I::StringObject, process, type_checks)?
+        let value = copy_string(addr as *const I::StringObject, process, &layout.type_checks)?
             .replace('\'', "\\\"")
             .replace('\n', "\\n");
         if let Some((offset, _)) = value.char_indices().nth((max_length - 5) as usize) {
@@ -455,11 +473,10 @@ where
         if version.major == 3 && version.minor >= 6 {
             let mut values = Vec::new();
             let mut remaining = max_length - 2;
-            for entry in DictIterator::from(process, version, addr, type_checks)? {
+            for entry in DictIterator::from(process, version, addr, &layout.type_checks)? {
                 let (key, value) = entry?;
-                let key = format_variable::<I, P>(process, version, key, remaining, type_checks)?;
-                let value =
-                    format_variable::<I, P>(process, version, value, remaining, type_checks)?;
+                let key = format_variable::<I, P>(process, version, key, remaining, layout)?;
+                let value = format_variable::<I, P>(process, version, value, remaining, layout)?;
                 remaining -= (key.len() + value.len()) as isize + 4;
                 if remaining <= 5 {
                     values.push("...".to_owned());
@@ -480,13 +497,8 @@ where
         for i in 0..object.size() {
             let valueptr: *mut I::Object =
                 process.copy_struct(addr + i * std::mem::size_of::<*mut I::Object>())?;
-            let value = format_variable::<I, P>(
-                process,
-                version,
-                valueptr as usize,
-                remaining,
-                type_checks,
-            )?;
+            let value =
+                format_variable::<I, P>(process, version, valueptr as usize, remaining, layout)?;
             remaining -= value.len() as isize + 2;
             if remaining <= 5 {
                 values.push("...".to_owned());
@@ -501,13 +513,8 @@ where
         let mut remaining = max_length - 2;
         for i in 0..object.size() {
             let value_addr: *mut I::Object = process.copy_struct(object.address(addr, i))?;
-            let value = format_variable::<I, P>(
-                process,
-                version,
-                value_addr as usize,
-                remaining,
-                type_checks,
-            )?;
+            let value =
+                format_variable::<I, P>(process, version, value_addr as usize, remaining, layout)?;
             remaining -= value.len() as isize + 2;
             if remaining <= 5 {
                 values.push("...".to_owned());
@@ -517,9 +524,15 @@ where
         }
         format!("({})", values.join(", "))
     } else if value_type_name == "float" {
-        let value =
-            process.copy_pointer(addr as *const crate::python_bindings::v3_7_0::PyFloatObject)?;
-        format!("{}", value.ob_fval)
+        if layout.free_threaded {
+            let value = process
+                .copy_pointer(addr as *const crate::python_bindings::v3_14_0t::PyFloatObject)?;
+            format!("{}", value.ob_fval)
+        } else {
+            let value = process
+                .copy_pointer(addr as *const crate::python_bindings::v3_7_0::PyFloatObject)?;
+            format!("{}", value.ob_fval)
+        }
     } else if value_type_name == "NoneType" {
         "None".to_owned()
     } else if value_type_name.starts_with("numpy.") {
