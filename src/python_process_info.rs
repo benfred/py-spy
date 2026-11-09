@@ -609,7 +609,7 @@ impl Types {
             .copy(tp_name_ptr, tp_name.len())
             .with_context(|| format!("Failed to read {} tp_name", symbol))?;
         if name != tp_name {
-            return Err(format_err!("Unexpected {} tp_name ", symbol));
+            return Err(format_err!("Unexpected {} tp_name", symbol));
         }
         Ok(addr)
     }
@@ -1300,7 +1300,8 @@ pub fn is_python_lib(pathname: &str) -> bool {
 
 #[cfg(target_os = "macos")]
 pub fn is_python_framework(pathname: &str) -> bool {
-    pathname.ends_with("/Python") && !pathname.contains("Python.app")
+    (pathname.ends_with("/Python") || pathname.ends_with("/PythonT"))
+        && !pathname.contains("Python.app")
 }
 
 #[cfg(test)]
