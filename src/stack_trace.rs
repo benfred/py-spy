@@ -251,7 +251,7 @@ where
         thread_name: None,
         owns_gil: false,
         active: true,
-        os_thread_id: None, // TODO thread.native_thread_id(),
+        os_thread_id: thread.native_thread_id(),
         process_info: None,
     })
 }

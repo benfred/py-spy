@@ -894,6 +894,7 @@ impl PythonProcessLayout {
                 let threads_head_address =
                     interpreter_address + offsets.interpreter_state.threads_head as usize;
 
+                let free_threaded = offsets.free_threaded != 0;
                 let type_checks = TypeChecks::new(python_info, process, version, free_threaded, config)?;
 
                 Ok(PythonProcessLayout {
