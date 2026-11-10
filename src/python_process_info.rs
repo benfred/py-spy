@@ -864,6 +864,7 @@ impl PythonProcessLayout {
         macro_rules! get_addresses {
             ($py: ident) => {{
                 let offsets: $py::_Py_DebugOffsets = process.copy_struct(pyruntime_addr)?;
+                info!("debug offsets {:#?}", offsets);
                 let interpreter_address = process
                     .copy_struct(pyruntime_addr + offsets.runtime_state.interpreters_head as usize)
                     .context("Failed to copy py_debugoffsets.runtime_state.interpreters_head")?;
