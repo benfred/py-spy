@@ -95,11 +95,6 @@ class TestPyspy(unittest.TestCase):
         if v.major < 3 or v.minor < 6:
             return
 
-        # currently can't get thread names on free-threaded builds
-        # TODO: fix
-        if not GIL:
-            return
-
         for _ in range(3):
             profile = self._sample_process(
                 _get_script("thread_names.py"),
