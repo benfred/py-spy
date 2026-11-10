@@ -6,7 +6,6 @@ use std::collections::HashMap;
 use std::ffi::CStr;
 use std::mem::size_of;
 use std::path::Path;
-use std::slice;
 
 use anyhow::{Context, Error, Result};
 use lazy_static::lazy_static;
@@ -963,10 +962,9 @@ where
 {
     // Copy the memory
     let bss = process.copy(start_addr as usize, size as usize)?;
-    #[allow(clippy::cast_ptr_alignment)]
-    let addrs = unsafe {
-        slice::from_raw_parts(bss.as_ptr() as *const usize, bss.len() / size_of::<usize>())
-    };
+    let addrs = bss
+        .chunks_exact(size_of::<usize>())
+        .map(|bytes| usize::from_ne_bytes(bytes.try_into().expect("chunk has the size of usize")));
 
     // b'xdebugpy' is the byte pattern found at the start of _Py_DebugOffset structures,
     #[cfg(target_pointer_width = "64")]
@@ -975,7 +973,7 @@ where
     #[cfg(target_pointer_width = "32")]
     let cookie = u32::from_le_bytes(*b"xdeb") as usize;
 
-    for (index, &addr) in addrs.iter().enumerate() {
+    for (index, addr) in addrs.enumerate() {
         if addr == cookie {
             let pyruntime_address = (index * size_of::<usize>()) + start_addr as usize;
             let address_book = match PythonProcessLayout::from_debug_offsets(
@@ -1023,12 +1021,11 @@ where
     P: ProcessMemory,
 {
     let bss = process.copy(start_addr as usize, size as usize)?;
-    #[allow(clippy::cast_ptr_alignment)]
-    let addrs = unsafe {
-        slice::from_raw_parts(bss.as_ptr() as *const usize, bss.len() / size_of::<usize>())
-    };
+    let addrs = bss
+        .chunks_exact(size_of::<usize>())
+        .map(|bytes| usize::from_ne_bytes(bytes.try_into().expect("chunk has the size of usize")));
 
-    for &addr in addrs {
+    for addr in addrs {
         if python_info.maps.contains_addr(addr) {
             // get the pythreadstate pointer from the interpreter object, and if it is also
             // a valid pointer then load it up.
@@ -1314,6 +1311,49 @@ mod tests {
             #[cfg(target_os = "linux")]
             dockerized: false,
         }
+    }
+
+    struct EmptyMemory;
+
+    impl ProcessMemory for EmptyMemory {
+        fn read(&self, _addr: usize, buffer: &mut [u8]) -> Result<(), remoteprocess::Error> {
+            assert!(buffer.is_empty());
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_scan_empty_interpreter_section() {
+        let info = python_info_with_symbols(Default::default());
+        assert!(scan_memory_for_python_interpreter::<v3_12_0::_is, _>(
+            0,
+            0,
+            &info,
+            &EmptyMemory,
+            &Version {
+                minor: 12,
+                ..version(3)
+            },
+            &Config::default(),
+            &TypeChecks::Disabled,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn test_scan_empty_debug_offsets_section() {
+        assert!(scan_memory_for_debug_offsets::<v3_13_0::_is, _>(
+            0,
+            0,
+            &EmptyMemory,
+            &Version {
+                minor: 13,
+                ..version(3)
+            },
+            &Config::default(),
+            &TypeChecks::Disabled,
+        )
+        .is_err());
     }
 
     fn version_3_7() -> Version {
