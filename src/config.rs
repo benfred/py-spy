@@ -20,6 +20,9 @@ pub struct Config {
     /// the native stack traces
     pub native: bool,
 
+    /// Whether or not to also print native-only threads. Using this implies `native`.
+    pub native_all: bool,
+
     #[doc(hidden)]
     pub type_checks: TypesConfig,
 
@@ -140,6 +143,7 @@ impl Default for Config {
             sampling_rate: 100,
             duration: RecordDuration::Unlimited,
             native: false,
+            native_all: false,
             type_checks: TypesConfig::Disabled,
             gil_only: false,
             include_idle: false,
@@ -186,6 +190,13 @@ impl Config {
         if !cfg!(feature = "unwind") {
             native = native.hide(true);
         }
+
+        #[cfg(feature = "unwind")]
+        let native_all = Arg::new("native-all")
+            .short('N')
+            .long("native-all")
+            .help("Collect stack traces from native-only threads. Implies `--native`.")
+            .action(ArgAction::SetTrue);
 
         #[cfg(not(target_os="freebsd"))]
         let nonblocking = Arg::new("nonblocking")
@@ -375,6 +386,13 @@ impl Config {
         let top = top.arg(native.clone());
         let dump = dump.arg(native.clone());
 
+        #[cfg(feature = "unwind")]
+        let record = record.arg(native_all.clone());
+        #[cfg(feature = "unwind")]
+        let top = top.arg(native_all.clone());
+        #[cfg(feature = "unwind")]
+        let dump = dump.arg(native_all);
+
         // Nonblocking isn't an option for freebsd, remove
         #[cfg(not(target_os = "freebsd"))]
         let record = record.arg(nonblocking.clone());
@@ -498,7 +516,8 @@ impl Config {
             TypesConfig::Disabled
         };
         if cfg!(feature = "unwind") {
-            config.native = matches.get_flag("native");
+            config.native_all = matches.get_flag("native-all");
+            config.native = config.native_all || matches.get_flag("native");
         }
 
         config.capture_output = config.command != "record" || matches.get_flag("capture");
@@ -556,6 +575,33 @@ mod tests {
         std::env::set_var("PYSPY_ALLOW_FREEBSD_ATTACH", "1");
         let args: Vec<String> = cmd.split_whitespace().map(|x| x.to_owned()).collect();
         Config::from_args(&args)
+    }
+
+    #[test]
+    fn test_parse_native_all_args() {
+        for command in ["record", "top", "dump"] {
+            let args = format!("py-spy {} --pid 0x4d2 --type-check", command);
+            let config = get_config(&args).unwrap();
+            assert!(!config.native);
+            assert!(!config.native_all);
+
+            for flag in ["--native-all", "-N"] {
+                let result = get_config(&format!("{} {}", args, flag));
+                #[cfg(feature = "unwind")]
+                {
+                    let config = result.unwrap();
+                    assert!(config.native);
+                    assert!(config.native_all);
+                    assert_eq!(config.pid, Some(1234));
+                    assert_eq!(config.type_checks, TypesConfig::AllowSubclasses);
+                }
+                #[cfg(not(feature = "unwind"))]
+                assert_eq!(
+                    result.unwrap_err().kind(),
+                    clap::error::ErrorKind::UnknownArgument
+                );
+            }
+        }
     }
 
     #[test]

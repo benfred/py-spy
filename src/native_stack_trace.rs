@@ -5,11 +5,11 @@ use std::num::NonZeroUsize;
 use cpp_demangle::{BorrowedSymbol, DemangleOptions};
 use lazy_static::lazy_static;
 use lru::LruCache;
-use remoteprocess::{self, Pid};
+use remoteprocess::{self, Pid, Tid};
 
 use crate::binary_parser::BinaryInfo;
 use crate::cython;
-use crate::stack_trace::Frame;
+use crate::stack_trace::{Frame, StackTrace};
 use crate::utils::resolve_filename;
 
 pub struct NativeStack {
@@ -253,6 +253,44 @@ impl NativeStack {
         } else {
             MergeType::MergeNativeFrame
         }
+    }
+
+    pub fn add_native_only_threads(
+        &mut self,
+        process: &remoteprocess::Process,
+        traces: &mut Vec<StackTrace>,
+    ) -> Result<(), Error> {
+        // Set of all threads we already processed
+        let seen_threads =
+            HashSet::<Tid>::from_iter(traces.iter().map(|t| t.os_thread_id.unwrap_or(0) as Tid));
+
+        for native_thread in process.threads()?.into_iter() {
+            let tid = native_thread.id()?;
+
+            if seen_threads.contains(&tid) {
+                // We've already seen this thread, don't add it again
+                continue;
+            }
+
+            // We are reusing the `merge_native_stack` method and just pass an
+            // empty python stack.
+            let native_stack = self.get_thread(&native_thread)?;
+            let python_stack = Vec::new();
+            let symbolized_stack = self.merge_native_stack(&python_stack, native_stack)?;
+
+            // Push new stack trace
+            traces.push(StackTrace {
+                pid: process.pid,
+                thread_id: tid.try_into().unwrap_or(0),
+                thread_name: None,
+                os_thread_id: tid.try_into().ok(),
+                active: native_thread.active().unwrap_or(false),
+                owns_gil: false,
+                frames: symbolized_stack,
+                process_info: None,
+            });
+        }
+        Ok(())
     }
 
     /// translates a native frame into a optional frame. none indicates we should ignore this frame
