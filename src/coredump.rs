@@ -412,13 +412,22 @@ mod test {
             release_flags: "".to_owned(),
             build_metadata: None,
         };
+
+        use crate::python_bindings::v3_9_5;
+        let interpreter_address = 0x000055a8293dbe20;
+        let imports_modules_address =
+            interpreter_address + v3_9_5::PyInterpreterState::imports_modules_offset();
+        let threads_head_address =
+            interpreter_address + v3_9_5::PyInterpreterState::threads_head_offset();
+
         let core_dump = |type_checks| PythonCoreDump {
             core: CoreDump::new(&get_coredump_path("python_3_9_threads")).unwrap(),
             version: version.clone(),
             layout: PythonProcessLayout {
-                interpreter_address: 0x000055a8293dbe20,
+                interpreter_address,
                 threadstate_address: 0x000055a82745fe18,
-                imports_modules_address: 0x55a8293dc178,
+                imports_modules_address,
+                threads_head_address,
                 type_checks,
                 free_threaded: false,
             },
