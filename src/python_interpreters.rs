@@ -25,10 +25,10 @@ pub trait InterpreterState: Copy {
     type TupleObject: TupleObject;
     const HAS_GIL_RUNTIME_STATE: bool = false;
 
-    /// Get a remote pointer to a pointer to PyThreadState.
-    fn threadstate_ptr_ptr(interpreter_address: usize) -> *const *const Self::ThreadState;
+    /// Get offset to a pointer to a pointer to PyThreadState.
+    fn threads_head_offset() -> usize;
     /// Get a remote pointer to a pointer to PyObject being the modules dict.
-    fn modules_ptr_ptr(interpreter_address: usize) -> *const *const Self::Object;
+    fn imports_modules_offset() -> usize;
 }
 
 pub trait ThreadState: Copy {
@@ -241,22 +241,23 @@ macro_rules! implement_interpreter_traits {
             type TupleObject = $py::PyTupleObject;
             const HAS_GIL_RUNTIME_STATE: bool = if_python_3_12_or_later!($py, true, false);
 
-            fn threadstate_ptr_ptr(interpreter_address: usize) -> *const *const Self::ThreadState {
-                const OFFSET: usize = if_python_3_11_or_later!(
+            fn threads_head_offset() -> usize {
+                // note: on free-threaded versions of python on windows, this offset
+                // will not be correct - so we use the version from the _Py_DebugOffsets
+                // instead
+                if_python_3_11_or_later!(
                     $py,
                     std::mem::offset_of!($py::PyInterpreterState, threads.head),
                     std::mem::offset_of!($py::PyInterpreterState, tstate_head)
-                );
-                (interpreter_address + OFFSET) as *const *const Self::ThreadState
+                )
             }
 
-            fn modules_ptr_ptr(interpreter_address: usize) -> *const *const Self::Object {
-                const OFFSET: usize = if_python_3_12_or_later!(
+            fn imports_modules_offset() -> usize {
+                if_python_3_12_or_later!(
                     $py,
                     std::mem::offset_of!($py::PyInterpreterState, imports.modules),
                     std::mem::offset_of!($py::PyInterpreterState, modules)
-                );
-                (interpreter_address + OFFSET) as *const *const Self::Object
+                )
             }
         }
 

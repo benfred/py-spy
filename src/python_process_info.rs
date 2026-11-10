@@ -45,6 +45,7 @@ pub struct PythonProcessLayout {
     pub interpreter_address: usize,
     pub threadstate_address: usize,
     pub imports_modules_address: usize,
+    pub threads_head_address: usize,
     pub type_checks: TypeChecks,
     pub free_threaded: bool,
 }
@@ -643,11 +644,9 @@ impl PythonProcessLayout {
                     version,
                     layout.free_threaded,
                     get_stack_traces,
-                    layout.interpreter_address,
+                    &layout,
                     process,
-                    layout.threadstate_address,
                     None,
-                    &layout.type_checks
                 ) {
                     Ok(_) => {
                         return Ok(layout);
@@ -815,18 +814,24 @@ impl PythonProcessLayout {
     {
         // getting the imports_module address from the generated PyInterpreterState bindings
         // depends on the version of python
-        fn get_imports_modules_address<I, P>(interpreter_address: usize) -> Result<usize, Error>
+        fn get_interpreterstate_offsets<I, P>() -> Result<(usize, usize), Error>
         where
             I: InterpreterState,
             P: ProcessMemory,
         {
-            Ok(I::modules_ptr_ptr(interpreter_address) as usize)
+            Ok((I::threads_head_offset(), I::imports_modules_offset()))
         }
 
         // python 3.12 and older can't be free threaded
         let free_threaded = false;
 
         let type_checks = TypeChecks::new(python_info, process, version, free_threaded, config)?;
+
+        let (threads_head_offset, imports_modules_offset) =
+            dispatch_by_version!(version, free_threaded, get_interpreterstate_offsets,)?;
+
+        let imports_modules_address = imports_modules_offset + interpreter_address;
+        let threads_head_address = threads_head_offset + interpreter_address;
 
         Ok(PythonProcessLayout {
             interpreter_address,
@@ -837,12 +842,8 @@ impl PythonProcessLayout {
                 version,
                 config,
             )?,
-            imports_modules_address: dispatch_by_version!(
-                version,
-                free_threaded,
-                get_imports_modules_address,
-                interpreter_address
-            )?,
+            imports_modules_address,
+            threads_head_address,
             type_checks,
             free_threaded,
         })
@@ -890,6 +891,8 @@ impl PythonProcessLayout {
                 };
                 let imports_modules_address =
                     interpreter_address + offsets.interpreter_state.imports_modules as usize;
+                let threads_head_address =
+                    interpreter_address + offsets.interpreter_state.threads_head as usize;
 
                 let free_threaded = offsets.free_threaded != 0;
                 let type_checks = TypeChecks::new(python_info, process, version, free_threaded, config)?;
@@ -898,6 +901,7 @@ impl PythonProcessLayout {
                     interpreter_address,
                     threadstate_address,
                     imports_modules_address,
+                    threads_head_address,
                     type_checks,
                     free_threaded
                 })
@@ -1010,11 +1014,9 @@ where
                 version,
                 layout.free_threaded,
                 get_stack_traces,
-                layout.interpreter_address,
+                &layout,
                 process,
-                layout.threadstate_address,
                 None,
-                &layout.type_checks
             )
             .is_ok()
             {
@@ -1050,9 +1052,9 @@ where
         if python_info.maps.contains_addr(addr) {
             // get the pythreadstate pointer from the interpreter object, and if it is also
             // a valid pointer then load it up.
-            let threadstate_ptr_ptr = I::threadstate_ptr_ptr(addr);
+            let threads_head_address = I::threads_head_offset() + addr;
             let maybe_threads = process
-                .copy_struct(threadstate_ptr_ptr as usize)
+                .copy_struct(threads_head_address)
                 .context("Failed to copy PyThreadState head pointer");
 
             let threads: *const I::ThreadState = match maybe_threads {
@@ -1086,15 +1088,7 @@ where
             };
 
             // as a final sanity check, try getting the stack_traces, and only return if this works
-            if get_stack_traces::<I, P>(
-                layout.interpreter_address,
-                process,
-                layout.threadstate_address,
-                None,
-                &layout.type_checks,
-            )
-            .is_ok()
-            {
+            if get_stack_traces::<I, P>(&layout, process, None).is_ok() {
                 return Ok(layout);
             }
         }

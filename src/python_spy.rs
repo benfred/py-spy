@@ -153,10 +153,10 @@ impl PythonSpy {
         };
 
         // Find PyThreadState, and loop over all the python threads
-        let threadstate_ptr_ptr = I::threadstate_ptr_ptr(self.layout.interpreter_address);
-        let threads_head = self
+        let threads_head_address = I::threads_head_offset() + self.layout.interpreter_address;
+        let threads_head: *const I::ThreadState = self
             .process
-            .copy_pointer(threadstate_ptr_ptr)
+            .copy_struct(threads_head_address)
             .context("Failed to copy PyThreadState head pointer")?;
 
         // get the threadid of the gil if appropriate
