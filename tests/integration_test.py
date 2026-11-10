@@ -74,8 +74,9 @@ class TestPyspy(unittest.TestCase):
         # running with the idle flag should have > 95%  of samples in the sleep call
         profile = self._sample_process(_get_script("longsleep.py"), ["--idle"])
         sample, count = _most_frequent_sample(profile)
+        print(sample, count)
         assert count >= 95
-        assert len(sample) == 2
+        assert len(sample) == 2, f"expected 2 frames found {len(sample)}"
         assert sample[0].name == "<module>"
         assert sample[0].line == 9
         assert sample[1].name == "longsleep"
