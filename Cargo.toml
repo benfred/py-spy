@@ -1,6 +1,11 @@
+[features]
+default = ["cli"]
+cli = ["dep:clap", "dep:clap_complete", "dep:console", "dep:ctrlc", "dep:indicatif", "dep:inferno", "dep:env_logger"]
+unwind = ["remoteprocess/unwind"]
+
 [package]
 name = "py-spy"
-version = "0.3.14"
+version = "0.4.3"
 authors = ["Ben Frederickson <github@benfrederickson.com>"]
 repository = "https://github.com/benfred/py-spy"
 homepage = "https://github.com/benfred/py-spy"
@@ -8,35 +13,42 @@ description = "Sampling profiler for Python programs "
 readme = "README.md"
 exclude = ["images/*", "test_programs/*"]
 license = "MIT"
-build="build.rs"
-edition="2021"
+build = "build.rs"
+edition = "2021"
+
+[[bin]]
+name = "py-spy"
+path = "src/main.rs"
+required-features = ["cli"]
 
 [dependencies]
 anyhow = "1"
-clap = {version="3.2", features=["wrap_help", "cargo", "derive"]}
-clap_complete="3.2"
-console = "0.15"
-ctrlc = "3"
-indicatif = "0.17"
-env_logger = "0.10"
-goblin = "0.7.1"
-inferno = "0.11.17"
+clap = { version = "4.6.1", features = ["wrap_help", "cargo", "derive"], optional = true }
+clap_complete = { version = "4.6.1", optional = true }
+console = { version = "0.16", optional = true }
+ctrlc = { version = "3", optional = true }
+indicatif = { version = "0.18", optional = true }
+env_logger = { version = "0.11", optional = true }
+inferno = { version = "0.12.6", optional = true }
+goblin = "0.10.7"
 lazy_static = "1.4.0"
 libc = "0.2"
 log = "0.4"
-lru = "0.10"
+lru = "0.17"
+num-traits = "0.2"
 regex = ">=1.6.0"
-tempfile = "3.6.0"
-proc-maps = "0.3.2"
-memmap = "0.7.0"
-cpp_demangle = "0.4"
-serde = {version="1.0", features=["rc"]}
+tempfile = "3.27.0"
+page_size = "0.6.0"
+proc-maps = "0.5.0"
+memmap2 = "0.9.4"
+cpp_demangle = "0.5"
+serde = { version = "1.0", features = ["rc"] }
 serde_derive = "1.0"
 serde_json = "1.0"
-rand = "0.8"
-rand_distr = "0.4"
-remoteprocess = {version="0.4.12", features=["unwind"]}
-chrono = "0.4.26"
+rand = "0.9"
+rand_distr = "0.5"
+remoteprocess = "0.5.5"
+chrono = "0.4.44"
 
 [dev-dependencies]
 py-spy-testdata = "0.1.0"
@@ -45,4 +57,4 @@ py-spy-testdata = "0.1.0"
 termios = "0.3.3"
 
 [target.'cfg(windows)'.dependencies]
-winapi = {version = "0.3", features = ["winbase", "consoleapi", "wincon", "handleapi", "timeapi", "processenv" ]}
+winapi = { version = "0.3", features = ["errhandlingapi", "winbase", "consoleapi", "wincon", "handleapi", "timeapi", "processenv"] }

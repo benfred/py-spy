@@ -9,11 +9,11 @@ mod config;
 mod console_viewer;
 #[cfg(target_os = "linux")]
 mod coredump;
-#[cfg(unwind)]
+#[cfg(feature = "unwind")]
 mod cython;
 mod dump;
 mod flamegraph;
-#[cfg(unwind)]
+#[cfg(feature = "unwind")]
 mod native_stack_trace;
 mod python_bindings;
 mod python_data_access;
@@ -40,7 +40,7 @@ use config::{Config, FileFormat, RecordDuration};
 use console_viewer::ConsoleViewer;
 use stack_trace::{Frame, StackTrace};
 
-use chrono::{Local, SecondsFormat};
+use chrono::Local;
 
 #[cfg(unix)]
 fn permission_denied(err: &Error) -> bool {
@@ -62,7 +62,7 @@ fn sample_console(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
 
     let display = match remoteprocess::Process::new(pid)?.cmdline() {
         Ok(cmdline) => cmdline.join(" "),
-        Err(_) => format!("Pid {}", pid),
+        Err(_) => format!("Pid {pid}"),
     };
 
     let mut console =
@@ -81,7 +81,7 @@ fn sample_console(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
     }
 
     if !config.subprocesses {
-        println!("\nprocess {} ended", pid);
+        println!("\nprocess {pid} ended");
     }
     Ok(())
 }
@@ -130,6 +130,31 @@ impl Recorder for RawFlamegraph {
     }
 }
 
+fn output_filename(config: &Config) -> Result<String, Error> {
+    let filename = match config.filename.clone() {
+        Some(filename) => filename,
+        None => {
+            let ext = match config.format.as_ref() {
+                Some(FileFormat::flamegraph) => "svg",
+                Some(FileFormat::speedscope) => "json",
+                Some(FileFormat::raw) => "txt",
+                Some(FileFormat::chrometrace) => "json",
+                None => return Err(format_err!("A file format is required to record samples")),
+            };
+            let local_time = Local::now().format("%Y-%m-%dT%H-%M-%S%z");
+            let name = match config.python_program.as_ref() {
+                Some(prog) => prog[0].to_string(),
+                None => match config.pid.as_ref() {
+                    Some(pid) => pid.to_string(),
+                    None => String::from("unknown"),
+                },
+            };
+            format!("{name}-{local_time}.{ext}")
+        }
+    };
+    Ok(filename)
+}
+
 fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error> {
     let mut output: Box<dyn Recorder> = match config.format {
         Some(FileFormat::flamegraph) => {
@@ -145,27 +170,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
         None => return Err(format_err!("A file format is required to record samples")),
     };
 
-    let filename = match config.filename.clone() {
-        Some(filename) => filename,
-        None => {
-            let ext = match config.format.as_ref() {
-                Some(FileFormat::flamegraph) => "svg",
-                Some(FileFormat::speedscope) => "json",
-                Some(FileFormat::raw) => "txt",
-                Some(FileFormat::chrometrace) => "json",
-                None => return Err(format_err!("A file format is required to record samples")),
-            };
-            let local_time = Local::now().to_rfc3339_opts(SecondsFormat::Secs, true);
-            let name = match config.python_program.as_ref() {
-                Some(prog) => prog[0].to_string(),
-                None => match config.pid.as_ref() {
-                    Some(pid) => pid.to_string(),
-                    None => String::from("unknown"),
-                },
-            };
-            format!("{}-{}.{}", name, local_time, ext)
-        }
-    };
+    let filename = output_filename(config)?;
 
     let sampler = sampler::Sampler::new(pid, config)?;
 
@@ -237,12 +242,12 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
                     let now = std::time::Instant::now();
                     if now - last_late_message > Duration::from_secs(1) {
                         last_late_message = now;
-                        println!("{}{:.2?} behind in sampling, results may be inaccurate. Try reducing the sampling rate", lede, delay)
+                        println!("{lede}{delay:.2?} behind in sampling, results may be inaccurate. Try reducing the sampling rate")
                     }
                 } else {
                     let term = console::Term::stdout();
                     term.move_cursor_up(2)?;
-                    println!("{:.2?} behind in sampling, results may be inaccurate. Try reducing the sampling rate.", delay);
+                    println!("{delay:.2?} behind in sampling, results may be inaccurate. Try reducing the sampling rate.");
                     term.move_cursor_down(1)?;
                 }
             }
@@ -273,9 +278,9 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
             if config.include_thread_ids {
                 let threadid = trace.format_threadid();
                 let thread_fmt = if let Some(thread_name) = &trace.thread_name {
-                    format!("thread ({}): {}", threadid, thread_name)
+                    format!("thread ({threadid}): {thread_name}")
                 } else {
-                    format!("thread ({})", threadid)
+                    format!("thread ({threadid})")
                 };
                 trace.frames.push(Frame {
                     name: thread_fmt,
@@ -285,6 +290,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
                     line: 0,
                     locals: None,
                     is_entry: true,
+                    is_shim_entry: true,
                 });
             }
 
@@ -312,9 +318,9 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
 
         if config.duration == RecordDuration::Unlimited {
             let msg = if errors > 0 {
-                format!("Collected {} samples ({} errors)", samples, errors)
+                format!("Collected {samples} samples ({errors} errors)")
             } else {
-                format!("Collected {} samples", samples)
+                format!("Collected {samples} samples")
             };
             progress.set_message(msg);
         }
@@ -323,7 +329,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
     progress.finish();
     // write out a message here (so as not to interfere with progress bar) if we ended earlier
     if !exit_message.is_empty() {
-        println!("\n{}{}", lede, exit_message);
+        println!("\n{lede}{exit_message}");
     }
 
     {
@@ -334,8 +340,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
     match config.format.as_ref().unwrap() {
         FileFormat::flamegraph => {
             println!(
-                "{}Wrote flamegraph data to '{}'. Samples: {} Errors: {}",
-                lede, filename, samples, errors
+                "{lede}Wrote flamegraph data to '{filename}'. Samples: {samples} Errors: {errors}"
             );
             // open generated flame graph in the browser on OSX (theory being that on linux
             // you might be SSH'ed into a server somewhere and this isn't desired, but on
@@ -345,24 +350,21 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
         }
         FileFormat::speedscope => {
             println!(
-                "{}Wrote speedscope file to '{}'. Samples: {} Errors: {}",
-                lede, filename, samples, errors
+                "{lede}Wrote speedscope file to '{filename}'. Samples: {samples} Errors: {errors}"
             );
-            println!("{}Visit https://www.speedscope.app/ to view", lede);
+            println!("{lede}Visit https://www.speedscope.app/ to view");
         }
         FileFormat::raw => {
             println!(
-                "{}Wrote raw flamegraph data to '{}'. Samples: {} Errors: {}",
-                lede, filename, samples, errors
+                "{lede}Wrote raw flamegraph data to '{filename}'. Samples: {samples} Errors: {errors}"
             );
-            println!("{}You can use the flamegraph.pl script from https://github.com/brendangregg/flamegraph to generate a SVG", lede);
+            println!("{lede}You can use the flamegraph.pl script from https://github.com/brendangregg/flamegraph to generate a SVG");
         }
         FileFormat::chrometrace => {
             println!(
-                "{}Wrote chrome trace to '{}'. Samples: {} Errors: {}",
-                lede, filename, samples, errors
+                "{lede}Wrote chrome trace to '{filename}'. Samples: {samples} Errors: {errors}"
             );
-            println!("{}Visit chrome://tracing to view", lede);
+            println!("{lede}Visit chrome://tracing or https://ui.perfetto.dev/ to view");
         }
     };
 
@@ -403,7 +405,8 @@ fn pyspy_main() -> Result<(), Error> {
     #[cfg(target_os = "linux")]
     {
         if let Some(ref core_filename) = config.core_filename {
-            let core = coredump::PythonCoreDump::new(std::path::Path::new(&core_filename))?;
+            let core =
+                coredump::PythonCoreDump::new(std::path::Path::new(&core_filename), &config)?;
             let traces = core.get_stack(&config)?;
             return core.print_traces(&traces, &config);
         }
@@ -453,10 +456,15 @@ fn pyspy_main() -> Result<(), Error> {
 
         // check exit code of subprocess
         std::thread::sleep(Duration::from_millis(1));
-        let success = match command.try_wait()? {
-            Some(exit) => exit.success(),
-            // if process hasn't finished, assume success
-            None => true,
+        let success = match command.try_wait() {
+            Ok(Some(exit)) => exit.success(),
+            // If the process hasn't finished, assume success. An Err here means the
+            // child has already been reaped (e.g. by the ptrace sampler once the
+            // process exited on its own), so there is no exit status left to read.
+            // Treat it as success instead of failing the whole run with
+            // "No child process (os error 10)".
+            // See https://github.com/benfred/py-spy/issues/759
+            Ok(None) | Err(_) => true,
         };
 
         // if we failed for any reason, dump out stderr from child process here
@@ -464,7 +472,7 @@ fn pyspy_main() -> Result<(), Error> {
         if config.capture_output && (!success || result.is_err()) {
             let mut buffer = String::new();
             if process_output.read_to_string(&mut buffer).is_ok() {
-                eprintln!("{}", buffer);
+                eprintln!("{buffer}");
             }
         }
 
@@ -512,12 +520,75 @@ fn main() {
             }
         }
 
-        eprintln!("Error: {}", err);
-        for (i, suberror) in err.chain().enumerate() {
-            if i > 0 {
-                eprintln!("Reason: {}", suberror);
-            }
-        }
+        eprintln!("Error: {:?}", err);
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod filename_tests {
+    use super::*;
+
+    #[test]
+    fn default_output_filename_has_no_colons() {
+        for format in [
+            FileFormat::flamegraph,
+            FileFormat::raw,
+            FileFormat::speedscope,
+            FileFormat::chrometrace,
+        ] {
+            let config = Config {
+                pid: Some(123),
+                format: Some(format),
+                ..Default::default()
+            };
+            let filename = output_filename(&config).unwrap();
+            assert!(
+                !filename.contains(':'),
+                "invalid output filename: {filename}"
+            );
+            assert!(filename.starts_with("123-"));
+            let extension = match format {
+                FileFormat::flamegraph => ".svg",
+                FileFormat::raw => ".txt",
+                FileFormat::speedscope | FileFormat::chrometrace => ".json",
+            };
+            assert!(filename.ends_with(extension));
+            let timestamp = filename
+                .strip_prefix("123-")
+                .unwrap()
+                .strip_suffix(extension)
+                .unwrap();
+            chrono::DateTime::parse_from_str(timestamp, "%Y-%m-%dT%H-%M-%S%z")
+                .expect("filename includes a date, time and timezone offset");
+        }
+    }
+
+    #[test]
+    fn default_output_filename_uses_program_name() {
+        let config = Config {
+            python_program: Some(vec!["python3".to_owned(), "script.py".to_owned()]),
+            format: Some(FileFormat::raw),
+            ..Default::default()
+        };
+        let filename = output_filename(&config).unwrap();
+        assert!(filename.starts_with("python3-"));
+        assert!(
+            !filename.contains(':'),
+            "invalid output filename: {filename}"
+        );
+        assert!(filename.ends_with(".txt"));
+    }
+
+    #[test]
+    fn explicit_output_filename_is_unchanged() {
+        let config = Config {
+            filename: Some("profiles/custom:name.json".to_owned()),
+            ..Default::default()
+        };
+        assert_eq!(
+            output_filename(&config).unwrap(),
+            "profiles/custom:name.json"
+        );
     }
 }

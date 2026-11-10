@@ -3,6 +3,7 @@ use regex::Regex;
 use regex::RegexBuilder;
 #[cfg(windows)]
 use std::collections::HashMap;
+use std::ffi::CStr;
 use std::mem::size_of;
 use std::path::Path;
 use std::slice;
@@ -10,14 +11,18 @@ use std::slice;
 use anyhow::{Context, Error, Result};
 use lazy_static::lazy_static;
 use proc_maps::{get_process_maps, MapRange};
-use remoteprocess::{Pid, ProcessMemory};
+#[cfg(not(target_os = "macos"))]
+use remoteprocess::Pid;
+use remoteprocess::ProcessMemory;
 
 use crate::binary_parser::{parse_binary, BinaryInfo};
-use crate::config::Config;
-use crate::python_bindings::{
-    pyruntime, v2_7_15, v3_10_0, v3_11_0, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0, v3_9_5,
+use crate::config::{Config, TypesConfig};
+use crate::python_bindings::{pyruntime, v3_12_0, v3_13_0, v3_14_0, v3_15_0};
+use crate::python_data_access::PY_TPFLAGS_DICT_SUBCLASS;
+use crate::python_interpreters::{
+    dispatch_by_version, CodeObject, InterpreterState, Object, StringObject, ThreadState,
+    TypeObject,
 };
-use crate::python_interpreters::{InterpreterState, ThreadState};
 use crate::stack_trace::get_stack_traces;
 use crate::version::Version;
 
@@ -32,6 +37,15 @@ pub struct PythonProcessInfo {
     pub python_filename: std::path::PathBuf,
     #[cfg(target_os = "linux")]
     pub dockerized: bool,
+}
+
+/// Holds addresses and offsets for structures inside a target python process
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct PythonProcessLayout {
+    pub interpreter_address: usize,
+    pub threadstate_address: usize,
+    pub imports_modules_address: usize,
+    pub type_checks: TypeChecks,
 }
 
 impl PythonProcessInfo {
@@ -72,7 +86,14 @@ impl PythonProcessInfo {
             let map = maps.iter().find(|m| {
                 if let Some(pathname) = m.filename() {
                     if let Some(pathname) = pathname.to_str() {
-                        return is_python_bin(pathname) && m.is_exec();
+                        #[cfg(not(windows))]
+                        {
+                            return is_python_bin(pathname) && m.is_exec();
+                        }
+                        #[cfg(windows)]
+                        {
+                            return is_python_bin(pathname);
+                        }
                     }
                 }
                 false
@@ -133,17 +154,57 @@ impl PythonProcessInfo {
 
         // likewise handle libpython for python versions compiled with --enabled-shared
         let libpython_binary = {
-            let libmap = maps.iter().find(|m| {
-                if let Some(pathname) = m.filename() {
-                    if let Some(pathname) = pathname.to_str() {
-                        return is_python_lib(pathname) && m.is_exec();
+            let libmaps: Vec<_> = maps
+                .iter()
+                .filter(|m| {
+                    if let Some(pathname) = m.filename() {
+                        if let Some(pathname) = pathname.to_str() {
+                            #[cfg(not(windows))]
+                            {
+                                return is_python_lib(pathname) && m.is_exec();
+                            }
+                            #[cfg(windows)]
+                            {
+                                return is_python_lib(pathname);
+                            }
+                        }
                     }
-                }
-                false
-            });
+                    false
+                })
+                .collect();
 
             let mut libpython_binary: Option<BinaryInfo> = None;
-            if let Some(libpython) = libmap {
+
+            // On macOS the dyld layout can map small executable stubs of a
+            // dylib at lower addresses than its real __TEXT segment (seen with
+            // PyInstaller onedir bundles), so the first executable map is NOT
+            // necessarily the image base. parse_binary slides every symbol and
+            // section by the base address we pass it, so picking the wrong map
+            // makes every read land on garbage — e.g. Py_Version reads as 0,
+            // producing a bogus "0.0.0" version, and the BSS/_PyRuntime lookups
+            // fail too. The real image base is the map whose start holds the
+            // Mach-O header, so probe each executable map for the magic and
+            // prefer that one; fall back to the first map if none match.
+            #[cfg(target_os = "macos")]
+            let libpython_option = libmaps
+                .iter()
+                .find(|m| {
+                    matches!(
+                        process.copy_struct::<u32>(m.start()),
+                        Ok(0xfeed_facf) | Ok(0xcffa_edfe) | Ok(0xfeed_face) | Ok(0xcefa_edfe)
+                    )
+                })
+                .or_else(|| libmaps.first());
+            #[cfg(all(not(target_os = "linux"), not(target_os = "macos")))]
+            let libpython_option = if !libmaps.is_empty() {
+                Some(&libmaps[0])
+            } else {
+                None
+            };
+            #[cfg(target_os = "linux")]
+            let libpython_option = libmaps.iter().min_by_key(|m| m.offset);
+
+            if let Some(libpython) = libpython_option {
                 if let Some(filename) = &libpython.filename() {
                     info!("Found libpython binary @ {}", filename.display());
 
@@ -268,8 +329,58 @@ pub fn get_python_version<P>(python_info: &PythonProcessInfo, process: &P) -> Re
 where
     P: ProcessMemory,
 {
+    // Try getting the Py_Version symbol (points to 32 bit encoded version).
+    // We deliberately tolerate failure here and fall through to the other
+    // detection strategies below: if the symbol address is misresolved the
+    // read yields zeros, which would otherwise produce a bogus "0.0.0" and
+    // abort version detection entirely. A plausible decode short-circuits;
+    // anything else defers to the sys.version string scan.
+    if let Some(&addr) = python_info.get_symbol("Py_Version") {
+        match process.copy_struct::<u32>(addr as usize) {
+            Ok(version) => {
+                // decode u32 version via the _Py_PACK_FULL_VERSION logic
+                let major: u64 = ((version >> 24) & 0xff).into();
+                let minor: u64 = ((version >> 16) & 0xff).into();
+                let patch: u64 = ((version >> 8) & 0xff).into();
+                let release_level = (version >> 4) & 0xf;
+                let release_serial = (version) & 0xf;
+                let release_flags = match release_level {
+                    0xA => format!("a{}", release_serial),
+                    0xB => format!("b{}", release_serial),
+                    0xC => format!("rc{}", release_serial),
+                    _ => "".to_owned(),
+                };
+
+                let version = Version {
+                    major,
+                    minor,
+                    patch,
+                    release_flags,
+                    build_metadata: None,
+                };
+                // Only trust a decode that names a Python major version we
+                // could actually support. major==0 is the tell-tale of a
+                // misresolved symbol address (see comment above).
+                if major == 2 || major == 3 {
+                    info!("Got version {} from Py_Version symbol", version);
+                    return Ok(version);
+                }
+                info!(
+                    "Py_Version symbol decoded to implausible version {}, ignoring and falling back",
+                    version
+                );
+            }
+            Err(err) => {
+                info!("Failed to read Py_Version symbol ({}), falling back", err);
+            }
+        }
+    }
+
     // If possible, grab the sys.version string from the processes memory (mac osx).
-    if let Some(&addr) = python_info.get_symbol("Py_GetVersion.version") {
+    if let Some(&addr) = python_info
+        .get_symbol("Py_GetVersion.version")
+        .or_else(|| python_info.get_symbol("version"))
+    {
         info!("Getting version from symbol address");
         if let Ok(bytes) = process.copy(addr as usize, 128) {
             if let Ok(version) = Version::scan_bytes(&bytes) {
@@ -330,203 +441,692 @@ where
     ))
 }
 
-pub fn get_interpreter_address<P>(
-    python_info: &PythonProcessInfo,
-    process: &P,
-    version: &Version,
-) -> Result<usize, Error>
-where
-    P: ProcessMemory,
-{
-    // get the address of the main PyInterpreterState object from loaded symbols if we can
-    // (this tends to be faster than scanning through the bss section)
-    match version {
-        Version {
-            major: 3,
-            minor: 7..=11,
-            ..
-        } => {
-            if let Some(&addr) = python_info.get_symbol("_PyRuntime") {
-                let addr = process
-                    .copy_struct(addr as usize + pyruntime::get_interp_head_offset(version))?;
+/// Addresses of static python type objects, used to check the types of objects we read
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct Types {
+    pub code: usize,
+    pub string: usize,
+    pub dict: usize,
+}
 
-                // Make sure the interpreter addr is valid before returning
-                match check_interpreter_addresses(&[addr], &*python_info.maps, process, version) {
-                    Ok(addr) => return Ok(addr),
-                    Err(_) => {
-                        warn!(
-                            "Interpreter address from _PyRuntime symbol is invalid {:016x}",
-                            addr
-                        );
-                    }
-                };
-            }
-        }
-        _ => {
-            if let Some(&addr) = python_info.get_symbol("interp_head") {
-                let addr = process.copy_struct(addr as usize)?;
-                match check_interpreter_addresses(&[addr], &*python_info.maps, process, version) {
-                    Ok(addr) => return Ok(addr),
-                    Err(_) => {
-                        warn!(
-                            "Interpreter address from interp_head symbol is invalid {:016x}",
-                            addr
-                        );
-                    }
-                };
-            }
-        }
-    };
-    info!("Failed to get interp_head from symbols, scanning BSS section from main binary");
+/// Checks the types of objects read from the python process, as configured by `TypesConfig`
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum TypeChecks {
+    Disabled,
+    Strict(Types),
+    /// Also accepts subclasses of str and dict, like PyUnicode_Check and PyDict_Check do
+    AllowSubclasses(Types),
+}
 
-    // try scanning the BSS section of the binary for things that might be the interpreterstate
-    let err = if let Some(ref pb) = python_info.python_binary {
-        match get_interpreter_address_from_binary(pb, &*python_info.maps, process, version) {
-            Ok(addr) => return Ok(addr),
-            err => Some(err),
+impl TypeChecks {
+    pub fn new<P: ProcessMemory>(
+        python_info: &PythonProcessInfo,
+        process: &P,
+        version: &Version,
+        config: &Config,
+    ) -> Result<TypeChecks, Error> {
+        Ok(match config.type_checks {
+            TypesConfig::Disabled => TypeChecks::Disabled,
+            TypesConfig::Strict => {
+                TypeChecks::Strict(Types::from_symbols(python_info, process, version)?)
+            }
+            TypesConfig::AllowSubclasses => {
+                TypeChecks::AllowSubclasses(Types::from_symbols(python_info, process, version)?)
+            }
+        })
+    }
+
+    pub fn check_code<C: CodeObject>(&self, code: &C) -> Result<(), Error> {
+        let (TypeChecks::Strict(types) | TypeChecks::AllowSubclasses(types)) = self else {
+            return Ok(());
+        };
+        if code.ob_type() as usize != types.code {
+            return Err(format_err!("Object is not a code object"));
         }
-    } else {
-        None
-    };
-    // Before giving up, try again if there is a libpython.so
-    if let Some(ref lpb) = python_info.libpython_binary {
-        info!("Failed to get interpreter from binary BSS, scanning libpython BSS");
-        match get_interpreter_address_from_binary(lpb, &*python_info.maps, process, version) {
-            Ok(addr) => Ok(addr),
-            lib_err => err.unwrap_or(lib_err),
+        Ok(())
+    }
+
+    pub fn check_string<S: StringObject, P: ProcessMemory>(
+        &self,
+        process: &P,
+        string: &S,
+    ) -> Result<(), Error> {
+        let ob_type = string.ob_type();
+        let is_string = match self {
+            TypeChecks::Disabled => true,
+            TypeChecks::Strict(types) => ob_type as usize == types.string,
+            TypeChecks::AllowSubclasses(types) => {
+                ob_type as usize == types.string
+                    || process
+                        .copy_pointer(ob_type)
+                        .is_ok_and(|ty| ty.flags() & S::SUBCLASS_FLAG != 0)
+            }
+        };
+        if !is_string {
+            return Err(format_err!("Object is not a string"));
         }
-    } else {
-        err.expect("Both python and libpython are invalid.")
+        Ok(())
+    }
+
+    pub fn check_dict<T: TypeObject, P: ProcessMemory>(
+        &self,
+        process: &P,
+        ob_type: *mut T,
+    ) -> Result<(), Error> {
+        let is_dict = match self {
+            TypeChecks::Disabled => true,
+            TypeChecks::Strict(types) => ob_type as usize == types.dict,
+            TypeChecks::AllowSubclasses(types) => {
+                ob_type as usize == types.dict
+                    || process
+                        .copy_pointer(ob_type)
+                        .is_ok_and(|ty| ty.flags() & PY_TPFLAGS_DICT_SUBCLASS != 0)
+            }
+        };
+        if !is_dict {
+            return Err(format_err!("Object is not a dict"));
+        }
+        Ok(())
     }
 }
 
-fn get_interpreter_address_from_binary<P>(
-    binary: &BinaryInfo,
-    maps: &dyn ContainsAddr,
+impl Types {
+    fn from_symbols<P: ProcessMemory>(
+        python_info: &PythonProcessInfo,
+        process: &P,
+        version: &Version,
+    ) -> Result<Types, Error> {
+        let string_symbol = if version.major == 2 {
+            "PyString_Type"
+        } else {
+            "PyUnicode_Type"
+        };
+        Ok(Types {
+            code: Types::get_type_address(python_info, process, version, "PyCode_Type", c"code")?,
+            string: Types::get_type_address(python_info, process, version, string_symbol, c"str")?,
+            dict: Types::get_type_address(python_info, process, version, "PyDict_Type", c"dict")?,
+        })
+    }
+
+    /// Resolves a static python type, so objects read as that type can be checked against it.
+    /// Fails unless `tp_name` matches, so a wrongly resolved address is never used.
+    fn get_type_address<P: ProcessMemory>(
+        python_info: &PythonProcessInfo,
+        process: &P,
+        version: &Version,
+        symbol: &str,
+        tp_name: &CStr,
+    ) -> Result<usize, Error> {
+        fn read_tp_name<I: InterpreterState, P: ProcessMemory>(
+            process: &P,
+            addr: usize,
+        ) -> Result<usize, Error> {
+            let type_object: <I::Object as Object>::TypeObject = process.copy_struct(addr)?;
+            Ok(type_object.name() as usize)
+        }
+
+        let addr = *python_info
+            .get_symbol(symbol)
+            .ok_or_else(|| format_err!("Failed to find {} symbol", symbol))?
+            as usize;
+
+        let tp_name_ptr = dispatch_by_version!(version, read_tp_name, process, addr)
+            .with_context(|| format!("Failed to read {} type object", symbol))?;
+
+        let tp_name = tp_name.to_bytes_with_nul();
+        let name = process
+            .copy(tp_name_ptr, tp_name.len())
+            .with_context(|| format!("Failed to read {} tp_name", symbol))?;
+        if name != tp_name {
+            return Err(format_err!("Unexpected {} tp_name", symbol));
+        }
+        Ok(addr)
+    }
+}
+
+impl PythonProcessLayout {
+    /// Loads addresses and offsets from a target python process. These addresses include
+    /// the address of the python interpreter, the address of which thread holds the GIL,
+    /// and the address of the imports module etc.  These addresseses are loaded
+    /// using symbols if available, and if not available this falls back to scanning the
+    /// memory inside the target python process for a valid interpreter.
+    ///
+    /// Currently the set of addresses held here is fairly minimal, but the plan is to flesh
+    /// this out with other offsets from the Py_DebugOffsets table in the target python process
+    /// - which should lessen the dependency on the bindgen generated structs in src/python_bindings
+    pub fn new<P>(
+        python_info: &PythonProcessInfo,
+        process: &P,
+        version: &Version,
+        config: &Config,
+    ) -> Result<PythonProcessLayout, Error>
+    where
+        P: ProcessMemory,
+    {
+        let type_checks = TypeChecks::new(python_info, process, version, config)?;
+
+        // get the address of the main PyInterpreterState object from loaded symbols if we can
+        // (this tends to be faster than scanning through the bss section)
+        match PythonProcessLayout::from_symbols(python_info, process, version, config, &type_checks)
+        {
+            Ok(addr) => {
+                // Check that the symbol address is valid before returning by attempting to load a stack trace
+                match dispatch_by_version!(
+                    version,
+                    get_stack_traces,
+                    addr.interpreter_address,
+                    process,
+                    addr.threadstate_address,
+                    None,
+                    &type_checks
+                ) {
+                    Ok(_) => {
+                        return Ok(addr);
+                    }
+                    Err(_) => {
+                        warn!(
+                            "Interpreter address from symbol is invalid {:016x}",
+                            addr.interpreter_address
+                        );
+                    }
+                };
+            }
+            Err(err) => {
+                info!("Failed to get interpreter address from symbols {:?}, scanning BSS section from main binary", err)
+            }
+        }
+
+        // If we can't load up the symbols, try scanning the python and libpython binaries
+        PythonProcessLayout::from_binaries(python_info, process, version, config, &type_checks)
+    }
+
+    // initializes a new PythonProcessLayout from loaded symbols
+    fn from_symbols<P>(
+        python_info: &PythonProcessInfo,
+        process: &P,
+        version: &Version,
+        config: &Config,
+        type_checks: &TypeChecks,
+    ) -> Result<PythonProcessLayout, Error>
+    where
+        P: ProcessMemory,
+    {
+        match version {
+            Version {
+                major: 3,
+                minor: 13..=15,
+                ..
+            } => {
+                if let Some(&pyruntime_addr) = python_info.get_symbol("_PyRuntime") {
+                    return PythonProcessLayout::from_debug_offsets(
+                        pyruntime_addr as usize,
+                        process,
+                        version,
+                        config,
+                        type_checks,
+                    );
+                }
+            }
+            Version {
+                major: 3,
+                minor: 7..=12,
+                ..
+            } => {
+                if let Some(&addr) = python_info.get_symbol("_PyRuntime") {
+                    let interpreter_address = process
+                        .copy_struct(addr as usize + pyruntime::get_interp_head_offset(version))
+                        .context("Failed to copy interpreters_head")?;
+                    return PythonProcessLayout::from_interpreter_address(
+                        interpreter_address,
+                        python_info,
+                        process,
+                        version,
+                        config,
+                        type_checks,
+                    );
+                }
+            }
+            _ => {
+                if let Some(&addr) = python_info.get_symbol("interp_head") {
+                    let interpreter_address = process
+                        .copy_struct(addr as usize)
+                        .context("Failed to copy interp_head")?;
+                    return PythonProcessLayout::from_interpreter_address(
+                        interpreter_address,
+                        python_info,
+                        process,
+                        version,
+                        config,
+                        type_checks,
+                    );
+                }
+            }
+        };
+        return Err(format_err!(
+            "Failed to find _PyRuntime address from symbols"
+        ));
+    }
+
+    // initializes a new PythonProcessLayout from scanning the BSS section of the python executable
+    // or the libpython shared library
+    fn from_binaries<P>(
+        python_info: &PythonProcessInfo,
+        process: &P,
+        version: &Version,
+        config: &Config,
+        type_checks: &TypeChecks,
+    ) -> Result<PythonProcessLayout, Error>
+    where
+        P: ProcessMemory,
+    {
+        // try scanning the BSS section of the binary for things that might be the interpreterstate
+        let err = if let Some(ref pb) = python_info.python_binary {
+            match PythonProcessLayout::from_binary(
+                pb,
+                python_info,
+                process,
+                version,
+                config,
+                type_checks,
+            ) {
+                Ok(addr) => return Ok(addr),
+                err => Some(err),
+            }
+        } else {
+            None
+        };
+
+        // Before giving up, try again if there is a libpython.so
+        if let Some(ref lpb) = python_info.libpython_binary {
+            info!("Failed to get interpreter from binary BSS, scanning libpython BSS");
+            match PythonProcessLayout::from_binary(
+                lpb,
+                python_info,
+                process,
+                version,
+                config,
+                type_checks,
+            ) {
+                Ok(addr) => Ok(addr),
+                lib_err => err.unwrap_or(lib_err),
+            }
+        } else {
+            err.expect("Both python and libpython are invalid.")
+        }
+    }
+
+    fn from_binary<P>(
+        binary: &BinaryInfo,
+        python_info: &PythonProcessInfo,
+        process: &P,
+        version: &Version,
+        config: &Config,
+        type_checks: &TypeChecks,
+    ) -> Result<PythonProcessLayout, Error>
+    where
+        P: ProcessMemory,
+    {
+        // First check the pyruntime section it was found
+        if binary.pyruntime_addr != 0 {
+            if let Ok(addr) = scan_memory(
+                binary.pyruntime_addr,
+                binary.pyruntime_size,
+                python_info,
+                process,
+                version,
+                config,
+                type_checks,
+            ) {
+                return Ok(addr);
+            }
+        }
+
+        // We're going to scan the BSS/data section for things, and try to narrowly scan things that
+        // look like pointers to PyinterpreterState
+        scan_memory(
+            binary.bss_addr,
+            binary.bss_size,
+            python_info,
+            process,
+            version,
+            config,
+            type_checks,
+        )
+    }
+
+    /// Loads up addresses from the interpreter_address -  used for python versions 3.12 or older
+    fn from_interpreter_address<P>(
+        interpreter_address: usize,
+        python_info: &PythonProcessInfo,
+        process: &P,
+        version: &Version,
+        config: &Config,
+        type_checks: &TypeChecks,
+    ) -> Result<PythonProcessLayout, Error>
+    where
+        P: ProcessMemory,
+    {
+        // getting the imports_module address from the generated PyInterpreterState bindings
+        // depends on the version of python
+        fn get_imports_modules_address<I, P>(interpreter_address: usize) -> Result<usize, Error>
+        where
+            I: InterpreterState,
+            P: ProcessMemory,
+        {
+            Ok(I::modules_ptr_ptr(interpreter_address) as usize)
+        }
+
+        Ok(PythonProcessLayout {
+            interpreter_address,
+            threadstate_address: get_threadstate_address::<P>(
+                interpreter_address,
+                python_info,
+                process,
+                version,
+                config,
+            )?,
+            imports_modules_address: dispatch_by_version!(
+                version,
+                get_imports_modules_address,
+                interpreter_address
+            )?,
+            type_checks: *type_checks,
+        })
+    }
+
+    /// Loads up addresses from the location of a Py_DebugOffsets structure - used for python 3.13+
+    fn from_debug_offsets<P>(
+        pyruntime_addr: usize,
+        process: &P,
+        version: &Version,
+        config: &Config,
+        type_checks: &TypeChecks,
+    ) -> Result<PythonProcessLayout, Error>
+    where
+        P: ProcessMemory,
+    {
+        // Use a macro to duck type over different Py_DebugOffsets, which have different layouts
+        // between versions of python so can't be used interchangeably
+        macro_rules! get_addresses {
+            ($py: ident) => {{
+                let offsets: $py::_Py_DebugOffsets = process.copy_struct(pyruntime_addr)?;
+                let interpreter_address = process
+                    .copy_struct(pyruntime_addr + offsets.runtime_state.interpreters_head as usize)
+                    .context("Failed to copy py_debugoffsets.runtime_state.interpreters_head")?;
+
+                let gil_ptr = interpreter_address + offsets.interpreter_state.ceval_gil as usize;
+                let threadstate_address: usize = match process.copy_struct(gil_ptr) {
+                    Ok(gil) => gil,
+                    Err(_) => {
+                        error_if_gil(config, version, "failed to copy gil address")?;
+                        0
+                    }
+                };
+                let imports_modules_address =
+                    interpreter_address + offsets.interpreter_state.imports_modules as usize;
+
+                Ok(PythonProcessLayout {
+                    interpreter_address,
+                    threadstate_address,
+                    imports_modules_address,
+                    type_checks: *type_checks,
+                })
+            }};
+        }
+
+        match version {
+            Version {
+                major: 3,
+                minor: 15,
+                ..
+            } => get_addresses!(v3_15_0),
+            Version {
+                major: 3,
+                minor: 14,
+                ..
+            } => get_addresses!(v3_14_0),
+            Version {
+                major: 3,
+                minor: 13,
+                ..
+            } => get_addresses!(v3_13_0),
+            _ => {
+                // shouldn't happen
+                Err(format_err!(
+                    "Unsupported version {:?} for Py_DebugOffsets",
+                    version
+                ))
+            }
+        }
+    }
+}
+
+// Checks whether a block of memory (from BSS/.data etc) contains pointers that are pointing
+// to a valid PyInterpreterState, and returns the PythonProcessLayout if found
+fn scan_memory<P>(
+    addr: u64,
+    size: u64,
+    python_info: &PythonProcessInfo,
     process: &P,
     version: &Version,
-) -> Result<usize, Error>
+    config: &Config,
+    type_checks: &TypeChecks,
+) -> Result<PythonProcessLayout, Error>
 where
     P: ProcessMemory,
 {
-    // We're going to scan the BSS/data section for things, and try to narrowly scan things that
-    // look like pointers to PyinterpreterState
-    let bss = process.copy(binary.bss_addr as usize, binary.bss_size as usize)?;
+    match version {
+        Version {
+            major: 3,
+            minor: 13..,
+            ..
+        } => {
+            dispatch_by_version!(
+                version,
+                scan_memory_for_debug_offsets,
+                addr,
+                size,
+                process,
+                version,
+                config,
+                type_checks
+            )
+        }
+        _ => {
+            dispatch_by_version!(
+                version,
+                scan_memory_for_python_interpreter,
+                addr,
+                size,
+                python_info,
+                process,
+                version,
+                config,
+                type_checks
+            )
+        }
+    }
+}
 
+// scans memory in the target process looking for a Py_DebugOffsets structure
+fn scan_memory_for_debug_offsets<I, P>(
+    start_addr: u64,
+    size: u64,
+    process: &P,
+    version: &Version,
+    config: &Config,
+    type_checks: &TypeChecks,
+) -> Result<PythonProcessLayout, Error>
+where
+    I: InterpreterState,
+    P: ProcessMemory,
+{
+    // Copy the memory
+    let bss = process.copy(start_addr as usize, size as usize)?;
     #[allow(clippy::cast_ptr_alignment)]
     let addrs = unsafe {
         slice::from_raw_parts(bss.as_ptr() as *const usize, bss.len() / size_of::<usize>())
     };
-    check_interpreter_addresses(addrs, maps, process, version)
+
+    // b'xdebugpy' is the byte pattern found at the start of _Py_DebugOffset structures,
+    #[cfg(target_pointer_width = "64")]
+    let cookie = u64::from_le_bytes(*b"xdebugpy") as usize;
+
+    #[cfg(target_pointer_width = "32")]
+    let cookie = u32::from_le_bytes(*b"xdeb") as usize;
+
+    for (index, &addr) in addrs.iter().enumerate() {
+        if addr == cookie {
+            let pyruntime_address = (index * size_of::<usize>()) + start_addr as usize;
+            let address_book = match PythonProcessLayout::from_debug_offsets(
+                pyruntime_address,
+                process,
+                version,
+                &config,
+                type_checks,
+            ) {
+                Ok(address_book) => address_book,
+                Err(_) => continue,
+            };
+
+            // as a final sanity check, make sure we can get the stack trace before returning success
+            if get_stack_traces::<I, P>(
+                address_book.interpreter_address,
+                process,
+                address_book.threadstate_address,
+                None,
+                type_checks,
+            )
+            .is_ok()
+            {
+                return Ok(address_book);
+            }
+        }
+    }
+    Err(format_err!(
+        "Failed to find a python interpreter in the .data section"
+    ))
 }
 
-// Checks whether a block of memory (from BSS/.data etc) contains pointers that are pointing
-// to a valid PyInterpreterState
-fn check_interpreter_addresses<P>(
-    addrs: &[usize],
-    maps: &dyn ContainsAddr,
+// Scans memory looking for valid python interpreters (for older versions of python that don't have a Py_DebugOffsets)
+fn scan_memory_for_python_interpreter<I, P>(
+    start_addr: u64,
+    size: u64,
+    python_info: &PythonProcessInfo,
     process: &P,
     version: &Version,
+    config: &Config,
+    type_checks: &TypeChecks,
+) -> Result<PythonProcessLayout, Error>
+where
+    I: InterpreterState,
+    P: ProcessMemory,
+{
+    let bss = process.copy(start_addr as usize, size as usize)?;
+    #[allow(clippy::cast_ptr_alignment)]
+    let addrs = unsafe {
+        slice::from_raw_parts(bss.as_ptr() as *const usize, bss.len() / size_of::<usize>())
+    };
+
+    for &addr in addrs {
+        if python_info.maps.contains_addr(addr) {
+            // get the pythreadstate pointer from the interpreter object, and if it is also
+            // a valid pointer then load it up.
+            let threadstate_ptr_ptr = I::threadstate_ptr_ptr(addr);
+            let maybe_threads = process
+                .copy_struct(threadstate_ptr_ptr as usize)
+                .context("Failed to copy PyThreadState head pointer");
+
+            let threads: *const I::ThreadState = match maybe_threads {
+                Ok(threads) => threads,
+                Err(_) => continue,
+            };
+
+            if !python_info.maps.contains_addr(threads as usize) {
+                continue;
+            }
+
+            // If the threadstate points back to the interpreter like we expect, then
+            // this is almost certainly the address of the intrepreter
+            let thread = match process.copy_pointer(threads) {
+                Ok(thread) => thread,
+                Err(_) => continue,
+            };
+            if thread.interp() as usize != addr {
+                continue;
+            }
+
+            let layout = match PythonProcessLayout::from_interpreter_address(
+                addr,
+                python_info,
+                process,
+                version,
+                &config,
+                type_checks,
+            ) {
+                Ok(layout) => layout,
+                Err(_) => continue,
+            };
+
+            // as a final sanity check, try getting the stack_traces, and only return if this works
+            if get_stack_traces::<I, P>(
+                layout.interpreter_address,
+                process,
+                layout.threadstate_address,
+                None,
+                type_checks,
+            )
+            .is_ok()
+            {
+                return Ok(layout);
+            }
+        }
+    }
+
+    Err(format_err!(
+        "Failed to find a python interpreter in the .data section"
+    ))
+}
+
+pub fn get_threadstate_address<P>(
+    interpreter_address: usize,
+    python_info: &PythonProcessInfo,
+    process: &P,
+    version: &Version,
+    config: &Config,
 ) -> Result<usize, Error>
 where
     P: ProcessMemory,
 {
-    // This function does all the work, but needs a type of the interpreter
-    fn check<I, P>(addrs: &[usize], maps: &dyn ContainsAddr, process: &P) -> Result<usize, Error>
-    where
-        I: InterpreterState,
-        P: ProcessMemory,
-    {
-        for &addr in addrs {
-            if maps.contains_addr(addr) {
-                // this address points to valid memory. try loading it up as a PyInterpreterState
-                // to further check
-                let interp: I = match process.copy_struct(addr) {
-                    Ok(interp) => interp,
-                    Err(_) => continue,
-                };
-
-                // get the pythreadstate pointer from the interpreter object, and if it is also
-                // a valid pointer then load it up.
-                let threads = interp.head();
-                if maps.contains_addr(threads as usize) {
-                    // If the threadstate points back to the interpreter like we expect, then
-                    // this is almost certainly the address of the intrepreter
-                    let thread = match process.copy_pointer(threads) {
-                        Ok(thread) => thread,
-                        Err(_) => continue,
-                    };
-
-                    // as a final sanity check, try getting the stack_traces, and only return if this works
-                    if thread.interp() as usize == addr
-                        && get_stack_traces(&interp, process, 0, None).is_ok()
-                    {
-                        return Ok(addr);
-                    }
+    let threadstate_address = match version {
+        Version {
+            major: 3,
+            minor: 13..=15,
+            ..
+        } => {
+            let gil_ptr = interpreter_address + std::mem::offset_of!(v3_13_0::_is, ceval.gil);
+            match process.copy_struct::<usize>(gil_ptr) {
+                Ok(gil) => gil,
+                Err(_) => {
+                    error_if_gil(config, version, "failed to copy gil address")?;
+                    0
                 }
             }
         }
-        Err(format_err!(
-            "Failed to find a python interpreter in the .data section"
-        ))
-    }
-
-    // different versions have different layouts, check as appropriate
-    match version {
-        Version {
-            major: 2,
-            minor: 3..=7,
-            ..
-        } => check::<v2_7_15::_is, P>(addrs, maps, process),
-        Version {
-            major: 3, minor: 3, ..
-        } => check::<v3_3_7::_is, P>(addrs, maps, process),
         Version {
             major: 3,
-            minor: 4..=5,
+            minor: 12,
             ..
-        } => check::<v3_5_5::_is, P>(addrs, maps, process),
-        Version {
-            major: 3, minor: 6, ..
-        } => check::<v3_6_6::_is, P>(addrs, maps, process),
-        Version {
-            major: 3, minor: 7, ..
-        } => check::<v3_7_0::_is, P>(addrs, maps, process),
-        Version {
-            major: 3,
-            minor: 8,
-            patch: 0,
-            ..
-        } => match version.release_flags.as_ref() {
-            "a1" | "a2" | "a3" => check::<v3_7_0::_is, P>(addrs, maps, process),
-            _ => check::<v3_8_0::_is, P>(addrs, maps, process),
-        },
-        Version {
-            major: 3, minor: 8, ..
-        } => check::<v3_8_0::_is, P>(addrs, maps, process),
-        Version {
-            major: 3, minor: 9, ..
-        } => check::<v3_9_5::_is, P>(addrs, maps, process),
-        Version {
-            major: 3,
-            minor: 10,
-            ..
-        } => check::<v3_10_0::_is, P>(addrs, maps, process),
-        Version {
-            major: 3,
-            minor: 11,
-            ..
-        } => check::<v3_11_0::_is, P>(addrs, maps, process),
-        _ => Err(format_err!("Unsupported version of Python: {}", version)),
-    }
-}
-
-pub fn get_threadstate_address(
-    python_info: &PythonProcessInfo,
-    version: &Version,
-    config: &Config,
-) -> Result<usize, Error> {
-    let threadstate_address = match version {
+        } => {
+            let gil_ptr = interpreter_address + std::mem::offset_of!(v3_12_0::_is, ceval.gil);
+            match process.copy_struct::<usize>(gil_ptr) {
+                Ok(gil) => gil,
+                Err(_) => {
+                    error_if_gil(config, version, "failed to copy gil address")?;
+                    0
+                }
+            }
+        }
         Version {
             major: 3,
             minor: 7..=11,
@@ -580,8 +1180,7 @@ fn error_if_gil(config: &Config, version: &Version, msg: &str) -> Result<(), Err
         if !WARNED.load(std::sync::atomic::Ordering::Relaxed) {
             // only print this once
             eprintln!(
-                "Cannot detect GIL holding in version '{}' on the current platform (reason: {})",
-                version, msg
+                "Cannot detect GIL holding in version '{version}' on the current platform (reason: {msg})"
             );
             eprintln!("Please open an issue in https://github.com/benfred/py-spy with the Python version and your platform.");
             WARNED.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -603,7 +1202,7 @@ pub trait ContainsAddr {
 
 impl ContainsAddr for Vec<MapRange> {
     #[cfg(windows)]
-    fn contains_addr(&self, addr: usize) -> bool {
+    fn contains_addr(&self, _addr: usize) -> bool {
         // On windows, we can't just check if a pointer is valid by looking to see if it points
         // to something in the virtual memory map. Brute-force it instead
         true
@@ -692,6 +1291,177 @@ pub fn is_python_framework(pathname: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::python_bindings::{v2_7_15, v3_7_0};
+    use crate::python_data_access::PY_TPFLAGS_STRING_SUBCLASS;
+    use remoteprocess::LocalProcess;
+
+    fn python_info_with_symbols(
+        symbols: std::collections::HashMap<String, u64>,
+    ) -> PythonProcessInfo {
+        PythonProcessInfo {
+            python_binary: Some(BinaryInfo {
+                symbols,
+                bss_addr: 0,
+                bss_size: 0,
+                pyruntime_addr: 0,
+                pyruntime_size: 0,
+                addr: 0,
+                size: 0,
+            }),
+            libpython_binary: None,
+            maps: Box::new(Vec::<MapRange>::new()),
+            python_filename: std::path::PathBuf::new(),
+            #[cfg(target_os = "linux")]
+            dockerized: false,
+        }
+    }
+
+    fn version_3_7() -> Version {
+        version(3)
+    }
+
+    fn version(major: u64) -> Version {
+        Version {
+            major,
+            minor: 7,
+            patch: 0,
+            release_flags: String::new(),
+            build_metadata: None,
+        }
+    }
+
+    fn get_code_type_address(info: &PythonProcessInfo) -> Result<usize, Error> {
+        Types::get_type_address(info, &LocalProcess, &version_3_7(), "PyCode_Type", c"code")
+    }
+
+    fn code_type_resolves(tp_name: &[u8]) -> bool {
+        let py_type = v3_7_0::PyTypeObject {
+            tp_name: tp_name.as_ptr() as *const std::os::raw::c_char,
+            ..Default::default()
+        };
+        let addr = &py_type as *const v3_7_0::PyTypeObject as usize;
+        let info = python_info_with_symbols([("PyCode_Type".to_owned(), addr as u64)].into());
+        get_code_type_address(&info).is_ok_and(|a| a == addr)
+    }
+
+    #[test]
+    fn test_get_code_type_address() {
+        assert!(code_type_resolves(b"code\0"));
+        for tp_name in [
+            b"dict\0".as_slice(),
+            b"codesomethingelse\0",
+            b"cod\0",
+            b"\0",
+        ] {
+            assert!(!code_type_resolves(tp_name));
+        }
+    }
+
+    #[test]
+    fn test_get_code_type_address_without_symbol() {
+        let info = python_info_with_symbols(Default::default());
+        assert!(get_code_type_address(&info).is_err());
+    }
+
+    macro_rules! type_objects {
+        ($py: ident) => {
+            [c"code", c"str", c"dict"].map(|name| $py::PyTypeObject {
+                tp_name: name.as_ptr(),
+                ..Default::default()
+            })
+        };
+    }
+
+    fn type_symbols<T>(objects: &[T; 3], string_symbol: &str) -> (PythonProcessInfo, Types) {
+        let [code, string, dict] = objects.each_ref().map(|t| t as *const T as usize);
+        let info = python_info_with_symbols(
+            [
+                ("PyCode_Type".to_owned(), code as u64),
+                (string_symbol.to_owned(), string as u64),
+                ("PyDict_Type".to_owned(), dict as u64),
+            ]
+            .into(),
+        );
+        (info, Types { code, string, dict })
+    }
+
+    #[test]
+    fn test_types_from_symbols_python3() {
+        let objects = type_objects!(v3_7_0);
+        let (info, expected) = type_symbols(&objects, "PyUnicode_Type");
+        let types = Types::from_symbols(&info, &LocalProcess, &version(3)).unwrap();
+        assert_eq!(types, expected);
+        assert!(Types::from_symbols(&info, &LocalProcess, &version(2)).is_err());
+    }
+
+    #[test]
+    fn test_check_string_and_dict_subclasses() {
+        let str_type = v3_7_0::PyTypeObject::default();
+        let dict_type = v3_7_0::PyTypeObject::default();
+        let str_subclass = v3_7_0::PyTypeObject {
+            tp_flags: PY_TPFLAGS_STRING_SUBCLASS as _,
+            ..Default::default()
+        };
+        let dict_subclass = v3_7_0::PyTypeObject {
+            tp_flags: PY_TPFLAGS_DICT_SUBCLASS as _,
+            ..Default::default()
+        };
+        let other_type = v3_7_0::PyTypeObject::default();
+        let ptr = |t: &v3_7_0::PyTypeObject| t as *const _ as *mut v3_7_0::PyTypeObject;
+        let string_of = |t: &v3_7_0::PyTypeObject| {
+            let mut s = v3_7_0::PyUnicodeObject::default();
+            s._base._base.ob_base.ob_type = ptr(t);
+            s
+        };
+
+        let types = Types {
+            code: 0,
+            string: ptr(&str_type) as usize,
+            dict: ptr(&dict_type) as usize,
+        };
+        let strict = TypeChecks::Strict(types);
+        let subclasses = TypeChecks::AllowSubclasses(types);
+
+        for type_checks in [&strict, &subclasses] {
+            assert!(type_checks
+                .check_string(&LocalProcess, &string_of(&str_type))
+                .is_ok());
+            assert!(type_checks
+                .check_string(&LocalProcess, &string_of(&other_type))
+                .is_err());
+            assert!(type_checks
+                .check_string(&LocalProcess, &string_of(&dict_subclass))
+                .is_err());
+            assert!(type_checks
+                .check_dict(&LocalProcess, ptr(&dict_type))
+                .is_ok());
+            assert!(type_checks
+                .check_dict(&LocalProcess, ptr(&other_type))
+                .is_err());
+            assert!(type_checks
+                .check_dict(&LocalProcess, ptr(&str_subclass))
+                .is_err());
+        }
+
+        let str_sub = string_of(&str_subclass);
+        assert!(strict.check_string(&LocalProcess, &str_sub).is_err());
+        assert!(subclasses.check_string(&LocalProcess, &str_sub).is_ok());
+        assert!(strict
+            .check_dict(&LocalProcess, ptr(&dict_subclass))
+            .is_err());
+        assert!(subclasses
+            .check_dict(&LocalProcess, ptr(&dict_subclass))
+            .is_ok());
+    }
+
+    #[test]
+    fn test_types_from_symbols_python2() {
+        let objects = type_objects!(v2_7_15);
+        let (info, expected) = type_symbols(&objects, "PyString_Type");
+        let types = Types::from_symbols(&info, &LocalProcess, &version(2)).unwrap();
+        assert_eq!(types, expected);
+        assert!(Types::from_symbols(&info, &LocalProcess, &version(3)).is_err());
+    }
 
     #[cfg(target_os = "macos")]
     #[test]

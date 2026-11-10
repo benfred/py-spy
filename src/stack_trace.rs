@@ -10,6 +10,7 @@ use crate::python_data_access::{copy_bytes, copy_string};
 use crate::python_interpreters::{
     CodeObject, FrameObject, InterpreterState, ThreadState, TupleObject,
 };
+use crate::python_process_info::TypeChecks;
 
 /// Call stack for a single python thread
 #[derive(Debug, Clone, Serialize)]
@@ -47,8 +48,10 @@ pub struct Frame {
     pub line: i32,
     /// Local Variables associated with the frame
     pub locals: Option<Vec<LocalVariable>>,
-    /// If this is an entry frame. Each entry frame corresponds to one native frame.
+    /// If this is an entry frame. Each entry frame corresponds to one native frame (Python 3.11)
     pub is_entry: bool,
+    /// If the last frame was a shim. This is used in Python 3.12+ to detect entry frames.
+    pub is_shim_entry: bool,
 }
 
 #[derive(Debug, Hash, Eq, PartialEq, Ord, PartialOrd, Clone, Serialize)]
@@ -68,10 +71,11 @@ pub struct ProcessInfo {
 
 /// Given an InterpreterState, this function returns a vector of stack traces for each thread
 pub fn get_stack_traces<I, P>(
-    interpreter: &I,
+    interpreter_address: usize,
     process: &P,
     threadstate_address: usize,
     config: Option<&Config>,
+    type_checks: &TypeChecks,
 ) -> Result<Vec<StackTrace>, Error>
 where
     I: InterpreterState,
@@ -79,8 +83,12 @@ where
 {
     let gil_thread_id = get_gil_threadid::<I, P>(threadstate_address, process)?;
 
+    let threadstate_ptr_ptr = I::threadstate_ptr_ptr(interpreter_address);
+    let mut threads: *const I::ThreadState = process
+        .copy_struct(threadstate_ptr_ptr as usize)
+        .context("Failed to copy PyThreadState head pointer")?;
+
     let mut ret = Vec::new();
-    let mut threads = interpreter.head();
 
     let lineno = config.map(|c| c.lineno).unwrap_or(LineNo::NoLine);
     let dump_locals = config.map(|c| c.dump_locals).unwrap_or(0);
@@ -90,7 +98,7 @@ where
             .copy_pointer(threads)
             .context("Failed to copy PyThreadState")?;
 
-        let mut trace = get_stack_trace(&thread, process, dump_locals > 0, lineno)?;
+        let mut trace = get_stack_trace(&thread, process, dump_locals > 0, lineno, type_checks)?;
         trace.owns_gil = trace.thread_id == gil_thread_id;
 
         ret.push(trace);
@@ -109,6 +117,7 @@ pub fn get_stack_trace<T, P>(
     process: &P,
     copy_locals: bool,
     lineno: LineNo,
+    type_checks: &TypeChecks,
 ) -> Result<StackTrace, Error>
 where
     T: ThreadState,
@@ -124,16 +133,66 @@ where
     }
 
     let mut frame_ptr = thread.frame(frame_address);
+
+    // We are iterating in reverse, i.e. from last call to first call.
+    // Since Python 3.12, there are shim frames inserted before a block
+    // of Python frames. When we encounter one, update the last frame.
+    let set_last_frame_as_shim_entry = &mut |frames: &mut Vec<Frame>| {
+        if let Some(frame) = frames.last_mut() {
+            frame.is_shim_entry = true;
+        }
+    };
+
+    let mut visited = 0;
     while !frame_ptr.is_null() {
+        visited += 1;
+        if visited > 4096 {
+            return Err(format_err!("Max frame recursion depth reached"));
+        }
+
         let frame = process
             .copy_pointer(frame_ptr)
             .context("Failed to copy PyFrameObject")?;
+
+        if !frame.is_python_frame() {
+            frame_ptr = frame.back();
+            set_last_frame_as_shim_entry(&mut frames);
+            continue;
+        }
+
         let code = process
             .copy_pointer(frame.code())
             .context("Failed to copy PyCodeObject")?;
 
-        let filename = copy_string(code.filename(), process).context("Failed to copy filename")?;
-        let name = copy_string(code.name(), process).context("Failed to copy function name")?;
+        type_checks.check_code(&code)?;
+
+        let filename =
+            copy_string(code.filename(), process, type_checks).context("Failed to copy filename");
+
+        // Try to get qualname first (available in Python 3.11+), fall back to name
+        let name = match code.qualname() {
+            Some(qualname_ptr) => copy_string(qualname_ptr, process, type_checks)
+                .or_else(|_| copy_string(code.name(), process, type_checks)),
+            None => copy_string(code.name(), process, type_checks),
+        }
+        .context("Failed to copy function name");
+
+        // Guards against torn reads while sampling without pausing the process.
+        if filename.is_err() || name.is_err() {
+            frame_ptr = frame.back();
+            set_last_frame_as_shim_entry(&mut frames);
+            continue;
+        }
+        let filename = filename?;
+        let name = name?;
+
+        // skip <shim> entries in python 3.13+
+        // Unset file/function name in py3.13 means this is a shim.
+        if filename.is_empty() || filename == "<shim>" {
+            frame_ptr = frame.back();
+            set_last_frame_as_shim_entry(&mut frames);
+            continue;
+        }
 
         let line = match lineno {
             LineNo::NoLine => 0,
@@ -155,7 +214,10 @@ where
         };
 
         let locals = if copy_locals {
-            Some(get_locals(&code, frame_ptr, &frame, process)?)
+            Some(
+                get_locals(&code, frame_ptr, &frame, process, type_checks)
+                    .context("Failed to get local variables")?,
+            )
         } else {
             None
         };
@@ -170,13 +232,14 @@ where
             module: None,
             locals,
             is_entry,
+            is_shim_entry: false,
         });
-        if frames.len() > 4096 {
-            return Err(format_err!("Max frame recursion depth reached"));
-        }
 
         frame_ptr = frame.back();
     }
+
+    // First frame is always a shim
+    set_last_frame_as_shim_entry(&mut frames);
 
     Ok(StackTrace {
         pid: 0,
@@ -229,10 +292,13 @@ fn get_locals<C: CodeObject, F: FrameObject, P: ProcessMemory>(
     frameptr: *const F,
     frame: &F,
     process: &P,
+    type_checks: &TypeChecks,
 ) -> Result<Vec<LocalVariable>, Error> {
     let local_count = code.nlocals() as usize;
     let argcount = code.argcount() as usize;
-    let varnames = process.copy_pointer(code.varnames())?;
+    let varnames = process
+        .copy_pointer(code.varnames())
+        .context("Failed to get varnames from PyCodeObject")?;
 
     let ptr_size = std::mem::size_of::<*const i32>();
     let locals_addr = frameptr as usize + std::mem::size_of_val(frame) - ptr_size;
@@ -242,8 +308,14 @@ fn get_locals<C: CodeObject, F: FrameObject, P: ProcessMemory>(
     for i in 0..local_count {
         let nameptr: *const C::StringObject =
             process.copy_struct(varnames.address(code.varnames() as usize, i))?;
-        let name = copy_string(nameptr, process)?;
+
+        let name = copy_string(nameptr, process, type_checks)
+            .context("Failed to copy local variable name")?;
         let addr: usize = process.copy_struct(locals_addr + i * ptr_size)?;
+
+        // hack: handle things like None, True, False, small integer constants etc on Python 3.14
+        let addr = if addr & 1 == 1 { addr - 1 } else { addr };
+
         if addr == 0 {
             continue;
         }
@@ -261,17 +333,34 @@ pub fn get_gil_threadid<I: InterpreterState, P: ProcessMemory>(
     threadstate_address: usize,
     process: &P,
 ) -> Result<u64, Error> {
-    // figure out what thread has the GIL by inspecting _PyThreadState_Current
-    if threadstate_address > 0 {
-        let addr: usize = process.copy_struct(threadstate_address)?;
-
-        // if the addr is 0, no thread is currently holding the GIL
-        if addr != 0 {
-            let threadstate: I::ThreadState = process.copy_struct(addr)?;
-            return Ok(threadstate.thread_id());
-        }
+    // happens during initialization when checking to see if we have a valid interpreter (before we've figured out the threadstate_address)
+    if threadstate_address == 0 {
+        return Ok(0);
     }
-    Ok(0)
+
+    let addr = if I::HAS_GIL_RUNTIME_STATE {
+        // get the gilruntimestate - note that this struct is identical between 3.12/3.13/3.14
+        let gil_state: crate::python_bindings::v3_13_0::_gil_runtime_state =
+            process.copy_struct(threadstate_address)?;
+        // check to see if the GIL is locked already
+        if gil_state.locked != 0 {
+            gil_state.last_holder as usize
+        } else {
+            0
+        }
+    } else {
+        process.copy_struct::<usize>(threadstate_address)?
+    };
+
+    // if the addr is 0, no thread is currently holding the GIL
+    let threadid = if addr != 0 {
+        let threadstate: I::ThreadState = process.copy_struct(addr)?;
+        threadstate.thread_id()
+    } else {
+        0
+    };
+
+    Ok(threadid)
 }
 
 impl ProcessInfo {
@@ -284,6 +373,7 @@ impl ProcessInfo {
             line: 0,
             locals: None,
             is_entry: true,
+            is_shim_entry: true,
         }
     }
 }

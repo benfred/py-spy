@@ -13,6 +13,10 @@ classifiers = [
 	"Topic :: Software Development :: Libraries",
 	"Topic :: Utilities"
 ]
+dynamic = ["version"]
+
+[project.optional-dependencies]
+test = ["numpy"]
 
 [tool.maturin]
 bindings = "bin"

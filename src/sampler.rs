@@ -236,7 +236,7 @@ impl Sampler {
                 }
 
                 // If all of our spies have stopped, we're done
-                if spies.len() == 0 || spies.values().all(|x| !x.running) {
+                if spies.is_empty() || spies.values().all(|x| !x.running) {
                     break;
                 }
             }

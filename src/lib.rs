@@ -31,12 +31,13 @@ extern crate log;
 
 pub mod binary_parser;
 pub mod config;
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "cli"))]
 pub mod coredump;
-#[cfg(unwind)]
+#[cfg(feature = "unwind")]
 mod cython;
+#[cfg(feature = "cli")]
 pub mod dump;
-#[cfg(unwind)]
+#[cfg(feature = "unwind")]
 mod native_stack_trace;
 mod python_bindings;
 mod python_data_access;

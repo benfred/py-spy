@@ -260,7 +260,7 @@ impl Stats {
             &self.thread_name_map,
             self.config.sampling_rate,
         ))?;
-        writeln!(w, "{}", json)?;
+        writeln!(w, "{json}")?;
         Ok(())
     }
 }
@@ -289,6 +289,7 @@ mod tests {
             line: 0,
             locals: None,
             is_entry: true,
+            is_shim_entry: false,
         };
 
         let trace = stack_trace::StackTrace {

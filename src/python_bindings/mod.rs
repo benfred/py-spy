@@ -1,6 +1,10 @@
 pub mod v2_7_15;
 pub mod v3_10_0;
 pub mod v3_11_0;
+pub mod v3_12_0;
+pub mod v3_13_0;
+pub mod v3_14_0;
+pub mod v3_15_0;
 pub mod v3_3_7;
 pub mod v3_5_5;
 pub mod v3_6_6;
@@ -25,16 +29,6 @@ pub mod pyruntime {
         match version {
             Version {
                 major: 3,
-                minor: 8,
-                patch: 0,
-                ..
-            } => match version.release_flags.as_ref() {
-                "a1" | "a2" => 16,
-                "a3" | "a4" => 20,
-                _ => 24,
-            },
-            Version {
-                major: 3,
                 minor: 8..=10,
                 ..
             } => 24,
@@ -57,21 +51,12 @@ pub mod pyruntime {
         match version {
             Version {
                 major: 3,
-                minor: 8,
-                patch: 0,
-                ..
-            } => match version.release_flags.as_ref() {
-                "a1" | "a2" => 24,
-                _ => 32,
-            },
-            Version {
-                major: 3,
                 minor: 8..=10,
                 ..
             } => 32,
             Version {
                 major: 3,
-                minor: 11,
+                minor: 11..=12,
                 ..
             } => 40,
             _ => 24,
@@ -79,8 +64,7 @@ pub mod pyruntime {
     }
 
     // getting gilstate.tstate_current is different for all OS
-    // and is also different for each python version, and even
-    // between v3.8.0a1 and v3.8.0a2 =(
+    // and is also different for each python version
     #[cfg(target_os = "macos")]
     pub fn get_tstate_current_offset(version: &Version) -> Option<usize> {
         match version {
@@ -93,17 +77,6 @@ pub mod pyruntime {
             Version {
                 major: 3, minor: 7, ..
             } => Some(1528),
-            Version {
-                major: 3,
-                minor: 8,
-                patch: 0,
-                ..
-            } => match version.release_flags.as_ref() {
-                "a1" => Some(1432),
-                "a2" => Some(888),
-                "a3" | "a4" => Some(1448),
-                _ => Some(1416),
-            },
             Version {
                 major: 3, minor: 8, ..
             } => Some(1416),
@@ -127,17 +100,6 @@ pub mod pyruntime {
             Version {
                 major: 3, minor: 7, ..
             } => Some(796),
-            Version {
-                major: 3,
-                minor: 8,
-                patch: 0,
-                ..
-            } => match version.release_flags.as_ref() {
-                "a1" => Some(792),
-                "a2" => Some(512),
-                "a3" | "a4" => Some(800),
-                _ => Some(788),
-            },
             Version {
                 major: 3, minor: 8, ..
             } => Some(788),
@@ -210,17 +172,6 @@ pub mod pyruntime {
                 major: 3, minor: 7, ..
             } => Some(1480),
             Version {
-                major: 3,
-                minor: 8,
-                patch: 0,
-                ..
-            } => match version.release_flags.as_ref() {
-                "a1" => Some(1384),
-                "a2" => Some(840),
-                "a3" | "a4" => Some(1400),
-                _ => Some(1368),
-            },
-            Version {
                 major: 3, minor: 8, ..
             } => match version.build_metadata.as_deref() {
                 Some("cinder") => Some(1384),
@@ -262,17 +213,6 @@ pub mod pyruntime {
                 ..
             } => Some(1320),
             Version {
-                major: 3,
-                minor: 8,
-                patch: 0,
-                ..
-            } => match version.release_flags.as_ref() {
-                "a1" => Some(1312),
-                "a2" => Some(768),
-                "a3" | "a4" => Some(1328),
-                _ => Some(1296),
-            },
-            Version {
                 major: 3, minor: 8, ..
             } => Some(1296),
             Version {
@@ -304,17 +244,6 @@ pub mod pyruntime {
                 patch: 4..=7,
                 ..
             } => Some(1336),
-            Version {
-                major: 3,
-                minor: 8,
-                patch: 0,
-                ..
-            } => match version.release_flags.as_ref() {
-                "a1" => Some(1240),
-                "a2" => Some(696),
-                "a3" | "a4" => Some(1256),
-                _ => Some(1224),
-            },
             Version {
                 major: 3, minor: 8, ..
             } => Some(1224),

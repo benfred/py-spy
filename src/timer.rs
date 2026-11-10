@@ -2,7 +2,8 @@ use std::time::{Duration, Instant};
 #[cfg(windows)]
 use winapi::um::timeapi;
 
-use rand_distr::{Distribution, Exp};
+use rand::Rng;
+use rand_distr::Exp;
 
 /// Timer is an iterator that sleeps an appropriate amount of time between iterations
 /// so that we can sample the process a certain number of times a second.
@@ -45,7 +46,7 @@ impl Iterator for Timer {
 
         // figure out how many nanoseconds should come between the previous and
         // the next sample using an exponential distribution to avoid aliasing
-        let nanos = 1_000_000_000.0 * self.exp.sample(&mut rand::thread_rng());
+        let nanos = 1_000_000_000.0 * rand::rng().sample(self.exp);
 
         // since we want to account for the amount of time the sampling takes
         // we keep track of when we should sleep to (rather than just sleeping

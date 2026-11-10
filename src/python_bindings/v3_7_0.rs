@@ -1066,7 +1066,7 @@ pub type dict_lookup_func = ::std::option::Option<
     ) -> Py_ssize_t,
 >;
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct _dictkeysobject {
     pub dk_refcnt: Py_ssize_t,
     pub dk_size: Py_ssize_t,

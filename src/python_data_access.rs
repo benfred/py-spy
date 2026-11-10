@@ -1,9 +1,11 @@
 #![allow(clippy::unnecessary_cast)]
 use anyhow::Error;
 
+use crate::python_bindings::v3_13_0;
 use crate::python_interpreters::{
     BytesObject, InterpreterState, ListObject, Object, StringObject, TupleObject, TypeObject,
 };
+use crate::python_process_info::TypeChecks;
 use crate::version::Version;
 use remoteprocess::ProcessMemory;
 
@@ -11,8 +13,13 @@ use remoteprocess::ProcessMemory;
 pub fn copy_string<T: StringObject, P: ProcessMemory>(
     ptr: *const T,
     process: &P,
+    type_checks: &TypeChecks,
 ) -> Result<String, Error> {
     let obj = process.copy_pointer(ptr)?;
+    type_checks.check_string(process, &obj)?;
+    if obj.size() == 0 {
+        return Ok(String::new());
+    }
     if obj.size() >= 4096 {
         return Err(format_err!(
             "Refusing to copy {} chars of a string",
@@ -26,18 +33,31 @@ pub fn copy_string<T: StringObject, P: ProcessMemory>(
 
     match (kind, obj.ascii()) {
         (4, _) => {
-            #[allow(clippy::cast_ptr_alignment)]
-            let chars = unsafe {
-                std::slice::from_raw_parts(bytes.as_ptr() as *const char, bytes.len() / 4)
-            };
-            Ok(chars.iter().collect())
+            // Decode UCS-4 via u32 + char::from_u32. Casting process memory to
+            // &[char] is UB: char requires a Unicode scalar value, and the
+            // buffer is only 1-byte aligned. See issue #870.
+            let mut out = String::with_capacity(bytes.len() / 4);
+            for chunk in bytes.chunks_exact(4) {
+                let code = u32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+                match char::from_u32(code) {
+                    Some(c) => out.push(c),
+                    None => {
+                        return Err(format_err!(
+                            "Invalid Unicode code point in UCS-4 string: {:#x}",
+                            code
+                        ));
+                    }
+                }
+            }
+            Ok(out)
         }
         (2, _) => {
-            #[allow(clippy::cast_ptr_alignment)]
-            let chars = unsafe {
-                std::slice::from_raw_parts(bytes.as_ptr() as *const u16, bytes.len() / 2)
-            };
-            Ok(String::from_utf16(chars)?)
+            // Avoid casting an unaligned Vec<u8> buffer to &[u16].
+            let mut units = Vec::with_capacity(bytes.len() / 2);
+            for chunk in bytes.chunks_exact(2) {
+                units.push(u16::from_ne_bytes([chunk[0], chunk[1]]));
+            }
+            Ok(String::from_utf16(&units)?)
         }
         (1, true) => Ok(String::from_utf8(bytes)?),
         (1, false) => Ok(bytes.iter().map(|&b| b as char).collect()),
@@ -59,29 +79,78 @@ pub fn copy_bytes<T: BytesObject, P: ProcessMemory>(
 }
 
 /// Copies a i64 from a PyLongObject. Returns the value + if it overflowed
-pub fn copy_long<P: ProcessMemory>(process: &P, addr: usize) -> Result<(i64, bool), Error> {
-    // this is PyLongObject for a specific version of python, but this works since it's binary compatible
-    // layout across versions we're targeting
-    let value =
-        process.copy_pointer(addr as *const crate::python_bindings::v3_7_0::PyLongObject)?;
-    let negative: i64 = if value.ob_base.ob_size < 0 { -1 } else { 1 };
-    let size = value.ob_base.ob_size * (negative as isize);
+pub fn copy_long<P: ProcessMemory>(
+    process: &P,
+    version: &Version,
+    addr: usize,
+) -> Result<(i64, bool), Error> {
+    let (size, negative, digit, value_size) = match version {
+        Version {
+            major: 3,
+            minor: 12..=15,
+            ..
+        } => {
+            // PyLongObject format changed in python 3.12
+            let value = process
+                .copy_pointer(addr as *const crate::python_bindings::v3_12_0::PyLongObject)?;
+            let size = value.long_value.lv_tag >> 3;
+            let negative: i64 = if (value.long_value.lv_tag & 3) == 2 {
+                -1
+            } else {
+                1
+            };
+            (
+                size,
+                negative,
+                value.long_value.ob_digit[0] as u32,
+                std::mem::size_of_val(&value),
+            )
+        }
+        _ => {
+            // this is PyLongObject for a specific version of python, but this works since it's binary compatible
+            // layout across versions we're targeting
+            let value = process
+                .copy_pointer(addr as *const crate::python_bindings::v3_7_0::PyLongObject)?;
+            let negative: i64 = if value.ob_base.ob_size < 0 { -1 } else { 1 };
+            let size = (value.ob_base.ob_size * (negative as isize)) as usize;
+            (
+                size,
+                negative,
+                value.ob_digit[0] as u32,
+                std::mem::size_of_val(&value),
+            )
+        }
+    };
+
+    #[cfg(target_pointer_width = "64")]
+    let bits_in_digit = 30;
+
+    #[cfg(target_pointer_width = "32")]
+    let bits_in_digit = match version {
+        // PYLONG_BITS_IN_DIGIT changed from 15 to 30 in python3.11
+        // https://github.com/python/cpython/pull/30497
+        Version {
+            major: 3,
+            minor: 11..,
+            ..
+        } => 30,
+        _ => 15,
+    };
+
     match size {
         0 => Ok((0, false)),
-        1 => Ok((negative * (value.ob_digit[0] as i64), false)),
+        1 => Ok((negative * (digit as i64), false)),
 
-        #[cfg(target_pointer_width = "64")]
-        2 => {
-            let digits: [u32; 2] = process.copy_struct(addr + std::mem::size_of_val(&value) - 8)?;
+        2 if bits_in_digit == 30 => {
+            let digits: [u32; 2] = process.copy_struct(addr + value_size - size_of::<usize>())?;
             let mut ret: i64 = 0;
             for i in 0..size {
                 ret += (digits[i as usize] as i64) << (30 * i);
             }
             Ok((negative * ret, false))
         }
-        #[cfg(target_pointer_width = "32")]
-        2..=4 => {
-            let digits: [u16; 4] = process.copy_struct(addr + std::mem::size_of_val(&value) - 4)?;
+        2..=4 if bits_in_digit == 15 => {
+            let digits: [u16; 4] = process.copy_struct(addr + value_size - size_of::<usize>())?;
             let mut ret: i64 = 0;
             for i in 0..size {
                 ret += (digits[i as usize] as i64) << (15 * i);
@@ -89,7 +158,7 @@ pub fn copy_long<P: ProcessMemory>(process: &P, addr: usize) -> Result<(i64, boo
             Ok((negative * ret, false))
         }
         // we don't support arbitrary sized integers yet, signal this by returning that we've overflowed
-        _ => Ok((value.ob_base.ob_size as i64, true)),
+        _ => Ok((size as i64, true)),
     }
 }
 
@@ -101,7 +170,6 @@ pub fn copy_int<P: ProcessMemory>(process: &P, addr: usize) -> Result<i64, Error
 }
 
 /// Allows iteration of a python dictionary. Only supports python 3.6+ right now
-
 pub struct DictIterator<'a, P: 'a> {
     process: &'a P,
     entries_addr: usize,
@@ -117,17 +185,54 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
         version: &'a Version,
         addr: usize,
         tp_addr: usize,
+        flags: usize,
+        type_checks: &TypeChecks,
     ) -> Result<DictIterator<'a, P>, Error> {
         // Handles logic of _PyObject_ManagedDictPointer in python 3.11
-        let values_addr: usize = process.copy_struct(addr - 4 * std::mem::size_of::<usize>())?;
-        let dict_addr: usize = process.copy_struct(addr - 3 * std::mem::size_of::<usize>())?;
+        let mut values_addr: usize =
+            process.copy_struct(addr - 4 * std::mem::size_of::<usize>())?;
+
+        // TODO: MANAGED_DICT_OFFSET is -3 if GIL isn't disabled, -1 otherwise (in py3.13+)
+        // handle gil-less python branches
+        let mut dict_addr: usize = process.copy_struct(addr - 3 * std::mem::size_of::<usize>())?;
+
+        // for python 3.12, the values/dict are combined into a single tagged pointer
+        if version.major == 3 && version.minor == 12 {
+            if dict_addr & 1 == 0 {
+                values_addr = 0;
+            } else {
+                values_addr = dict_addr + 1;
+                dict_addr = 0;
+            }
+        }
 
         if values_addr != 0 {
-            let ht: crate::python_bindings::v3_11_0::PyHeapTypeObject =
-                process.copy_struct(tp_addr)?;
-            let keys: crate::python_bindings::v3_11_0::PyDictKeysObject =
-                process.copy_struct(ht.ht_cached_keys as usize)?;
-            let entries_addr = ht.ht_cached_keys as usize
+            let ht_cached_keys = if version.major == 3 && version.minor >= 15 {
+                let ht: crate::python_bindings::v3_15_0::PyHeapTypeObject =
+                    process.copy_struct(tp_addr)?;
+                ht.ht_cached_keys as usize
+            } else if version.major == 3 && version.minor >= 12 {
+                let ht: crate::python_bindings::v3_12_0::PyHeapTypeObject =
+                    process.copy_struct(tp_addr)?;
+                ht.ht_cached_keys as usize
+            } else {
+                let ht: crate::python_bindings::v3_11_0::PyHeapTypeObject =
+                    process.copy_struct(tp_addr)?;
+                ht.ht_cached_keys as usize
+            };
+
+            // handle inline values in py3.13+
+            // https://github.com/python/cpython/issues/115776
+            if flags & PY_TPFLAGS_INLINE_VALUES != 0 {
+                // PyDictValues is stored inline after the initial PyObject
+                let values_offset = std::mem::offset_of!(v3_13_0::_dictvalues, values);
+                values_addr = addr + std::mem::size_of::<v3_13_0::PyObject>() + values_offset;
+            }
+
+            let keys: crate::python_bindings::v3_12_0::PyDictKeysObject =
+                process.copy_struct(ht_cached_keys as usize)?;
+
+            let entries_addr = ht_cached_keys as usize
                 + (1 << keys.dk_log2_index_bytes)
                 + std::mem::size_of_val(&keys);
             Ok(DictIterator {
@@ -139,7 +244,7 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
                 values: values_addr,
             })
         } else if dict_addr != 0 {
-            DictIterator::from(process, version, dict_addr)
+            DictIterator::from(process, version, dict_addr, type_checks)
         } else {
             Err(format_err!("neither values or dict is set in managed dict"))
         }
@@ -149,16 +254,19 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
         process: &'a P,
         version: &'a Version,
         addr: usize,
+        type_checks: &TypeChecks,
     ) -> Result<DictIterator<'a, P>, Error> {
         match version {
             Version {
                 major: 3,
-                minor: 11,
+                minor: 11..=15,
                 ..
             } => {
                 let dict: crate::python_bindings::v3_11_0::PyDictObject =
                     process.copy_struct(addr)?;
+                type_checks.check_dict(process, dict.ob_base.ob_type)?;
                 let keys = process.copy_pointer(dict.ma_keys)?;
+
                 let entries_addr = dict.ma_keys as usize
                     + (1 << keys.dk_log2_index_bytes)
                     + std::mem::size_of_val(&keys);
@@ -174,6 +282,7 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
             _ => {
                 let dict: crate::python_bindings::v3_7_0::PyDictObject =
                     process.copy_struct(addr)?;
+                type_checks.check_dict(process, dict.ob_base.ob_type)?;
                 // Getting this going generically is tricky: there is a lot of variation on how dictionaries are handled
                 // instead this just focuses on a single version, which works for python
                 // 3.6/3.7/3.8/3.9/3.10
@@ -267,14 +376,15 @@ impl<'a, P: ProcessMemory> Iterator for DictIterator<'a, P> {
     }
 }
 
+pub const PY_TPFLAGS_INLINE_VALUES: usize = 1 << 2;
 pub const PY_TPFLAGS_MANAGED_DICT: usize = 1 << 4;
 const PY_TPFLAGS_INT_SUBCLASS: usize = 1 << 23;
 const PY_TPFLAGS_LONG_SUBCLASS: usize = 1 << 24;
 const PY_TPFLAGS_LIST_SUBCLASS: usize = 1 << 25;
 const PY_TPFLAGS_TUPLE_SUBCLASS: usize = 1 << 26;
-const PY_TPFLAGS_BYTES_SUBCLASS: usize = 1 << 27;
-const PY_TPFLAGS_STRING_SUBCLASS: usize = 1 << 28;
-const PY_TPFLAGS_DICT_SUBCLASS: usize = 1 << 29;
+pub const PY_TPFLAGS_BYTES_SUBCLASS: usize = 1 << 27;
+pub const PY_TPFLAGS_STRING_SUBCLASS: usize = 1 << 28;
+pub const PY_TPFLAGS_DICT_SUBCLASS: usize = 1 << 29;
 
 /// Converts a python variable in the other process to a human readable string
 pub fn format_variable<I, P>(
@@ -282,6 +392,7 @@ pub fn format_variable<I, P>(
     version: &Version,
     addr: usize,
     max_length: isize,
+    type_checks: &TypeChecks,
 ) -> Result<String, Error>
 where
     I: InterpreterState,
@@ -309,7 +420,7 @@ where
         if value_type_name == "bool" {
             (if value > 0 { "True" } else { "False" }).to_owned()
         } else {
-            format!("{}", value)
+            format!("{value}")
         }
     };
 
@@ -319,7 +430,7 @@ where
         format_int(copy_int(process, addr)?)
     } else if flags & PY_TPFLAGS_LONG_SUBCLASS != 0 {
         // we don't handle arbitrary sized integer values (max is 2**60)
-        let (value, overflowed) = copy_long(process, addr)?;
+        let (value, overflowed) = copy_long(process, version, addr)?;
         if overflowed {
             if value > 0 {
                 "+bigint".to_owned()
@@ -332,28 +443,29 @@ where
     } else if flags & PY_TPFLAGS_STRING_SUBCLASS != 0
         || (version.major == 2 && (flags & PY_TPFLAGS_BYTES_SUBCLASS != 0))
     {
-        let value = copy_string(addr as *const I::StringObject, process)?
+        let value = copy_string(addr as *const I::StringObject, process, type_checks)?
             .replace('\'', "\\\"")
             .replace('\n', "\\n");
-        if value.len() as isize >= max_length - 5 {
-            format!("\"{}...\"", &value[..(max_length - 5) as usize])
+        if let Some((offset, _)) = value.char_indices().nth((max_length - 5) as usize) {
+            format!("\"{}...\"", &value[..offset])
         } else {
-            format!("\"{}\"", value)
+            format!("\"{value}\"")
         }
     } else if flags & PY_TPFLAGS_DICT_SUBCLASS != 0 {
         if version.major == 3 && version.minor >= 6 {
             let mut values = Vec::new();
             let mut remaining = max_length - 2;
-            for entry in DictIterator::from(process, version, addr)? {
+            for entry in DictIterator::from(process, version, addr, type_checks)? {
                 let (key, value) = entry?;
-                let key = format_variable::<I, P>(process, version, key, remaining)?;
-                let value = format_variable::<I, P>(process, version, value, remaining)?;
+                let key = format_variable::<I, P>(process, version, key, remaining, type_checks)?;
+                let value =
+                    format_variable::<I, P>(process, version, value, remaining, type_checks)?;
                 remaining -= (key.len() + value.len()) as isize + 4;
                 if remaining <= 5 {
                     values.push("...".to_owned());
                     break;
                 }
-                values.push(format!("{}: {}", key, value));
+                values.push(format!("{key}: {value}"));
             }
             format!("{{{}}}", values.join(", "))
         } else {
@@ -368,7 +480,13 @@ where
         for i in 0..object.size() {
             let valueptr: *mut I::Object =
                 process.copy_struct(addr + i * std::mem::size_of::<*mut I::Object>())?;
-            let value = format_variable::<I, P>(process, version, valueptr as usize, remaining)?;
+            let value = format_variable::<I, P>(
+                process,
+                version,
+                valueptr as usize,
+                remaining,
+                type_checks,
+            )?;
             remaining -= value.len() as isize + 2;
             if remaining <= 5 {
                 values.push("...".to_owned());
@@ -383,7 +501,13 @@ where
         let mut remaining = max_length - 2;
         for i in 0..object.size() {
             let value_addr: *mut I::Object = process.copy_struct(object.address(addr, i))?;
-            let value = format_variable::<I, P>(process, version, value_addr as usize, remaining)?;
+            let value = format_variable::<I, P>(
+                process,
+                version,
+                value_addr as usize,
+                remaining,
+                type_checks,
+            )?;
             remaining -= value.len() as isize + 2;
             if remaining <= 5 {
                 values.push("...".to_owned());
@@ -398,11 +522,52 @@ where
         format!("{}", value.ob_fval)
     } else if value_type_name == "NoneType" {
         "None".to_owned()
+    } else if value_type_name.starts_with("numpy.") {
+        match value_type_name {
+            // u8, not bool: any byte value is possible, and bool would be UB
+            "numpy.bool" => format_obval::<u8, P>(addr, process)?,
+            "numpy.uint8" => format_obval::<u8, P>(addr, process)?,
+            "numpy.uint16" => format_obval::<u16, P>(addr, process)?,
+            "numpy.uint32" => format_obval::<u32, P>(addr, process)?,
+            "numpy.uint64" => format_obval::<u64, P>(addr, process)?,
+            "numpy.int8" => format_obval::<i8, P>(addr, process)?,
+            "numpy.int16" => format_obval::<i16, P>(addr, process)?,
+            "numpy.int32" => format_obval::<i32, P>(addr, process)?,
+            "numpy.int64" => format_obval::<i64, P>(addr, process)?,
+            "numpy.float32" => format_obval::<f32, P>(addr, process)?,
+            "numpy.float64" => format_obval::<f64, P>(addr, process)?,
+            _ => format!("<{value_type_name} at 0x{addr:x}>"),
+        }
     } else {
-        format!("<{} at 0x{:x}>", value_type_name, addr)
+        format!("<{value_type_name} at 0x{addr:x}>")
     };
 
     Ok(formatted)
+}
+
+/// Format the numpy scalar to a string.
+///
+/// All numpy scalars have shape:
+/// {
+///     ob_base: PyObject,
+///     obval: <value>,
+/// }
+///
+/// Where `obval` can be of different sizes depending on the scalar type.
+/// We match the size to the value_type_name for this purpose, avoiding the
+/// need to build bindings for the numpy C API.
+///
+/// * `addr`: Address of the numpy scalar
+/// * `process`: Process memory in which the object resides
+fn format_obval<T, P>(addr: usize, process: &P) -> Result<String, Error>
+where
+    T: std::fmt::Display + Copy,
+    P: ProcessMemory,
+{
+    let base_addr = addr as *mut u32;
+    let offset = std::mem::size_of::<crate::python_bindings::v3_7_0::PyObject>() as isize;
+    let result = unsafe { process.copy_pointer(base_addr.byte_offset(offset) as *const T)? };
+    Ok(format!("{result}"))
 }
 
 #[cfg(test)]
@@ -411,7 +576,7 @@ pub mod tests {
     // and then test out that the above code handles appropriately
     use super::*;
     use crate::python_bindings::v3_7_0::{
-        PyASCIIObject, PyBytesObject, PyUnicodeObject, PyVarObject,
+        PyASCIIObject, PyBytesObject, PyCompactUnicodeObject, PyUnicodeObject, PyVarObject,
     };
     use remoteprocess::LocalProcess;
     use std::ptr::copy_nonoverlapping;
@@ -429,6 +594,13 @@ pub mod tests {
     #[repr(C)] // Rust can optimize the layout of this struct and break our pointer arithmetic
     pub struct AllocatedPyASCIIObject {
         pub base: PyASCIIObject,
+        pub storage: [u8; 4096],
+    }
+
+    #[allow(dead_code)]
+    #[repr(C)]
+    pub struct AllocatedPyCompactUnicodeObject {
+        pub base: PyCompactUnicodeObject,
         pub storage: [u8; 4096],
     }
 
@@ -476,14 +648,72 @@ pub mod tests {
         ret
     }
 
+    pub fn to_ucs4object(input: &str) -> AllocatedPyCompactUnicodeObject {
+        // Non-ASCII compact unicode stores payload after PyCompactUnicodeObject
+        // (see StringObject::address), not after PyASCIIObject.
+        let chars: Vec<u32> = input.chars().map(|c| c as u32).collect();
+        let mut ascii = PyASCIIObject {
+            length: chars.len() as isize,
+            ..Default::default()
+        };
+        ascii.state.set_compact(1);
+        ascii.state.set_kind(4);
+        ascii.state.set_ascii(0);
+        let base = PyCompactUnicodeObject {
+            _base: ascii,
+            ..Default::default()
+        };
+        let mut ret = AllocatedPyCompactUnicodeObject {
+            base,
+            storage: [0 as u8; 4096],
+        };
+        unsafe {
+            let ptr = &mut ret as *mut AllocatedPyCompactUnicodeObject as *mut u8;
+            let dst = ptr.offset(std::mem::size_of::<PyCompactUnicodeObject>() as isize);
+            for (i, code) in chars.iter().enumerate() {
+                let bytes = code.to_ne_bytes();
+                copy_nonoverlapping(bytes.as_ptr(), dst.add(i * 4), 4);
+            }
+        }
+        ret
+    }
+
     #[test]
     fn test_copy_string() {
         let original = "function_name";
         let obj = to_asciiobject(original);
 
         let unicode: &PyUnicodeObject = unsafe { std::mem::transmute(&obj.base) };
-        let copied = copy_string(unicode, &LocalProcess).unwrap();
+        let copied = copy_string(unicode, &LocalProcess, &TypeChecks::Disabled).unwrap();
         assert_eq!(copied, original);
+    }
+
+    #[test]
+    fn test_copy_string_ucs4() {
+        // Includes a non-BMP character so kind==4 is the real production path.
+        let original = "cafe😀";
+        let obj = to_ucs4object(original);
+        let unicode: &PyUnicodeObject = unsafe { std::mem::transmute(&obj.base) };
+        let copied = copy_string(unicode, &LocalProcess, &TypeChecks::Disabled).unwrap();
+        assert_eq!(copied, original);
+    }
+
+    #[test]
+    fn test_copy_string_ucs4_rejects_surrogate() {
+        let mut obj = to_ucs4object("A");
+        // Overwrite the single code unit with an unpaired surrogate (invalid char).
+        unsafe {
+            let ptr = &mut obj as *mut AllocatedPyCompactUnicodeObject as *mut u8;
+            let dst = ptr.offset(std::mem::size_of::<PyCompactUnicodeObject>() as isize);
+            let bad = 0xD800u32.to_ne_bytes();
+            copy_nonoverlapping(bad.as_ptr(), dst, 4);
+        }
+        let unicode: &PyUnicodeObject = unsafe { std::mem::transmute(&obj.base) };
+        let err = copy_string(unicode, &LocalProcess, &TypeChecks::Disabled).unwrap_err();
+        assert!(
+            err.to_string().contains("Invalid Unicode code point"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]

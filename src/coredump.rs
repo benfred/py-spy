@@ -14,14 +14,10 @@ use remoteprocess::ProcessMemory;
 use crate::binary_parser::{parse_binary, BinaryInfo};
 use crate::config::Config;
 use crate::dump::print_trace;
-use crate::python_bindings::{
-    v2_7_15, v3_10_0, v3_11_0, v3_3_7, v3_5_5, v3_6_6, v3_7_0, v3_8_0, v3_9_5,
-};
 use crate::python_data_access::format_variable;
-use crate::python_interpreters::InterpreterState;
+use crate::python_interpreters::{dispatch_by_version, InterpreterState};
 use crate::python_process_info::{
-    get_interpreter_address, get_python_version, get_threadstate_address, is_python_lib,
-    ContainsAddr, PythonProcessInfo,
+    get_python_version, is_python_lib, ContainsAddr, PythonProcessInfo, PythonProcessLayout,
 };
 use crate::python_threading::thread_names_from_interpreter;
 use crate::stack_trace::{get_stack_traces, StackTrace};
@@ -88,26 +84,30 @@ impl CoreDump {
         let mut status = Vec::new();
         for note in notes.flatten() {
             if note.n_type == goblin::elf::note::NT_PRPSINFO {
-                psinfo = Some(unsafe { *(note.desc.as_ptr() as *const elfcore::elf_prpsinfo) });
+                psinfo = Some(unsafe {
+                    std::ptr::read_unaligned(note.desc.as_ptr() as *const elfcore::elf_prpsinfo)
+                });
             } else if note.n_type == goblin::elf::note::NT_PRSTATUS {
-                let thread_status =
-                    unsafe { *(note.desc.as_ptr() as *const elfcore::elf_prstatus) };
+                let thread_status: elfcore::elf_prstatus = unsafe {
+                    std::ptr::read_unaligned(note.desc.as_ptr() as *const elfcore::elf_prstatus)
+                };
                 status.push(thread_status);
             } else if note.n_type == goblin::elf::note::NT_FILE {
                 let data = note.desc;
                 let ptrs = data.as_ptr() as *const usize;
 
-                let count = unsafe { *ptrs };
-                let _page_size = unsafe { *ptrs.offset(1) };
+                let count = unsafe { std::ptr::read_unaligned(ptrs) };
+                let _page_size = unsafe { std::ptr::read_unaligned(ptrs.offset(1)) };
 
                 let string_table = &data[(std::mem::size_of::<usize>() * (2 + count * 3))..];
 
                 for (i, filename) in string_table.split(|chr| *chr == 0).enumerate() {
                     if i < count {
                         let i = i as isize;
-                        let start = unsafe { *ptrs.offset(i * 3 + 2) };
-                        let _end = unsafe { *ptrs.offset(i * 3 + 3) };
-                        let _page_offset = unsafe { *ptrs.offset(i * 3 + 4) };
+                        let start = unsafe { std::ptr::read_unaligned(ptrs.offset(i * 3 + 2)) };
+                        let _end = unsafe { std::ptr::read_unaligned(ptrs.offset(i * 3 + 3)) };
+                        let _page_offset =
+                            unsafe { std::ptr::read_unaligned(ptrs.offset(i * 3 + 4)) };
 
                         let pathname = Path::new(&OsStr::from_bytes(filename)).to_path_buf();
                         filenames.insert(start, pathname);
@@ -175,12 +175,11 @@ impl ProcessMemory for CoreDump {
 pub struct PythonCoreDump {
     core: CoreDump,
     version: Version,
-    interpreter_address: usize,
-    threadstate_address: usize,
+    addresses: PythonProcessLayout,
 }
 
 impl PythonCoreDump {
-    pub fn new<P: AsRef<Path>>(filename: P) -> Result<PythonCoreDump, Error> {
+    pub fn new<P: AsRef<Path>>(filename: P, config: &Config) -> Result<PythonCoreDump, Error> {
         let core = CoreDump::new(filename)?;
         let maps = &core.maps;
 
@@ -237,19 +236,22 @@ impl PythonCoreDump {
             get_python_version(&python_info, &core).context("failed to get python version")?;
         info!("Got python version {}", version);
 
-        let interpreter_address = get_interpreter_address(&python_info, &core, &version)?;
-        info!("Found interpreter at 0x{:016x}", interpreter_address);
+        let addresses = PythonProcessLayout::new(&python_info, &core, &version, config)?;
 
         // lets us figure out which thread has the GIL
-        let config = Config::default();
-        let threadstate_address = get_threadstate_address(&python_info, &version, &config)?;
-        info!("found threadstate at 0x{:016x}", threadstate_address);
+        info!(
+            "found interpreter at 0x{:016x}",
+            addresses.interpreter_address
+        );
+        info!(
+            "found threadstate at 0x{:016x}",
+            addresses.threadstate_address
+        );
 
         Ok(PythonCoreDump {
             core,
             version,
-            interpreter_address,
-            threadstate_address,
+            addresses,
         })
     }
 
@@ -266,56 +268,31 @@ impl PythonCoreDump {
             ));
         }
 
-        // different versions have different layouts, check as appropriate
-        match self.version {
-            Version {
-                major: 2,
-                minor: 3..=7,
-                ..
-            } => self._get_stack::<v2_7_15::_is>(config),
-            Version {
-                major: 3, minor: 3, ..
-            } => self._get_stack::<v3_3_7::_is>(config),
-            Version {
-                major: 3,
-                minor: 4..=5,
-                ..
-            } => self._get_stack::<v3_5_5::_is>(config),
-            Version {
-                major: 3, minor: 6, ..
-            } => self._get_stack::<v3_6_6::_is>(config),
-            Version {
-                major: 3, minor: 7, ..
-            } => self._get_stack::<v3_7_0::_is>(config),
-            Version {
-                major: 3, minor: 8, ..
-            } => self._get_stack::<v3_8_0::_is>(config),
-            Version {
-                major: 3, minor: 9, ..
-            } => self._get_stack::<v3_9_5::_is>(config),
-            Version {
-                major: 3,
-                minor: 10,
-                ..
-            } => self._get_stack::<v3_10_0::_is>(config),
-            Version {
-                major: 3,
-                minor: 11,
-                ..
-            } => self._get_stack::<v3_11_0::_is>(config),
-            _ => Err(format_err!(
-                "Unsupported version of Python: {}",
-                self.version
-            )),
+        type P = CoreDump;
+        fn get_traces<I: InterpreterState, P: ProcessMemory>(
+            core: &PythonCoreDump,
+            config: &Config,
+        ) -> Result<Vec<StackTrace>, Error> {
+            core._get_stack::<I>(config)
         }
+        dispatch_by_version!(self.version, get_traces, self, config)
     }
 
     fn _get_stack<I: InterpreterState>(&self, config: &Config) -> Result<Vec<StackTrace>, Error> {
-        let interp: I = self.core.copy_struct(self.interpreter_address)?;
+        let mut traces = get_stack_traces::<I, CoreDump>(
+            self.addresses.interpreter_address,
+            &self.core,
+            self.addresses.threadstate_address,
+            Some(config),
+            &self.addresses.type_checks,
+        )?;
 
-        let mut traces =
-            get_stack_traces(&interp, &self.core, self.threadstate_address, Some(config))?;
-        let thread_names = thread_names_from_interpreter(&interp, &self.core, &self.version).ok();
+        let thread_names = thread_names_from_interpreter::<I, CoreDump>(
+            &self.addresses,
+            &self.core,
+            &self.version,
+        )
+        .ok();
 
         for trace in &mut traces {
             if let Some(ref thread_names) = thread_names {
@@ -331,6 +308,7 @@ impl PythonCoreDump {
                             &self.version,
                             local.addr,
                             max_length,
+                            &self.addresses.type_checks,
                         );
                         local.repr = Some(repr.unwrap_or_else(|_| "?".to_owned()));
                     }
@@ -427,6 +405,7 @@ mod elfcore {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::python_process_info::{TypeChecks, Types};
     use py_spy_testdata::get_coredump_path;
 
     #[cfg(target_pointer_width = "64")]
@@ -435,7 +414,6 @@ mod test {
         // we won't have the python binary for the core dump here,
         // so we can't (yet) figure out the interpreter address & version.
         // Manually specify here to test out instead
-        let core = CoreDump::new(&get_coredump_path("python_3_9_threads")).unwrap();
         let version = Version {
             major: 3,
             minor: 9,
@@ -443,12 +421,17 @@ mod test {
             release_flags: "".to_owned(),
             build_metadata: None,
         };
-        let python_core = PythonCoreDump {
-            core,
-            version,
-            interpreter_address: 0x000055a8293dbe20,
-            threadstate_address: 0x000055a82745fe18,
+        let core_dump = |type_checks| PythonCoreDump {
+            core: CoreDump::new(&get_coredump_path("python_3_9_threads")).unwrap(),
+            version: version.clone(),
+            addresses: PythonProcessLayout {
+                interpreter_address: 0x000055a8293dbe20,
+                threadstate_address: 0x000055a82745fe18,
+                imports_modules_address: 0x55a8293dc178,
+                type_checks,
+            },
         };
+        let python_core = core_dump(TypeChecks::Disabled);
 
         let config = Config::default();
         let traces = python_core.get_stack(&config).unwrap();
@@ -466,5 +449,32 @@ mod test {
         assert_eq!(child_thread.frames[0].name, "dump_sum");
         assert_eq!(child_thread.frames[0].line, 16);
         assert_eq!(child_thread.thread_name, Some("child_thread".to_owned()));
+
+        let config = Config {
+            dump_locals: 1,
+            ..Default::default()
+        };
+        let types = Types {
+            code: 0x55a827436c00,
+            string: 0x55a82744dd00,
+            dict: 0x55a827456060,
+        };
+        let checked = core_dump(TypeChecks::Strict(types))
+            .get_stack(&config)
+            .unwrap();
+        let unchecked = python_core.get_stack(&config).unwrap();
+        assert_eq!(checked.len(), unchecked.len());
+        for (checked, unchecked) in checked.iter().zip(&unchecked) {
+            assert_eq!(checked.thread_name, unchecked.thread_name);
+            assert_eq!(checked.frames, unchecked.frames);
+        }
+
+        let err = core_dump(TypeChecks::Strict(Types {
+            code: 0x239,
+            ..types
+        }))
+        .get_stack(&config)
+        .unwrap_err();
+        assert!(format!("{err:#}").contains("is not a code object"));
     }
 }
