@@ -871,6 +871,7 @@ impl PythonProcessLayout {
 
                 let free_threaded = offsets.free_threaded != 0;
                 let threadstate_address: usize = if free_threaded {
+                    info!("free-threaded version of python detected");
                     if (config.gil_only) {
                         error_if_gil(config, version,
                             "free-threaded version of python detected, gil_only mode isn't possible")?;
