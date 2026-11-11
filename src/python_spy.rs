@@ -13,6 +13,8 @@ use crate::config::{Config, LockingStrategy};
 #[cfg(feature = "unwind")]
 use crate::native_stack_trace::NativeStack;
 use crate::python_data_access::format_variable;
+#[cfg(target_os = "macos")]
+use crate::python_interpreters::NativeThreadId;
 use crate::python_interpreters::{
     dispatch_by_version, InterpreterState, PythonThreadId, ThreadState,
 };
@@ -132,12 +134,18 @@ impl PythonSpy {
     fn _get_stack_traces<I: InterpreterState>(&mut self) -> Result<Vec<StackTrace>, Error> {
         // Query the OS to get if each thread in the process is running or not
         let mut thread_activity = HashMap::new();
+        #[cfg(target_os = "macos")]
+        let mut mach_ports: HashMap<NativeThreadId, Tid> = HashMap::new();
         if self.config.gil_only {
             // Don't need to collect thread activity if we're only getting the
             // GIL thread: If we're holding the GIL we're by definition active.
         } else {
             for thread in self.process.threads()?.iter() {
                 let threadid: Tid = thread.id()?;
+                #[cfg(target_os = "macos")]
+                if let Ok(info) = thread.get_thread_identifier_info() {
+                    mach_ports.insert(NativeThreadId(info.thread_id), threadid);
+                }
                 let Ok(active) = thread.active() else {
                     // Do not fail all sampling if a single thread died between entering the loop
                     // and reading its status.
@@ -212,7 +220,8 @@ impl PythonSpy {
             trace.tid = if let Some(native_id) = trace.native_thread_id {
                 #[cfg(target_os = "macos")]
                 {
-                    Some(native_id.0 as Tid)
+                    // remoteprocess requires a Mach port on macOS.
+                    mach_ports.get(&native_id).copied()
                 }
                 #[cfg(not(target_os = "macos"))]
                 {
