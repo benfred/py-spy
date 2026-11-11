@@ -330,9 +330,11 @@ impl PythonSpy {
             false
         } else {
             let frame = &frames[0];
-            (frame.name == "wait" && frame.filename.ends_with("threading.py"))
-                || (frame.name == "select" && frame.filename.ends_with("selectors.py"))
-                || (frame.name == "poll"
+            // Python 3.11+ reports qualified names such as Condition.wait.
+            let name = frame.name.rsplit('.').next().unwrap_or(&frame.name);
+            (name == "wait" && frame.filename.ends_with("threading.py"))
+                || (name == "select" && frame.filename.ends_with("selectors.py"))
+                || (name == "poll"
                     && (frame.filename.ends_with("asyncore.py")
                         || frame.filename.contains("zmq")
                         || frame.filename.contains("gevent")
