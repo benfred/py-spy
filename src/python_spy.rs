@@ -255,7 +255,7 @@ impl PythonSpy {
             // this problem doesn't seem to happen with the --nonblocking option)
             // Note: this should be done before the native merging for correct results
             if trace.active {
-                trace.active = !self._heuristic_is_thread_idle(&trace);
+                trace.active = !Self::_heuristic_is_thread_idle(&trace);
             }
 
             // Merge in the native stack frames if necessary
@@ -302,7 +302,7 @@ impl PythonSpy {
 
     // heuristic fallback for determining if a thread is active, used
     // when we don't have the ability to get the thread information from the OS
-    fn _heuristic_is_thread_idle(&self, trace: &StackTrace) -> bool {
+    fn _heuristic_is_thread_idle(trace: &StackTrace) -> bool {
         let frames = &trace.frames;
         if frames.is_empty() {
             // we could have 0 python frames, but still be active running native
@@ -310,9 +310,11 @@ impl PythonSpy {
             false
         } else {
             let frame = &frames[0];
-            (frame.name == "wait" && frame.filename.ends_with("threading.py"))
-                || (frame.name == "select" && frame.filename.ends_with("selectors.py"))
-                || (frame.name == "poll"
+            // Python 3.11+ reports qualified names such as Condition.wait.
+            let name = frame.name.rsplit('.').next().unwrap_or(&frame.name);
+            (name == "wait" && frame.filename.ends_with("threading.py"))
+                || (name == "select" && frame.filename.ends_with("selectors.py"))
+                || (name == "poll"
                     && (frame.filename.ends_with("asyncore.py")
                         || frame.filename.contains("zmq")
                         || frame.filename.contains("gevent")
@@ -569,5 +571,56 @@ impl PythonSpy {
         self.short_filenames
             .insert(filename.to_owned(), shortened.clone());
         shortened
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::stack_trace::Frame;
+
+    #[test]
+    fn test_idle_heuristic_qualified_names() {
+        for (filename, name, idle) in [
+            ("threading.py", "wait", true),
+            ("threading.py", "Condition.wait", true),
+            ("threading.py", "Event.wait", true),
+            ("selectors.py", "select", true),
+            ("selectors.py", "EpollSelector.select", true),
+            ("asyncore.py", "poll", true),
+            ("zmq/backend.py", "Socket.poll", true),
+            ("gevent/select.py", "poll.poll", true),
+            ("tornado/ioloop.py", "IOLoop.poll", true),
+            ("application.py", "Condition.wait", false),
+            ("threading.py", "Condition.wait_for", false),
+            ("selectors.py", "Selector.register", false),
+        ] {
+            let mut trace = StackTrace {
+                pid: 0,
+                thread_id: Default::default(),
+                thread_name: None,
+                os_thread_id: None,
+                active: true,
+                owns_gil: false,
+                frames: vec![Frame {
+                    name: name.to_owned(),
+                    filename: filename.to_owned(),
+                    module: None,
+                    short_filename: None,
+                    line: 1,
+                    locals: None,
+                    is_entry: true,
+                    is_shim_entry: false,
+                }],
+                process_info: None,
+            };
+            assert_eq!(
+                PythonSpy::_heuristic_is_thread_idle(&trace),
+                idle,
+                "{filename}: {name}"
+            );
+            trace.frames.clear();
+            assert!(!PythonSpy::_heuristic_is_thread_idle(&trace));
+        }
     }
 }
