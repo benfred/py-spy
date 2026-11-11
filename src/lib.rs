@@ -16,7 +16,7 @@
 //!
 //!     // Print out the python stack for each thread
 //!     for trace in traces {
-//!         println!("Thread {:#X} ({})", trace.thread_id, trace.status_str());
+//!         println!("Thread {:#X} ({})", trace.thread_id.0, trace.status_str());
 //!         for frame in &trace.frames {
 //!             println!("\t {} ({}:{})", frame.name, frame.filename, frame.line);
 //!         }
@@ -52,6 +52,7 @@ mod utils;
 mod version;
 
 pub use config::Config;
+pub use python_interpreters::{NativeThreadId, PythonThreadId};
 pub use python_spy::PythonSpy;
 pub use remoteprocess::Pid;
 pub use stack_trace::Frame;

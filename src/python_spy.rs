@@ -13,7 +13,9 @@ use crate::config::{Config, LockingStrategy};
 #[cfg(feature = "unwind")]
 use crate::native_stack_trace::NativeStack;
 use crate::python_data_access::format_variable;
-use crate::python_interpreters::{dispatch_by_version, InterpreterState, ThreadState};
+use crate::python_interpreters::{
+    dispatch_by_version, InterpreterState, PythonThreadId, ThreadState,
+};
 use crate::python_process_info::{get_python_version, PythonProcessInfo, PythonProcessLayout};
 use crate::python_threading::thread_name_lookup;
 use crate::stack_trace::{get_gil_threadid, get_stack_trace, StackTrace};
@@ -29,8 +31,8 @@ pub struct PythonSpy {
     #[cfg(feature = "unwind")]
     pub native: Option<NativeStack>,
     pub short_filenames: HashMap<String, Option<String>>,
-    pub python_thread_ids: HashMap<u64, Tid>,
-    pub python_thread_names: HashMap<u64, Option<String>>,
+    pub python_thread_ids: HashMap<PythonThreadId, Tid>,
+    pub python_thread_names: HashMap<PythonThreadId, Option<String>>,
     thread_name_lookup_time: Instant,
     #[cfg(target_os = "linux")]
     pub dockerized: bool,
@@ -203,16 +205,20 @@ impl PythonSpy {
             .with_context(|| {
                 format!(
                     "Failed to call get_stack_trace for thread {}",
-                    python_thread_id
+                    python_thread_id.0
                 )
             })?;
 
-            // Try getting the native thread id
-
-            // python 3.11+ has the native thread id directly on the PyThreadState object,
-            // for older versions of python, try using OS specific code to get the native
-            // thread id (doesn't work on freebsd, or on arm/i686 processors on linux)
-            if trace.os_thread_id.is_none() {
+            trace.tid = if let Some(native_id) = trace.native_thread_id {
+                #[cfg(target_os = "macos")]
+                {
+                    Some(native_id.0 as Tid)
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    Some(native_id.into())
+                }
+            } else {
                 let mut os_thread_id =
                     self._get_os_thread_id::<I>(python_thread_id, threads_head)?;
 
@@ -228,8 +234,8 @@ impl PythonSpy {
                     }
                 }
 
-                trace.os_thread_id = os_thread_id.map(|id| id as u64);
-            }
+                os_thread_id
+            };
 
             trace.thread_name = if self.config.collect_thread_names {
                 self._get_python_thread_name(&mut did_thread_name_lookup, python_thread_id)
@@ -241,9 +247,8 @@ impl PythonSpy {
 
             // Figure out if the thread is sleeping from the OS if possible
             trace.active = true;
-            if let Some(id) = trace.os_thread_id {
-                let id = id as Tid;
-                if let Some(active) = thread_activity.get(&id as _) {
+            if let Some(id) = trace.tid {
+                if let Some(active) = thread_activity.get(&id) {
                     trace.active = *active;
                 }
             }
@@ -264,9 +269,9 @@ impl PythonSpy {
                 if self.config.native {
                     if let Some(native) = self.native.as_mut() {
                         let thread_id = trace
-                            .os_thread_id
+                            .tid
                             .ok_or_else(|| format_err!("failed to get os threadid"))?;
-                        let os_thread = remoteprocess::Thread::new(thread_id as Tid)?;
+                        let os_thread = remoteprocess::Thread::new(thread_id)?;
                         trace.frames = native.merge_native_thread(&trace.frames, &os_thread)?
                     }
                 }
@@ -323,16 +328,16 @@ impl PythonSpy {
     #[cfg(windows)]
     fn _get_os_thread_id<I: InterpreterState>(
         &mut self,
-        python_thread_id: u64,
+        python_thread_id: PythonThreadId,
         _interp_head: *const I::ThreadState,
     ) -> Result<Option<Tid>, Error> {
-        Ok(Some(python_thread_id as Tid))
+        Ok(Some(python_thread_id.0 as Tid))
     }
 
     #[cfg(target_os = "macos")]
     fn _get_os_thread_id<I: InterpreterState>(
         &mut self,
-        python_thread_id: u64,
+        python_thread_id: PythonThreadId,
         _interp_head: *const I::ThreadState,
     ) -> Result<Option<Tid>, Error> {
         // If we've already know this threadid, we're good
@@ -343,7 +348,7 @@ impl PythonSpy {
         for thread in self.process.threads()?.iter() {
             // ok, this is crazy pants. is this 224 constant right?  Is this right for all versions of OSX? how is this determined?
             // is this correct for all versions of python? Why does this even work?
-            let current_handle = thread.thread_handle()? - 224;
+            let current_handle = PythonThreadId(thread.thread_handle()? - 224);
             self.python_thread_ids.insert(current_handle, thread.id()?);
         }
 
@@ -356,7 +361,7 @@ impl PythonSpy {
     #[cfg(all(target_os = "linux", not(feature = "unwind")))]
     fn _get_os_thread_id<I: InterpreterState>(
         &mut self,
-        _python_thread_id: u64,
+        _python_thread_id: PythonThreadId,
         _interp_head: *const I::ThreadState,
     ) -> Result<Option<Tid>, Error> {
         Ok(None)
@@ -365,7 +370,7 @@ impl PythonSpy {
     #[cfg(all(target_os = "linux", feature = "unwind"))]
     fn _get_os_thread_id<I: InterpreterState>(
         &mut self,
-        python_thread_id: u64,
+        python_thread_id: PythonThreadId,
         interp_head: *const I::ThreadState,
     ) -> Result<Option<Tid>, Error> {
         // in nonblocking mode, we can't get the threadid reliably (method here requires reading the RBX
@@ -411,7 +416,7 @@ impl PythonSpy {
 
             match self._get_pthread_id(&unwinder, thread, &all_python_threads) {
                 Ok(pthread_id) => {
-                    if pthread_id != 0 {
+                    if pthread_id != PythonThreadId(0) {
                         self.python_thread_ids.insert(pthread_id, threadid);
                     }
                 }
@@ -443,7 +448,7 @@ impl PythonSpy {
             return Ok(Some(*thread_id));
         }
         info!("failed looking up python threadid for {}. known python_thread_ids {:?}. all_python_threads {:?}",
-            python_thread_id, self.python_thread_ids, all_python_threads);
+            python_thread_id.0, self.python_thread_ids, all_python_threads);
         Ok(None)
     }
 
@@ -452,9 +457,9 @@ impl PythonSpy {
         &self,
         unwinder: &remoteprocess::Unwinder,
         thread: &remoteprocess::Thread,
-        threadids: &HashSet<u64>,
-    ) -> Result<u64, Error> {
-        let mut pthread_id = 0;
+        threadids: &HashSet<PythonThreadId>,
+    ) -> Result<PythonThreadId, Error> {
+        let mut pthread_id = PythonThreadId(0);
 
         let mut cursor = unwinder.cursor(thread)?;
         while let Some(_) = cursor.next() {
@@ -468,7 +473,8 @@ impl PythonSpy {
             #[cfg(target_arch = "aarch64")]
             let possible_threadid = unsafe { cursor.register(19) };
             if let Ok(reg) = possible_threadid {
-                if reg != 0 && threadids.contains(&reg) {
+                let reg = PythonThreadId(reg);
+                if reg != PythonThreadId(0) && threadids.contains(&reg) {
                     pthread_id = reg;
                 }
             }
@@ -480,7 +486,7 @@ impl PythonSpy {
     #[cfg(target_os = "freebsd")]
     fn _get_os_thread_id<I: InterpreterState>(
         &mut self,
-        _python_thread_id: u64,
+        _python_thread_id: PythonThreadId,
         _interp_head: *const I::ThreadState,
     ) -> Result<Option<Tid>, Error> {
         Ok(None)
@@ -489,7 +495,7 @@ impl PythonSpy {
     fn _get_python_thread_name(
         &mut self,
         did_thread_name_lookup: &mut bool,
-        python_thread_id: u64,
+        python_thread_id: PythonThreadId,
     ) -> Option<String> {
         // a thread can get a name after the lookup, for instance when the threading module
         // is imported later, so look up threads without a name again once the lookup is this old
