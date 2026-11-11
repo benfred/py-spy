@@ -113,6 +113,68 @@ class TestPyspy(unittest.TestCase):
 
         assert expected_thread_names == actual_thread_names
 
+    @unittest.skipUnless(
+        sys.version_info >= (3, 11)
+        or (sys.platform == "darwin" and sys.version_info >= (3, 10)),
+        "requires OS thread activity without native unwinding",
+    )
+    def test_thread_activity_profiles(self):
+        qualified = sys.version_info >= (3, 11)
+        bootstrap = (
+            ("Thread._bootstrap", "Thread._bootstrap_inner", "Thread.run")
+            if qualified
+            else ("_bootstrap", "_bootstrap_inner", "run")
+        )
+        hashing = bootstrap + ("hash_value",)
+        sleeping = bootstrap + ("sleep_forever",)
+        waiting = ("<module>", "main") + (
+            ("Event.wait", "Condition.wait") if qualified else ("wait", "wait")
+        )
+        for include_idle in (False, True):
+            with self.subTest(include_idle=include_idle):
+                options = ["--idle"] if include_idle else []
+                if sys.platform == "linux":
+                    # Blocking sampling can wake sleeping threads on Linux.
+                    options.append("--nonblocking")
+                # No --gil: the hashing leaf releases the GIL while using CPU.
+                profile = self._sample_process(
+                    _get_script("thread_activity.py"),
+                    options,
+                )
+                stacks = defaultdict(int)
+                for frames, weight in profile.items():
+                    stacks[tuple(frame.name for frame in frames)] += weight
+                total = sum(stacks.values())
+                diagnostic = "include_idle={}, total={}\n{}".format(
+                    include_idle,
+                    total,
+                    "\n".join(
+                        "{} {}".format(";".join(stack), weight)
+                        for stack, weight in sorted(stacks.items())
+                    ),
+                )
+                # Each sample has weight 1 (100 Hz for two seconds). Allow
+                # startup/scheduling losses, but reject empty or tiny profiles.
+                self.assertGreaterEqual(total, 100, diagnostic)
+                if include_idle:
+                    # Three persistent threads should each get one third of the
+                    # wall samples. Allow 8 percentage points for startup/skew.
+                    for stack in (hashing, sleeping, waiting):
+                        self.assertAlmostEqual(
+                            stacks[stack] / total, 1 / 3, delta=0.08, msg=diagnostic
+                        )
+                else:
+                    # At least 90% must be the complete hashing stack. Allow
+                    # 2% per sleeper for startup and activity/stack read races.
+                    self.assertGreaterEqual(stacks[hashing] / total, 0.90, diagnostic)
+                    for stack in (sleeping, waiting):
+                        self.assertLessEqual(stacks[stack] / total, 0.02, diagnostic)
+                unexpected = sum(
+                    weight for stack, weight in stacks.items()
+                    if stack not in (hashing, sleeping, waiting)
+                )
+                self.assertLessEqual(unexpected / total, 0.10, diagnostic)
+
     def test_shell_completions(self):
         cmdline = [PYSPY, "completions", "bash"]
         subprocess.check_output(cmdline)

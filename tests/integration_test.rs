@@ -833,3 +833,32 @@ fn test_dump_subprocesses_no_duplication() {
 
     let _ = child.0.kill();
 }
+
+#[cfg(target_os = "macos")]
+#[test]
+fn test_macos_native_thread_id_activity() {
+    // task_for_pid requires root. The build workflow runs macOS test executables with sudo.
+    if unsafe { libc::geteuid() } != 0 {
+        return;
+    }
+    let mut runner = StepRunner::new(Config::default(), "./tests/scripts/native_thread_id.py");
+    let native_id: u64 = runner.stdout.next().unwrap().unwrap().parse().unwrap();
+    // Let the child enter time.sleep after printing its ID.
+    std::thread::sleep(Duration::from_millis(100));
+    for _ in 0..10 {
+        let traces = runner.spy.get_stack_traces().unwrap();
+        assert_eq!(traces.len(), 1, "{traces:#?}");
+        let trace = &traces[0];
+        let stack: Vec<_> = trace.frames.iter().rev().map(|f| f.name.as_str()).collect();
+        assert_eq!(stack, ["<module>", "sleep_forever"], "{traces:#?}");
+        if runner.spy.version.minor >= 11 {
+            // Keep the public 64-bit native ID, not the Mach port used internally.
+            assert_eq!(trace.os_thread_id, Some(native_id), "{traces:#?}");
+        }
+        assert!(
+            !trace.active,
+            "sleeping thread reported active: {traces:#?}"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
