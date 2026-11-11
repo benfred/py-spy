@@ -52,6 +52,7 @@ mod utils;
 mod version;
 
 pub use config::Config;
+pub use python_interpreters::PythonThreadId;
 pub use python_spy::PythonSpy;
 pub use remoteprocess::Pid;
 pub use stack_trace::Frame;

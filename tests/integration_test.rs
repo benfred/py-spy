@@ -1,5 +1,5 @@
 extern crate py_spy;
-use py_spy::{Config, Pid, PythonSpy};
+use py_spy::{Config, Pid, PythonSpy, PythonThreadId};
 use std::collections::HashSet;
 use std::io::{BufRead, BufReader, Lines, Write};
 use std::time::{Duration, Instant};
@@ -97,7 +97,7 @@ fn wait_for_line(lines: &mut Lines<BufReader<std::process::ChildStdout>>, expect
 /// threading module. A lookup replaces the whole name cache, so an entry for a thread
 /// id that doesn't exist only stays in the cache while no lookup runs.
 fn count_thread_name_lookups(spy: &mut PythonSpy, samples: usize) -> usize {
-    const NO_SUCH_THREAD: u64 = u64::MAX;
+    const NO_SUCH_THREAD: PythonThreadId = PythonThreadId(u64::MAX);
     let mut lookups = 0;
     for _ in 0..samples {
         spy.python_thread_names

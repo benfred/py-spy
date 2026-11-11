@@ -31,6 +31,22 @@ pub trait InterpreterState: Copy {
     fn modules_ptr_ptr(interpreter_address: usize) -> *const *const Self::Object;
 }
 
+/// Python thread identifier stored in PyThreadState.thread_id.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct PythonThreadId(pub u64);
+
+impl std::fmt::Display for PythonThreadId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self.0, f)
+    }
+}
+
+/// OS-native thread ID stored by CPython 3.11+.
+/// On macOS, CPython obtains this ID with pthread_threadid_np().
+/// It matches thread_identifier_info.thread_id, not a Mach port.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct NativeThreadId(pub u64);
+
 pub trait ThreadState: Copy {
     type FrameObject: FrameObject;
     type InterpreterState: InterpreterState;
@@ -42,8 +58,8 @@ pub trait ThreadState: Copy {
     fn frame_address(&self) -> Option<usize>;
 
     fn frame(&self, offset: Option<usize>) -> *mut Self::FrameObject;
-    fn thread_id(&self) -> u64;
-    fn native_thread_id(&self) -> Option<u64>;
+    fn thread_id(&self) -> PythonThreadId;
+    fn native_thread_id(&self) -> Option<NativeThreadId>;
     fn next(&self) -> *mut Self;
 }
 
@@ -272,11 +288,15 @@ macro_rules! implement_interpreter_traits {
                     )
                 })
             }
-            fn thread_id(&self) -> u64 {
-                self.thread_id as u64
+            fn thread_id(&self) -> PythonThreadId {
+                PythonThreadId(self.thread_id as u64)
             }
-            fn native_thread_id(&self) -> Option<u64> {
-                if_python_3_11_or_later!($py, Some(self.native_thread_id as u64), None)
+            fn native_thread_id(&self) -> Option<NativeThreadId> {
+                if_python_3_11_or_later!(
+                    $py,
+                    Some(NativeThreadId(self.native_thread_id as u64)),
+                    None
+                )
             }
             fn next(&self) -> *mut Self {
                 self.next

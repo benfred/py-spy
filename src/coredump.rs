@@ -15,7 +15,7 @@ use crate::binary_parser::{parse_binary, BinaryInfo};
 use crate::config::Config;
 use crate::dump::print_trace;
 use crate::python_data_access::format_variable;
-use crate::python_interpreters::{dispatch_by_version, InterpreterState};
+use crate::python_interpreters::{dispatch_by_version, InterpreterState, PythonThreadId};
 use crate::python_process_info::{
     get_python_version, is_python_lib, ContainsAddr, PythonProcessInfo, PythonProcessLayout,
 };
@@ -296,7 +296,7 @@ impl PythonCoreDump {
 
         for trace in &mut traces {
             if let Some(ref thread_names) = thread_names {
-                trace.thread_name = thread_names.get(&trace.thread_id).cloned();
+                trace.thread_name = thread_names.get(&PythonThreadId(trace.thread_id)).cloned();
             }
 
             for frame in &mut trace.frames {

@@ -8,7 +8,7 @@ use serde_derive::Serialize;
 use crate::config::{Config, LineNo};
 use crate::python_data_access::{copy_bytes, copy_string};
 use crate::python_interpreters::{
-    CodeObject, FrameObject, InterpreterState, ThreadState, TupleObject,
+    CodeObject, FrameObject, InterpreterState, PythonThreadId, ThreadState, TupleObject,
 };
 use crate::python_process_info::TypeChecks;
 
@@ -99,7 +99,7 @@ where
             .context("Failed to copy PyThreadState")?;
 
         let mut trace = get_stack_trace(&thread, process, dump_locals > 0, lineno, type_checks)?;
-        trace.owns_gil = trace.thread_id == gil_thread_id;
+        trace.owns_gil = thread.thread_id() == gil_thread_id;
 
         ret.push(trace);
         // This seems to happen occasionally when scanning BSS addresses for valid interpreters
@@ -244,11 +244,11 @@ where
     Ok(StackTrace {
         pid: 0,
         frames,
-        thread_id: thread.thread_id(),
+        thread_id: thread.thread_id().0,
         thread_name: None,
         owns_gil: false,
         active: true,
-        os_thread_id: thread.native_thread_id(),
+        os_thread_id: thread.native_thread_id().map(|id| id.0),
         process_info: None,
     })
 }
@@ -332,10 +332,10 @@ fn get_locals<C: CodeObject, F: FrameObject, P: ProcessMemory>(
 pub fn get_gil_threadid<I: InterpreterState, P: ProcessMemory>(
     threadstate_address: usize,
     process: &P,
-) -> Result<u64, Error> {
+) -> Result<PythonThreadId, Error> {
     // happens during initialization when checking to see if we have a valid interpreter (before we've figured out the threadstate_address)
     if threadstate_address == 0 {
-        return Ok(0);
+        return Ok(PythonThreadId(0));
     }
 
     let addr = if I::HAS_GIL_RUNTIME_STATE {
@@ -357,7 +357,7 @@ pub fn get_gil_threadid<I: InterpreterState, P: ProcessMemory>(
         let threadstate: I::ThreadState = process.copy_struct(addr)?;
         threadstate.thread_id()
     } else {
-        0
+        PythonThreadId(0)
     };
 
     Ok(threadid)

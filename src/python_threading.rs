@@ -6,7 +6,7 @@ use crate::python_bindings::{
     v3_10_0, v3_11_0, v3_12_0, v3_13_0, v3_14_0, v3_15_0, v3_6_6, v3_7_0, v3_8_0, v3_9_5,
 };
 use crate::python_data_access::{copy_long, copy_string, DictIterator, PY_TPFLAGS_MANAGED_DICT};
-use crate::python_interpreters::{InterpreterState, Object, TypeObject};
+use crate::python_interpreters::{InterpreterState, Object, PythonThreadId, TypeObject};
 use crate::python_process_info::PythonProcessLayout;
 use crate::python_spy::PythonSpy;
 use remoteprocess::Process;
@@ -21,7 +21,7 @@ pub fn thread_names_from_interpreter<I: InterpreterState, P: ProcessMemory>(
     addresses: &PythonProcessLayout,
     process: &P,
     version: &Version,
-) -> Result<HashMap<u64, String>, Error> {
+) -> Result<HashMap<PythonThreadId, String>, Error> {
     let modules_ptr_ptr = addresses.imports_modules_address as *const *const I::Object;
 
     let modules: *const I::Object = process
@@ -90,7 +90,7 @@ pub fn thread_names_from_interpreter<I: InterpreterState, P: ProcessMemory>(
                                     process,
                                     &addresses.type_checks,
                                 )?;
-                                ret.insert(threadid as u64, threadname);
+                                ret.insert(PythonThreadId(threadid as u64), threadname);
                                 break;
                             }
                         }
@@ -108,14 +108,14 @@ pub fn thread_names_from_interpreter<I: InterpreterState, P: ProcessMemory>(
 /// 'threading' module.
 fn _thread_name_lookup<I: InterpreterState>(
     spy: &PythonSpy,
-) -> Result<HashMap<u64, String>, Error> {
+) -> Result<HashMap<PythonThreadId, String>, Error> {
     thread_names_from_interpreter::<I, Process>(&spy.addresses, &spy.process, &spy.version)
 }
 
 // try getting the threadnames, but don't sweat it if we can't. Since this relies on dictionary
 // processing we only handle py3.6+ right now, and this doesn't work at all if the
 // threading module isn't imported in the target program
-pub fn thread_name_lookup(process: &PythonSpy) -> Option<HashMap<u64, String>> {
+pub fn thread_name_lookup(process: &PythonSpy) -> Option<HashMap<PythonThreadId, String>> {
     let err = match process.version {
         Version {
             major: 3, minor: 6, ..

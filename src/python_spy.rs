@@ -13,7 +13,11 @@ use crate::config::{Config, LockingStrategy};
 #[cfg(feature = "unwind")]
 use crate::native_stack_trace::NativeStack;
 use crate::python_data_access::format_variable;
-use crate::python_interpreters::{dispatch_by_version, InterpreterState, ThreadState};
+#[cfg(target_os = "macos")]
+use crate::python_interpreters::NativeThreadId;
+use crate::python_interpreters::{
+    dispatch_by_version, InterpreterState, PythonThreadId, ThreadState,
+};
 use crate::python_process_info::{get_python_version, PythonProcessInfo, PythonProcessLayout};
 use crate::python_threading::thread_name_lookup;
 use crate::stack_trace::{get_gil_threadid, get_stack_trace, StackTrace};
@@ -29,8 +33,8 @@ pub struct PythonSpy {
     #[cfg(feature = "unwind")]
     pub native: Option<NativeStack>,
     pub short_filenames: HashMap<String, Option<String>>,
-    pub python_thread_ids: HashMap<u64, Tid>,
-    pub python_thread_names: HashMap<u64, Option<String>>,
+    pub python_thread_ids: HashMap<PythonThreadId, Tid>,
+    pub python_thread_names: HashMap<PythonThreadId, Option<String>>,
     thread_name_lookup_time: Instant,
     #[cfg(target_os = "linux")]
     pub dockerized: bool,
@@ -130,12 +134,18 @@ impl PythonSpy {
     fn _get_stack_traces<I: InterpreterState>(&mut self) -> Result<Vec<StackTrace>, Error> {
         // Query the OS to get if each thread in the process is running or not
         let mut thread_activity = HashMap::new();
+        // CPython 3.11+ stores a 64-bit native ID on macOS, whereas
+        // remoteprocess uses a Mach port for activity queries and unwinding.
+        #[cfg(target_os = "macos")]
+        let mut native_thread_ids: HashMap<NativeThreadId, Tid> = HashMap::new();
         if self.config.gil_only {
             // Don't need to collect thread activity if we're only getting the
             // GIL thread: If we're holding the GIL we're by definition active.
         } else {
             for thread in self.process.threads()?.iter() {
                 let threadid: Tid = thread.id()?;
+                #[cfg(target_os = "macos")]
+                collect_macos_thread_id(thread, threadid, &mut native_thread_ids);
                 let Ok(active) = thread.active() else {
                     // Do not fail all sampling if a single thread died between entering the loop
                     // and reading its status.
@@ -239,11 +249,21 @@ impl PythonSpy {
             trace.owns_gil = owns_gil;
             trace.pid = self.process.pid;
 
+            // Keep the public native ID in the trace. Only OS operations use
+            // the Mach port; Python <= 3.10 already gets one from the fallback.
+            #[cfg(target_os = "macos")]
+            let os_thread_id = if let Some(native_id) = thread.native_thread_id() {
+                native_thread_ids.get(&native_id).copied()
+            } else {
+                trace.os_thread_id.map(|id| id as Tid)
+            };
+            #[cfg(not(target_os = "macos"))]
+            let os_thread_id = trace.os_thread_id.map(|id| id as Tid);
+
             // Figure out if the thread is sleeping from the OS if possible
             trace.active = true;
-            if let Some(id) = trace.os_thread_id {
-                let id = id as Tid;
-                if let Some(active) = thread_activity.get(&id as _) {
+            if let Some(id) = os_thread_id {
+                if let Some(active) = thread_activity.get(&id) {
                     trace.active = *active;
                 }
             }
@@ -323,16 +343,16 @@ impl PythonSpy {
     #[cfg(windows)]
     fn _get_os_thread_id<I: InterpreterState>(
         &mut self,
-        python_thread_id: u64,
+        python_thread_id: PythonThreadId,
         _interp_head: *const I::ThreadState,
     ) -> Result<Option<Tid>, Error> {
-        Ok(Some(python_thread_id as Tid))
+        Ok(Some(python_thread_id.0 as Tid))
     }
 
     #[cfg(target_os = "macos")]
     fn _get_os_thread_id<I: InterpreterState>(
         &mut self,
-        python_thread_id: u64,
+        python_thread_id: PythonThreadId,
         _interp_head: *const I::ThreadState,
     ) -> Result<Option<Tid>, Error> {
         // If we've already know this threadid, we're good
@@ -343,7 +363,7 @@ impl PythonSpy {
         for thread in self.process.threads()?.iter() {
             // ok, this is crazy pants. is this 224 constant right?  Is this right for all versions of OSX? how is this determined?
             // is this correct for all versions of python? Why does this even work?
-            let current_handle = thread.thread_handle()? - 224;
+            let current_handle = PythonThreadId(thread.thread_handle()? - 224);
             self.python_thread_ids.insert(current_handle, thread.id()?);
         }
 
@@ -356,7 +376,7 @@ impl PythonSpy {
     #[cfg(all(target_os = "linux", not(feature = "unwind")))]
     fn _get_os_thread_id<I: InterpreterState>(
         &mut self,
-        _python_thread_id: u64,
+        _python_thread_id: PythonThreadId,
         _interp_head: *const I::ThreadState,
     ) -> Result<Option<Tid>, Error> {
         Ok(None)
@@ -365,7 +385,7 @@ impl PythonSpy {
     #[cfg(all(target_os = "linux", feature = "unwind"))]
     fn _get_os_thread_id<I: InterpreterState>(
         &mut self,
-        python_thread_id: u64,
+        python_thread_id: PythonThreadId,
         interp_head: *const I::ThreadState,
     ) -> Result<Option<Tid>, Error> {
         // in nonblocking mode, we can't get the threadid reliably (method here requires reading the RBX
@@ -411,7 +431,7 @@ impl PythonSpy {
 
             match self._get_pthread_id(&unwinder, thread, &all_python_threads) {
                 Ok(pthread_id) => {
-                    if pthread_id != 0 {
+                    if pthread_id != PythonThreadId(0) {
                         self.python_thread_ids.insert(pthread_id, threadid);
                     }
                 }
@@ -452,9 +472,9 @@ impl PythonSpy {
         &self,
         unwinder: &remoteprocess::Unwinder,
         thread: &remoteprocess::Thread,
-        threadids: &HashSet<u64>,
-    ) -> Result<u64, Error> {
-        let mut pthread_id = 0;
+        threadids: &HashSet<PythonThreadId>,
+    ) -> Result<PythonThreadId, Error> {
+        let mut pthread_id = PythonThreadId(0);
 
         let mut cursor = unwinder.cursor(thread)?;
         while let Some(_) = cursor.next() {
@@ -468,7 +488,8 @@ impl PythonSpy {
             #[cfg(target_arch = "aarch64")]
             let possible_threadid = unsafe { cursor.register(19) };
             if let Ok(reg) = possible_threadid {
-                if reg != 0 && threadids.contains(&reg) {
+                let reg = PythonThreadId(reg);
+                if reg != PythonThreadId(0) && threadids.contains(&reg) {
                     pthread_id = reg;
                 }
             }
@@ -480,7 +501,7 @@ impl PythonSpy {
     #[cfg(target_os = "freebsd")]
     fn _get_os_thread_id<I: InterpreterState>(
         &mut self,
-        _python_thread_id: u64,
+        _python_thread_id: PythonThreadId,
         _interp_head: *const I::ThreadState,
     ) -> Result<Option<Tid>, Error> {
         Ok(None)
@@ -489,7 +510,7 @@ impl PythonSpy {
     fn _get_python_thread_name(
         &mut self,
         did_thread_name_lookup: &mut bool,
-        python_thread_id: u64,
+        python_thread_id: PythonThreadId,
     ) -> Option<String> {
         // a thread can get a name after the lookup, for instance when the threading module
         // is imported later, so look up threads without a name again once the lookup is this old
@@ -569,6 +590,17 @@ impl PythonSpy {
         self.short_filenames
             .insert(filename.to_owned(), shortened.clone());
         shortened
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn collect_macos_thread_id(
+    thread: &remoteprocess::Thread,
+    port: Tid,
+    native_thread_ids: &mut HashMap<NativeThreadId, Tid>,
+) {
+    if let Ok(info) = thread.get_thread_identifier_info() {
+        native_thread_ids.insert(NativeThreadId(info.thread_id), port);
     }
 }
 
