@@ -1,5 +1,7 @@
 extern crate py_spy;
-use py_spy::{Config, Pid, PythonSpy};
+#[cfg(target_os = "macos")]
+use py_spy::NativeThreadId;
+use py_spy::{Config, Pid, PythonSpy, PythonThreadId};
 use std::collections::HashSet;
 use std::io::{BufRead, BufReader, Lines, Write};
 use std::time::{Duration, Instant};
@@ -97,7 +99,7 @@ fn wait_for_line(lines: &mut Lines<BufReader<std::process::ChildStdout>>, expect
 /// threading module. A lookup replaces the whole name cache, so an entry for a thread
 /// id that doesn't exist only stays in the cache while no lookup runs.
 fn count_thread_name_lookups(spy: &mut PythonSpy, samples: usize) -> usize {
-    const NO_SUCH_THREAD: u64 = u64::MAX;
+    const NO_SUCH_THREAD: PythonThreadId = PythonThreadId(u64::MAX);
     let mut lookups = 0;
     for _ in 0..samples {
         spy.python_thread_names
@@ -122,6 +124,15 @@ fn test_busy_loop() {
     }
     let mut runner = TestRunner::new(Config::default(), "./tests/scripts/busyloop.py");
     let traces = runner.spy.get_stack_traces().unwrap();
+
+    assert_eq!(
+        traces[0].native_thread_id.is_some(),
+        runner.spy.version.major == 3 && runner.spy.version.minor >= 11
+    );
+    #[cfg(not(target_os = "macos"))]
+    if let Some(native_id) = traces[0].native_thread_id {
+        assert_eq!(traces[0].tid, Some(native_id.into()));
+    }
 
     // we can't be guaranteed what line the script is processing, but
     // we should be able to say that the script is active and
@@ -832,4 +843,43 @@ fn test_dump_subprocesses_no_duplication() {
     );
 
     let _ = child.0.kill();
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn test_macos_native_thread_id_activity() {
+    // task_for_pid requires root. The build workflow runs macOS test executables with sudo.
+    if unsafe { libc::geteuid() } != 0 {
+        return;
+    }
+    let mut runner = StepRunner::new(Config::default(), "./tests/scripts/native_thread_id.py");
+    let native_id: u64 = runner.stdout.next().unwrap().unwrap().parse().unwrap();
+    // Let the child enter time.sleep after printing its ID.
+    std::thread::sleep(Duration::from_millis(100));
+    for _ in 0..10 {
+        let traces = runner.spy.get_stack_traces().unwrap();
+        assert_eq!(traces.len(), 1, "{traces:#?}");
+        let trace = &traces[0];
+        assert!(
+            trace.tid.is_some(),
+            "missing OS thread identifier: {traces:#?}"
+        );
+        let stack: Vec<_> = trace.frames.iter().rev().map(|f| f.name.as_str()).collect();
+        assert_eq!(stack, ["<module>", "sleep_forever"], "{traces:#?}");
+        if runner.spy.version.minor >= 11 {
+            // Keep the public 64-bit native ID, not the Mach port used internally.
+            assert_eq!(
+                trace.native_thread_id,
+                Some(NativeThreadId(native_id)),
+                "{traces:#?}"
+            );
+        } else {
+            assert_eq!(trace.native_thread_id, None, "{traces:#?}");
+        }
+        assert!(
+            !trace.active,
+            "sleeping thread reported active: {traces:#?}"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
 }

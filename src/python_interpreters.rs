@@ -16,6 +16,7 @@ use crate::python_bindings::{
     v3_8_0, v3_9_5,
 };
 use crate::python_data_access::{PY_TPFLAGS_BYTES_SUBCLASS, PY_TPFLAGS_STRING_SUBCLASS};
+use serde_derive::Serialize;
 
 pub trait InterpreterState: Copy {
     type ThreadState: ThreadState;
@@ -31,6 +32,63 @@ pub trait InterpreterState: Copy {
     fn modules_ptr_ptr(interpreter_address: usize) -> *const *const Self::Object;
 }
 
+/// Python thread identifier stored in PyThreadState.thread_id.
+/// CPython [assigns this field] using PyThread_get_thread_ident():
+///
+/// - [macOS, Linux, and other Unix platforms]: pthread_self(), converted to unsigned long.
+///   This is the pthread identifier; on macOS and Linux it differs from NativeThreadId.
+/// - [Windows]: GetCurrentThreadId(), converted to unsigned long; the same value as NativeThreadId.
+///
+/// Source permalinks pinned to CPython 3.13.0:
+///
+/// [assigns this field]: https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Python/pystate.c#L259-L262
+/// [macOS, Linux, and other Unix platforms]: https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Python/thread_pthread.h#L355-L369
+/// [Windows]: https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Python/thread_nt.h#L247-L264
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct PythonThreadId(pub u64);
+
+/// OS-native thread ID stored in PyThreadState.native_thread_id by CPython 3.11+.
+/// CPython [assigns this field] using PyThread_get_thread_native_id():
+///
+/// - [macOS]: pthread_threadid_np(); matches thread_identifier_info.thread_id, not a Mach port.
+/// - [Linux]: syscall(SYS_gettid), the kernel thread ID.
+/// - [Windows]: GetCurrentThreadId().
+/// - [Other Unix platforms]: pthread_getthreadid_np() on FreeBSD, SYS_thr_self on
+///   GNU/kFreeBSD, getthrid() on OpenBSD, thread_self() on AIX, _lwp_self() on NetBSD,
+///   and lwp_gettid() on DragonFly BSD.
+///
+/// Source permalinks pinned to CPython 3.13.0:
+///
+/// [assigns this field]: https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Python/pystate.c#L259-L262
+/// [macOS]: https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Python/thread_pthread.h#L377-L379
+/// [Linux]: https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Python/thread_pthread.h#L380-L382
+/// [Windows]: https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Python/thread_nt.h#L274-L283
+/// [Other Unix platforms]: https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Python/thread_pthread.h#L383-L402
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct NativeThreadId(pub u64);
+
+#[cfg(not(target_os = "macos"))]
+impl From<NativeThreadId> for remoteprocess::Tid {
+    /// Converts CPython's native thread ID to the OS identifier used by remoteprocess.
+    ///
+    /// Both refer to the same OS thread identifier:
+    /// - Linux: CPython calls syscall(SYS_gettid); remoteprocess reads the TIDs from
+    ///   /proc/<pid>/task/<tid>. These identify the same kernel threads when viewed
+    ///   in the same PID namespace.
+    /// - FreeBSD: CPython calls pthread_getthreadid_np(); remoteprocess reads ki_tid
+    ///   from the kernel's per-thread kinfo_proc records via sysctl. Both are kernel TIDs.
+    /// - Windows: CPython calls GetCurrentThreadId(); remoteprocess calls GetThreadId
+    ///   on a thread handle. Both return the Windows thread ID.
+    ///
+    /// macOS is excluded: CPython's pthread_threadid_np() ID must be looked up to
+    /// obtain the Mach thread port used by remoteprocess.
+    fn from(id: NativeThreadId) -> Self {
+        id.0 as Self
+    }
+}
+
 pub trait ThreadState: Copy {
     type FrameObject: FrameObject;
     type InterpreterState: InterpreterState;
@@ -42,8 +100,8 @@ pub trait ThreadState: Copy {
     fn frame_address(&self) -> Option<usize>;
 
     fn frame(&self, offset: Option<usize>) -> *mut Self::FrameObject;
-    fn thread_id(&self) -> u64;
-    fn native_thread_id(&self) -> Option<u64>;
+    fn thread_id(&self) -> PythonThreadId;
+    fn native_thread_id(&self) -> Option<NativeThreadId>;
     fn next(&self) -> *mut Self;
 }
 
@@ -272,11 +330,15 @@ macro_rules! implement_interpreter_traits {
                     )
                 })
             }
-            fn thread_id(&self) -> u64 {
-                self.thread_id as u64
+            fn thread_id(&self) -> PythonThreadId {
+                PythonThreadId(self.thread_id as u64)
             }
-            fn native_thread_id(&self) -> Option<u64> {
-                if_python_3_11_or_later!($py, Some(self.native_thread_id as u64), None)
+            fn native_thread_id(&self) -> Option<NativeThreadId> {
+                if_python_3_11_or_later!(
+                    $py,
+                    Some(NativeThreadId(self.native_thread_id as u64)),
+                    None
+                )
             }
             fn next(&self) -> *mut Self {
                 self.next

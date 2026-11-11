@@ -13,7 +13,7 @@ fn print_python_stacks(pid: remoteprocess::Pid) -> Result<(), anyhow::Error> {
 
     // Print out the python stack for each thread
     for trace in traces {
-        println!("Thread {:#X} ({})", trace.thread_id, trace.status_str());
+        println!("Thread {:#X} ({})", trace.thread_id.0, trace.status_str());
         for frame in &trace.frames {
             println!("\t {} ({}:{})", frame.name, frame.filename, frame.line);
         }
