@@ -944,6 +944,9 @@ pub type Py_UCS1 = u8;
 #[derive(Debug, Default, Copy, Clone)]
 pub struct _PyUnicodeObject_state {
     pub interned: ::std::os::raw::c_uchar,
+    #[cfg(windows)]
+    pub _bitfield_align_1: [u8; 3],
+    #[cfg(not(windows))]
     pub _bitfield_align_1: [u8; 0],
     pub _bitfield_1: __BindgenBitfieldUnit<[u8; 1usize]>,
     pub __bindgen_padding_0: u16,
