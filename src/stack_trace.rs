@@ -10,7 +10,7 @@ use crate::python_data_access::{copy_bytes, copy_string};
 use crate::python_interpreters::{
     CodeObject, FrameObject, InterpreterState, ThreadState, TupleObject,
 };
-use crate::python_process_info::TypeChecks;
+use crate::python_process_info::{PythonProcessLayout, TypeChecks};
 
 /// Call stack for a single python thread
 #[derive(Debug, Clone, Serialize)]
@@ -71,21 +71,18 @@ pub struct ProcessInfo {
 
 /// Given an InterpreterState, this function returns a vector of stack traces for each thread
 pub fn get_stack_traces<I, P>(
-    interpreter_address: usize,
+    layout: &PythonProcessLayout,
     process: &P,
-    threadstate_address: usize,
     config: Option<&Config>,
-    type_checks: &TypeChecks,
 ) -> Result<Vec<StackTrace>, Error>
 where
     I: InterpreterState,
     P: ProcessMemory,
 {
-    let gil_thread_id = get_gil_threadid::<I, P>(threadstate_address, process)?;
+    let gil_thread_id = get_gil_threadid::<I, P>(layout.threadstate_address, process)?;
 
-    let threadstate_ptr_ptr = I::threadstate_ptr_ptr(interpreter_address);
     let mut threads: *const I::ThreadState = process
-        .copy_struct(threadstate_ptr_ptr as usize)
+        .copy_struct(layout.threads_head_address)
         .context("Failed to copy PyThreadState head pointer")?;
 
     let mut ret = Vec::new();
@@ -98,7 +95,13 @@ where
             .copy_pointer(threads)
             .context("Failed to copy PyThreadState")?;
 
-        let mut trace = get_stack_trace(&thread, process, dump_locals > 0, lineno, type_checks)?;
+        let mut trace = get_stack_trace(
+            &thread,
+            process,
+            dump_locals > 0,
+            lineno,
+            &layout.type_checks,
+        )?;
         trace.owns_gil = trace.thread_id == gil_thread_id;
 
         ret.push(trace);
