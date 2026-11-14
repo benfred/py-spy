@@ -243,11 +243,7 @@ impl ConsoleViewer {
 
         // If we aren't at least 50 characters wide, lets use two lines per entry
         // Otherwise, truncate the filename so that it doesn't wrap around to the next line
-        let header_lines = if width > 50 {
-            header_lines
-        } else {
-            header_lines + height as usize / 2
-        };
+        let table_height = table_height(height as usize, width, header_lines);
         let max_function_width = if width > 50 { width - 35 } else { width };
 
         out!(
@@ -261,7 +257,7 @@ impl ConsoleViewer {
         );
 
         let mut written = 0;
-        for (samples, label) in counts.iter().take(height as usize - header_lines) {
+        for (samples, label) in counts.iter().take(table_height) {
             out!(
                 "{:>6.2}% {:>6.2}% {:>7}s {:>8}s   {:.width$}",
                 100.0 * samples.current_own as f64 / (self.stats.current_samples as f64),
@@ -269,11 +265,11 @@ impl ConsoleViewer {
                 display_time(samples.overall_own as f64 * self.sampling_rate),
                 display_time(samples.overall_total as f64 * self.sampling_rate),
                 label,
-                width = max_function_width - 2
+                width = max_function_width.saturating_sub(2)
             );
             written += 1;
         }
-        for _ in written..height as usize - header_lines {
+        for _ in written..table_height {
             out!();
         }
 
@@ -489,6 +485,48 @@ impl Stats {
         self.active = 0;
         self.current_samples = 0;
         self.elapsed = 0.;
+    }
+}
+
+fn table_height(height: usize, width: usize, header_lines: usize) -> usize {
+    let header_lines = if width > 50 {
+        header_lines
+    } else {
+        header_lines + height / 2
+    };
+    height.saturating_sub(header_lines)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::table_height;
+
+    #[test]
+    fn test_table_height_when_headers_do_not_fit() {
+        // Normal/help headers, with and without the sampling-delay warning.
+        for header_lines in [8, 9, 18, 19] {
+            for width in [0, 1, 2, 50, 51, 80] {
+                for height in 0..=header_lines {
+                    assert_eq!(table_height(height, width, header_lines), 0);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_table_height_at_layout_boundaries() {
+        for (height, width, headers, expected) in [
+            (9, 80, 8, 1),
+            (20, 80, 19, 1),
+            (16, 50, 8, 0),
+            (17, 50, 8, 1),
+            (38, 50, 19, 0),
+            (39, 50, 19, 1),
+            (24, 80, 8, 16),
+            (24, 50, 8, 4),
+        ] {
+            assert_eq!(table_height(height, width, headers), expected);
+        }
     }
 }
 
