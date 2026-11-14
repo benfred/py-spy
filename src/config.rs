@@ -106,6 +106,7 @@ impl std::str::FromStr for FileFormat {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum LockingStrategy {
+    #[cfg_attr(target_os = "freebsd", allow(dead_code))]
     NonBlocking,
     #[allow(dead_code)]
     AlreadyLocked,
@@ -506,13 +507,16 @@ impl Config {
             config.hide_progress = true;
         }
 
-        if matches.get_flag("nonblocking") {
-            // disable native profiling if invalidly asked for
-            if config.native {
-                eprintln!("Can't get native stack traces with the --nonblocking option.");
-                std::process::exit(1);
+        #[cfg(not(target_os = "freebsd"))]
+        {
+            if matches.get_flag("nonblocking") {
+                // disable native profiling if invalidly asked for
+                if config.native {
+                    eprintln!("Can't get native stack traces with the --nonblocking option.");
+                    std::process::exit(1);
+                }
+                config.blocking = LockingStrategy::NonBlocking;
             }
-            config.blocking = LockingStrategy::NonBlocking;
         }
 
         #[cfg(windows)]
