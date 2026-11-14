@@ -30,8 +30,9 @@ use std::collections::HashMap;
 use std::io;
 use std::io::Write;
 
+use crate::python_interpreters::PythonThreadId;
 use crate::stack_trace;
-use remoteprocess::{Pid, Tid};
+use remoteprocess::Pid;
 
 use anyhow::Error;
 use serde_derive::{Deserialize, Serialize};
@@ -128,9 +129,9 @@ enum ValueUnit {
 
 impl SpeedscopeFile {
     pub fn new(
-        samples: &HashMap<(Pid, Tid), Vec<Vec<usize>>>,
+        samples: &HashMap<(Pid, PythonThreadId), Vec<Vec<usize>>>,
         frames: &[Frame],
-        thread_name_map: &HashMap<(Pid, Tid), String>,
+        thread_name_map: &HashMap<(Pid, PythonThreadId), String>,
         sample_rate: u64,
     ) -> SpeedscopeFile {
         let mut profiles: Vec<Profile> = samples
@@ -191,10 +192,10 @@ impl Frame {
 }
 
 pub struct Stats {
-    samples: HashMap<(Pid, Tid), Vec<Vec<usize>>>,
+    samples: HashMap<(Pid, PythonThreadId), Vec<Vec<usize>>>,
     frames: Vec<Frame>,
     frame_to_index: HashMap<stack_trace::Frame, usize>,
-    thread_name_map: HashMap<(Pid, Tid), String>,
+    thread_name_map: HashMap<(Pid, PythonThreadId), String>,
     config: Config,
 }
 
@@ -229,7 +230,7 @@ impl Stats {
             .collect();
         frame_indices.reverse();
 
-        let key = (stack.pid as Pid, stack.thread_id as Tid);
+        let key = (stack.pid, stack.thread_id);
 
         self.samples.entry(key).or_default().push(frame_indices);
         let subprocesses = self.config.subprocesses;
@@ -294,9 +295,10 @@ mod tests {
 
         let trace = stack_trace::StackTrace {
             pid: 1,
-            thread_id: 1,
+            thread_id: PythonThreadId(1),
             thread_name: None,
-            os_thread_id: None,
+            native_thread_id: None,
+            tid: None,
             active: true,
             owns_gil: false,
             frames: vec![frame],

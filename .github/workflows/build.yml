@@ -27,6 +27,10 @@ jobs:
   build:
     runs-on: ${{ matrix.os }}
     needs: [lint]
+    env:
+      # Compile as the runner user; only test executables need task_for_pid access.
+      CARGO_TARGET_AARCH64_APPLE_DARWIN_RUNNER: bash ci/macos_test_runner.sh
+      CARGO_TARGET_X86_64_APPLE_DARWIN_RUNNER: bash ci/macos_test_runner.sh
     strategy:
       fail-fast: false
       matrix:
@@ -51,14 +55,14 @@ jobs:
       - name: Test
         id: test
         continue-on-error: true
-        run: cargo test --release
+        run: cargo test --release --no-fail-fast
       - name: Test (retry#1)
         id: test1
-        run: cargo test --release
+        run: cargo test --release --no-fail-fast
         if: steps.test.outcome=='failure'
         continue-on-error: true
       - name: Test (retry#2)
-        run: cargo test --release
+        run: cargo test --release --no-fail-fast
         if: steps.test1.outcome=='failure'
       - name: Build Wheel
         run: |

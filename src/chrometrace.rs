@@ -6,6 +6,7 @@ use std::time::Instant;
 use anyhow::Error;
 use serde_derive::Serialize;
 
+use crate::python_interpreters::PythonThreadId;
 use crate::stack_trace::Frame;
 use crate::stack_trace::StackTrace;
 
@@ -22,14 +23,14 @@ struct Event {
     pub name: String,
     pub ph: String,
     pub pid: u64,
-    pub tid: u64,
+    pub tid: PythonThreadId,
     pub ts: u64,
 }
 
 pub struct Chrometrace {
     events: Vec<Event>,
     start_ts: Instant,
-    prev_traces: HashMap<u64, StackTrace>,
+    prev_traces: HashMap<PythonThreadId, StackTrace>,
     show_linenumbers: bool,
 }
 
