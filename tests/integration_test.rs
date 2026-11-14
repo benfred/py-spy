@@ -472,8 +472,6 @@ fn test_local_vars() {
     let frame = &trace.frames[0];
     let locals = frame.locals.as_ref().unwrap();
 
-    assert_eq!(locals.len(), 29);
-
     let arg1 = &locals[0];
     assert_eq!(arg1.name, "arg1");
     assert!(arg1.arg);
@@ -485,10 +483,16 @@ fn test_local_vars() {
     assert_eq!(arg2.repr, Some("None".to_owned()));
 
     let arg3 = &locals[2];
-    assert_eq!(arg3.name, "arg3");
+    assert_eq!(arg3.name, "has_numpy");
     assert!(arg3.arg);
-    assert_eq!(arg3.repr, Some("True".to_owned()));
 
+    let has_numpy = arg3.repr == Some("True".to_owned());
+
+    if has_numpy {
+        assert_eq!(locals.len(), 29);
+    } else {
+        assert_eq!(locals.len(), 11);
+    }
     let local1 = &locals[3];
     assert_eq!(local1.name, "local1");
     assert!(!local1.arg);
@@ -519,103 +523,105 @@ fn test_local_vars() {
     assert!(!local6.arg);
 
     // Numpy scalars
-    let local7 = &locals[9];
-    assert_eq!(local7.name, "local7");
-    assert_eq!(local7.repr, Some("1".to_string()));
+    if has_numpy {
+        let local7 = &locals[9];
+        assert_eq!(local7.name, "local7");
+        assert_eq!(local7.repr, Some("1".to_string()));
 
-    let local8 = &locals[10];
-    assert_eq!(local8.name, "local8");
-    assert_eq!(local8.repr, Some("2".to_string()));
+        let local8 = &locals[10];
+        assert_eq!(local8.name, "local8");
+        assert_eq!(local8.repr, Some("2".to_string()));
 
-    let local9 = &locals[11];
-    assert_eq!(local9.name, "local9");
-    assert_eq!(local9.repr, Some("3".to_string()));
+        let local9 = &locals[11];
+        assert_eq!(local9.name, "local9");
+        assert_eq!(local9.repr, Some("3".to_string()));
 
-    let local10 = &locals[12];
-    assert_eq!(local10.name, "local10");
-    assert_eq!(local10.repr, Some("42".to_string()));
+        let local10 = &locals[12];
+        assert_eq!(local10.name, "local10");
+        assert_eq!(local10.repr, Some("42".to_string()));
 
-    let local11 = &locals[13];
-    assert_eq!(local11.name, "local11");
-    assert_eq!(local11.repr, Some("43".to_string()));
+        let local11 = &locals[13];
+        assert_eq!(local11.name, "local11");
+        assert_eq!(local11.repr, Some("43".to_string()));
 
-    let local12 = &locals[14];
-    assert_eq!(local12.name, "local12");
-    assert_eq!(local12.repr, Some("44".to_string()));
+        let local12 = &locals[14];
+        assert_eq!(local12.name, "local12");
+        assert_eq!(local12.repr, Some("44".to_string()));
 
-    let local13 = &locals[15];
-    assert_eq!(local13.name, "local13");
-    assert_eq!(local13.repr, Some("45".to_string()));
+        let local13 = &locals[15];
+        assert_eq!(local13.name, "local13");
+        assert_eq!(local13.repr, Some("45".to_string()));
 
-    let local14 = &locals[16];
-    assert_eq!(local14.name, "local14");
-    assert_eq!(local14.repr, Some("46".to_string()));
+        let local14 = &locals[16];
+        assert_eq!(local14.name, "local14");
+        assert_eq!(local14.repr, Some("46".to_string()));
 
-    let local15 = &locals[17];
-    assert_eq!(local15.name, "local15");
-    assert_eq!(local15.repr, Some("7".to_string()));
+        let local15 = &locals[17];
+        assert_eq!(local15.name, "local15");
+        assert_eq!(local15.repr, Some("7".to_string()));
 
-    let local16 = &locals[18];
-    assert_eq!(local16.name, "local16");
-    assert_eq!(local16.repr, Some("8".to_string()));
+        let local16 = &locals[18];
+        assert_eq!(local16.name, "local16");
+        assert_eq!(local16.repr, Some("8".to_string()));
 
-    fn test_repr_prefix(local: &py_spy::stack_trace::LocalVariable, expected: &str) {
-        assert!(
-            local
-                .repr
-                .as_ref()
-                .map(|result| result.starts_with(expected))
-                .unwrap_or(false),
-            "local '{}' repr = '{:?}' doesn't start with '{}'",
-            &local.name,
-            &local.repr,
-            expected
-        );
+        fn test_repr_prefix(local: &py_spy::stack_trace::LocalVariable, expected: &str) {
+            assert!(
+                local
+                    .repr
+                    .as_ref()
+                    .map(|result| result.starts_with(expected))
+                    .unwrap_or(false),
+                "local '{}' repr = '{:?}' doesn't start with '{}'",
+                &local.name,
+                &local.repr,
+                expected
+            );
+        }
+
+        let local17 = &locals[19];
+        assert_eq!(local17.name, "local17");
+
+        #[cfg(not(windows))]
+        test_repr_prefix(local17, "<numpy.ulonglong at");
+
+        let local18 = &locals[20];
+        assert_eq!(local18.name, "local18");
+        test_repr_prefix(local18, "<numpy.float16 at");
+
+        let local19 = &locals[21];
+        assert_eq!(local19.name, "local19");
+        assert_eq!(local19.repr, Some("0.5".to_string()));
+
+        let local20 = &locals[22];
+        assert_eq!(local20.name, "local20");
+        assert_eq!(local20.repr, Some("0.7".to_string()));
+
+        let local21 = &locals[23];
+        assert_eq!(local21.name, "local21");
+        test_repr_prefix(local21, "<numpy.longdouble at");
+
+        let local22 = &locals[24];
+        assert_eq!(local22.name, "local22");
+        test_repr_prefix(local22, "<numpy.complex64 at");
+
+        let local23 = &locals[25];
+        assert_eq!(local23.name, "local23");
+        test_repr_prefix(local23, "<numpy.complex128 at");
+
+        let local24 = &locals[26];
+        assert_eq!(local24.name, "local24");
+        test_repr_prefix(local24, "<numpy.clongdouble at");
     }
 
-    let local17 = &locals[19];
-    assert_eq!(local17.name, "local17");
-
-    #[cfg(not(windows))]
-    test_repr_prefix(local17, "<numpy.ulonglong at");
-
-    let local18 = &locals[20];
-    assert_eq!(local18.name, "local18");
-    test_repr_prefix(local18, "<numpy.float16 at");
-
-    let local19 = &locals[21];
-    assert_eq!(local19.name, "local19");
-    assert_eq!(local19.repr, Some("0.5".to_string()));
-
-    let local20 = &locals[22];
-    assert_eq!(local20.name, "local20");
-    assert_eq!(local20.repr, Some("0.7".to_string()));
-
-    let local21 = &locals[23];
-    assert_eq!(local21.name, "local21");
-    test_repr_prefix(local21, "<numpy.longdouble at");
-
-    let local22 = &locals[24];
-    assert_eq!(local22.name, "local22");
-    test_repr_prefix(local22, "<numpy.complex64 at");
-
-    let local23 = &locals[25];
-    assert_eq!(local23.name, "local23");
-    test_repr_prefix(local23, "<numpy.complex128 at");
-
-    let local24 = &locals[26];
-    assert_eq!(local24.name, "local24");
-    test_repr_prefix(local24, "<numpy.clongdouble at");
-
     // https://github.com/benfred/py-spy/issues/766
-    let local25 = &locals[27];
+    let local25 = &locals[if has_numpy { 27 } else { 9 }];
     assert_eq!(local25.name, "local25");
     let unicode_val = local25.repr.as_ref().unwrap();
     let end = unicode_val.char_indices().map(|(i, _)| i).nth(4).unwrap();
     assert_eq!(unicode_val[0..end], *"\"测试1");
 
     // Empty string
-    let local26 = &locals[28];
+    let local26 = &locals[if has_numpy { 28 } else { 10 }];
     assert_eq!(local26.name, "local26");
     assert_eq!(local26.repr, Some("\"\"".to_string()));
 
