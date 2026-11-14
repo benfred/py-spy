@@ -6,7 +6,6 @@ use std::collections::HashMap;
 use std::ffi::CStr;
 use std::mem::size_of;
 use std::path::Path;
-use std::slice;
 
 use anyhow::{Context, Error, Result};
 use lazy_static::lazy_static;
@@ -17,13 +16,11 @@ use remoteprocess::ProcessMemory;
 
 use crate::binary_parser::{parse_binary, BinaryInfo};
 use crate::config::{Config, TypesConfig};
-use crate::python_bindings::{
-    pyruntime, v2_7_15, v3_10_0, v3_11_0, v3_12_0, v3_13_0, v3_14_0, v3_15_0, v3_3_7, v3_5_5,
-    v3_6_6, v3_7_0, v3_8_0, v3_9_5,
-};
+use crate::python_bindings::{pyruntime, v3_12_0, v3_13_0, v3_14_0, v3_15_0};
 use crate::python_data_access::PY_TPFLAGS_DICT_SUBCLASS;
 use crate::python_interpreters::{
-    CodeObject, InterpreterState, Object, StringObject, ThreadState, TypeObject,
+    dispatch_by_version, CodeObject, InterpreterState, Object, StringObject, ThreadState,
+    TypeObject,
 };
 use crate::stack_trace::get_stack_traces;
 use crate::version::Version;
@@ -441,62 +438,6 @@ where
     Err(format_err!(
         "Failed to find python version from target process"
     ))
-}
-
-/// Dispatches to various templatized function calls taking a InterpreterState,
-/// by matching the an input Version struct
-macro_rules! dispatch_by_version {
-    ($version: ident, $function: ident, $($args:tt)*) => {
-        match $version {
-            Version {
-                major: 2, minor: 3..=7, ..
-            } => $function::<v2_7_15::_is, P>($($args)*),
-            Version {
-                major: 3, minor: 3, ..
-            } => $function::<v3_3_7::_is, P>($($args)*),
-            Version {
-                major: 3, minor: 4..=5, ..
-            } => $function::<v3_5_5::_is, P>($($args)*),
-            Version {
-                major: 3, minor: 6, ..
-            } => $function::<v3_6_6::_is, P>($($args)*),
-            Version {
-                major: 3, minor: 7, ..
-            } => $function::<v3_7_0::_is, P>($($args)*),
-            Version {
-                major: 3, minor: 8, ..
-            } => $function::<v3_8_0::_is, P>($($args)*),
-            Version {
-                major: 3, minor: 9, ..
-            } => $function::<v3_9_5::_is, P>($($args)*),
-            Version { major: 3, minor: 10, ..
-            } => $function::<v3_10_0::_is, P>($($args)*),
-            Version {
-                major: 3, minor: 11, ..
-            } => $function::<v3_11_0::_is, P>($($args)*),
-            Version {
-                major: 3,
-                minor: 12,
-                ..
-            } => $function::<v3_12_0::_is, P>($($args)*),
-            Version {
-                major: 3,
-                minor: 13,
-                ..
-            } => $function::<v3_13_0::_is, P>($($args)*),
-            Version {
-                major: 3,
-                minor: 14,
-                ..
-            } => $function::<v3_14_0::_is, P>($($args)*),
-            Version {
-                major: 3,
-                minor: 15,
-                ..
-            } => $function::<v3_15_0::_is, P>($($args)*),
-            _ => Err(format_err!("Unsupported version of Python: {}", $version)),
-        }
-    }
 }
 
 /// Addresses of static python type objects, used to check the types of objects we read
@@ -1021,10 +962,9 @@ where
 {
     // Copy the memory
     let bss = process.copy(start_addr as usize, size as usize)?;
-    #[allow(clippy::cast_ptr_alignment)]
-    let addrs = unsafe {
-        slice::from_raw_parts(bss.as_ptr() as *const usize, bss.len() / size_of::<usize>())
-    };
+    let addrs = bss
+        .chunks_exact(size_of::<usize>())
+        .map(|bytes| usize::from_ne_bytes(bytes.try_into().expect("chunk has the size of usize")));
 
     // b'xdebugpy' is the byte pattern found at the start of _Py_DebugOffset structures,
     #[cfg(target_pointer_width = "64")]
@@ -1033,7 +973,7 @@ where
     #[cfg(target_pointer_width = "32")]
     let cookie = u32::from_le_bytes(*b"xdeb") as usize;
 
-    for (index, &addr) in addrs.iter().enumerate() {
+    for (index, addr) in addrs.enumerate() {
         if addr == cookie {
             let pyruntime_address = (index * size_of::<usize>()) + start_addr as usize;
             let address_book = match PythonProcessLayout::from_debug_offsets(
@@ -1081,12 +1021,11 @@ where
     P: ProcessMemory,
 {
     let bss = process.copy(start_addr as usize, size as usize)?;
-    #[allow(clippy::cast_ptr_alignment)]
-    let addrs = unsafe {
-        slice::from_raw_parts(bss.as_ptr() as *const usize, bss.len() / size_of::<usize>())
-    };
+    let addrs = bss
+        .chunks_exact(size_of::<usize>())
+        .map(|bytes| usize::from_ne_bytes(bytes.try_into().expect("chunk has the size of usize")));
 
-    for &addr in addrs {
+    for addr in addrs {
         if python_info.maps.contains_addr(addr) {
             // get the pythreadstate pointer from the interpreter object, and if it is also
             // a valid pointer then load it up.
@@ -1349,6 +1288,7 @@ pub fn is_python_framework(pathname: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::python_bindings::{v2_7_15, v3_7_0};
     use crate::python_data_access::PY_TPFLAGS_STRING_SUBCLASS;
     use remoteprocess::LocalProcess;
 
@@ -1371,6 +1311,49 @@ mod tests {
             #[cfg(target_os = "linux")]
             dockerized: false,
         }
+    }
+
+    struct EmptyMemory;
+
+    impl ProcessMemory for EmptyMemory {
+        fn read(&self, _addr: usize, buffer: &mut [u8]) -> Result<(), remoteprocess::Error> {
+            assert!(buffer.is_empty());
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_scan_empty_interpreter_section() {
+        let info = python_info_with_symbols(Default::default());
+        assert!(scan_memory_for_python_interpreter::<v3_12_0::_is, _>(
+            0,
+            0,
+            &info,
+            &EmptyMemory,
+            &Version {
+                minor: 12,
+                ..version(3)
+            },
+            &Config::default(),
+            &TypeChecks::Disabled,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn test_scan_empty_debug_offsets_section() {
+        assert!(scan_memory_for_debug_offsets::<v3_13_0::_is, _>(
+            0,
+            0,
+            &EmptyMemory,
+            &Version {
+                minor: 13,
+                ..version(3)
+            },
+            &Config::default(),
+            &TypeChecks::Disabled,
+        )
+        .is_err());
     }
 
     fn version_3_7() -> Version {

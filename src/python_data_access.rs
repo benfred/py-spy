@@ -6,7 +6,6 @@ use crate::python_interpreters::{
     BytesObject, InterpreterState, ListObject, Object, StringObject, TupleObject, TypeObject,
 };
 use crate::python_process_info::TypeChecks;
-use crate::utils::offset_of;
 use crate::version::Version;
 use remoteprocess::ProcessMemory;
 
@@ -226,8 +225,7 @@ impl<'a, P: ProcessMemory> DictIterator<'a, P> {
             // https://github.com/python/cpython/issues/115776
             if flags & PY_TPFLAGS_INLINE_VALUES != 0 {
                 // PyDictValues is stored inline after the initial PyObject
-                let dict_values: v3_13_0::_dictvalues = Default::default();
-                let values_offset = offset_of(&dict_values, &dict_values.values);
+                let values_offset = std::mem::offset_of!(v3_13_0::_dictvalues, values);
                 values_addr = addr + std::mem::size_of::<v3_13_0::PyObject>() + values_offset;
             }
 
