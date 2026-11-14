@@ -17,8 +17,7 @@ fi
 
 cargo build --release --workspace --all-targets
 
-# TODO: re-enable integration tests
-# cargo test --release
+cargo test --release
 
 set +e
 tar cf build-artifacts.tar target
