@@ -42,6 +42,8 @@ pub trait ThreadState: Copy {
     fn frame_address(&self) -> Option<usize>;
 
     fn frame(&self, offset: Option<usize>) -> *mut Self::FrameObject;
+
+    fn base_frame(&self) -> Option<*mut Self::FrameObject>;
     fn thread_id(&self) -> u64;
     fn native_thread_id(&self) -> Option<u64>;
     fn next(&self) -> *mut Self;
@@ -285,6 +287,11 @@ macro_rules! implement_interpreter_traits {
                     )
                 })
             }
+
+            fn base_frame(&self) -> Option<*mut Self::FrameObject> {
+                if_python_3_15_or_later!($py, Some(self.base_frame), None)
+            }
+
             fn thread_id(&self) -> u64 {
                 self.thread_id as u64
             }
