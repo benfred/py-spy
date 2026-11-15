@@ -1336,7 +1336,7 @@ mod tests {
 
     #[test]
     fn test_scan_empty_interpreter_section() {
-        let info = python_info_with_symbols(Default::default());
+        let info: PythonProcessInfo = python_info_with_symbols(Default::default());
         assert!(scan_memory_for_python_interpreter::<v3_12_0::_is, _>(
             0,
             0,
@@ -1347,23 +1347,24 @@ mod tests {
                 ..version(3)
             },
             &Config::default(),
-            &TypeChecks::Disabled,
         )
         .is_err());
     }
 
     #[test]
     fn test_scan_empty_debug_offsets_section() {
-        assert!(scan_memory_for_debug_offsets::<v3_13_0::_is, _>(
+        let info: PythonProcessInfo = python_info_with_symbols(Default::default());
+
+        assert!(scan_memory_for_debug_offsets(
             0,
             0,
+            &info,
             &EmptyMemory,
             &Version {
                 minor: 13,
                 ..version(3)
             },
             &Config::default(),
-            &TypeChecks::Disabled,
         )
         .is_err());
     }
