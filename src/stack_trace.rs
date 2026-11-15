@@ -136,6 +136,7 @@ where
     }
 
     let mut frame_ptr = thread.frame(frame_address);
+    let mut previous_frame_ptr = frame_ptr;
 
     // We are iterating in reverse, i.e. from last call to first call.
     // Since Python 3.12, there are shim frames inserted before a block
@@ -148,6 +149,8 @@ where
 
     let mut visited = 0;
     while !frame_ptr.is_null() {
+        previous_frame_ptr = frame_ptr;
+
         visited += 1;
         if visited > 4096 {
             return Err(format_err!("Max frame recursion depth reached"));
@@ -239,6 +242,14 @@ where
         });
 
         frame_ptr = frame.back();
+    }
+
+    // on python3.15+ the ThreadState contains the expected final frame when iterating through
+    // the stack. Check this and discard the sample if it doesn't match
+    if let Some(base_frame_ptr) = thread.base_frame() {
+        if previous_frame_ptr != base_frame_ptr {
+            return Err(format_err!("base_frame mismatch in get_stack_trace"));
+        }
     }
 
     // First frame is always a shim
