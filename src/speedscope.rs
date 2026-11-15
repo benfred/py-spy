@@ -137,12 +137,13 @@ impl SpeedscopeFile {
             .iter()
             .map(|(thread_id, samples)| {
                 let end_value = samples.len();
-                // we sample at 100 Hz, so scale the end value and weights to match the time unit
+                // Scale the end value and weights to match the time unit.
                 let scaled_end_value = end_value as f64 / sample_rate as f64;
-                let weights: Vec<f64> = samples
-                    .iter()
-                    .map(|_s| 1_f64 / sample_rate as f64)
-                    .collect();
+                // Merge only adjacent equal stacks to preserve the sample order.
+                let (samples, weights) = samples
+                    .chunk_by(|a, b| a == b)
+                    .map(|run| (run[0].clone(), run.len() as f64 / sample_rate as f64))
+                    .unzip();
 
                 Profile {
                     profile_type: ProfileType::Sampled,
@@ -152,7 +153,7 @@ impl SpeedscopeFile {
                     unit: ValueUnit::Seconds,
                     start_value: 0.0,
                     end_value: scaled_end_value,
-                    samples: samples.clone(),
+                    samples,
                     weights,
                 }
             })
@@ -269,6 +270,105 @@ impl Stats {
 mod tests {
     use super::*;
     use std::io::{Cursor, Read, Seek, SeekFrom};
+
+    fn record_sample(stats: &mut Stats, thread_id: u64, name: Option<&str>) {
+        let frames = name
+            .map(|name| stack_trace::Frame {
+                name: name.to_owned(),
+                filename: "test.py".to_owned(),
+                module: None,
+                short_filename: None,
+                line: 1,
+                locals: None,
+                is_entry: true,
+                is_shim_entry: false,
+            })
+            .into_iter()
+            .collect();
+        stats
+            .record(&stack_trace::StackTrace {
+                pid: 1,
+                thread_id,
+                thread_name: None,
+                os_thread_id: None,
+                active: true,
+                owns_gil: false,
+                frames,
+                process_info: None,
+            })
+            .unwrap();
+    }
+
+    fn exported_profile(stats: &Stats) -> SpeedscopeFile {
+        let mut output = Vec::new();
+        stats.write(&mut output).unwrap();
+        serde_json::from_slice(&output).unwrap()
+    }
+
+    #[test]
+    fn test_speedscope_merges_only_consecutive_samples() {
+        for sample_rate in [3, 100] {
+            let mut stats = Stats::new(&Config {
+                sampling_rate: sample_rate,
+                ..Default::default()
+            });
+            for name in ["first", "first", "first", "second", "second", "first"] {
+                record_sample(&mut stats, 1, Some(name));
+            }
+            let output = exported_profile(&stats);
+            let profile = &output.profiles[0];
+            let names: Vec<_> = profile
+                .samples
+                .iter()
+                .map(|sample| output.shared.frames[sample[0]].name.as_str())
+                .collect();
+            assert_eq!(names, ["first", "second", "first"]);
+            assert_eq!(
+                profile.weights,
+                [3.0, 2.0, 1.0].map(|count| count / sample_rate as f64)
+            );
+            assert_eq!(profile.start_value, 0.0);
+            assert_eq!(profile.end_value, 6.0 / sample_rate as f64);
+            assert!((profile.weights.iter().sum::<f64>() - profile.end_value).abs() < 1e-12);
+            // Writing again must not consume or modify the recorded data.
+            assert_eq!(
+                exported_profile(&stats).profiles[0].samples,
+                profile.samples
+            );
+        }
+    }
+
+    #[test]
+    fn test_speedscope_merges_empty_stacks_without_crossing_threads() {
+        let mut stats = Stats::new(&Config::default());
+        for _ in 0..2 {
+            record_sample(&mut stats, 1, None);
+            record_sample(&mut stats, 2, Some("worker"));
+        }
+        let output = exported_profile(&stats);
+        assert_eq!(output.profiles.len(), 2);
+        for profile in &output.profiles {
+            assert_eq!(profile.samples.len(), 1);
+            assert_eq!(profile.weights, [0.02]);
+            assert_eq!(profile.end_value, 0.02);
+        }
+        assert!(output.profiles[0].samples[0].is_empty());
+        assert_eq!(output.profiles[1].samples[0].len(), 1);
+    }
+
+    #[test]
+    fn test_speedscope_preserves_distinct_samples_and_empty_recordings() {
+        let mut stats = Stats::new(&Config::default());
+        assert!(exported_profile(&stats).profiles.is_empty());
+        for name in ["first", "second", "third"] {
+            record_sample(&mut stats, 1, Some(name));
+        }
+        let output = exported_profile(&stats);
+        let profile = &output.profiles[0];
+        assert_eq!(profile.samples, [vec![0], vec![1], vec![2]]);
+        assert_eq!(profile.weights, [0.01, 0.01, 0.01]);
+        assert_eq!(profile.end_value, 0.03);
+    }
 
     #[test]
     fn test_speedscope_units() {
