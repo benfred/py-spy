@@ -13,7 +13,7 @@ classifiers = [
 	"Topic :: Software Development :: Libraries",
 	"Topic :: Utilities"
 ]
-dynamic = ["version"]
+dynamic = ["version", "authors", "readme", "description", "license", "urls"]
 
 [project.optional-dependencies]
 test = ["numpy"]
