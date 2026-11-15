@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import sysconfig
 import re
 import tempfile
 import unittest
@@ -12,7 +13,7 @@ from shutil import which
 
 Frame = namedtuple("Frame", ["file", "name", "line", "col"])
 
-GIL = ["--gil"]
+GIL = None if sysconfig.get_config_var("Py_GIL_DISABLED") else ["--gil"]
 
 PYSPY = which("py-spy")
 
@@ -68,14 +69,13 @@ class TestPyspy(unittest.TestCase):
         # running with the gil flag should have ~ no samples returned
         if GIL:
             profile = self._sample_process(_get_script("longsleep.py"), GIL)
-            print(profile)
             assert sum(profile.values()) <= 10
 
         # running with the idle flag should have > 95%  of samples in the sleep call
         profile = self._sample_process(_get_script("longsleep.py"), ["--idle"])
         sample, count = _most_frequent_sample(profile)
         assert count >= 95
-        assert len(sample) == 2
+        assert len(sample) == 2, f"expected 2 frames found {len(sample)}"
         assert sample[0].name == "<module>"
         assert sample[0].line == 9
         assert sample[1].name == "longsleep"

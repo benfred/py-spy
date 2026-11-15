@@ -66,6 +66,7 @@ def get_github_python_versions():
 def update_python_test_versions(force=False):
     versions, platforms = get_github_python_versions()
     versions = sorted(versions, key=parse_version)
+    versions.extend(["3.14t", "3.15t"])
 
     build_yml_path = (
         pathlib.Path(__file__).parent.parent / ".github" / "workflows" / "build.yml"
@@ -99,6 +100,9 @@ def update_python_test_versions(force=False):
     # since it currently fails in GHA on SIP errors
     exclusions = []
     for v in versions:
+        if v.endswith("t"):
+            continue
+
         # if we don't have a python version for the platform, skip it in GHA
         # also, ignore python 3.12.* on OSX
         if ("darwin", "arm64") not in platforms[v] or any(

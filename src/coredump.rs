@@ -175,7 +175,7 @@ impl ProcessMemory for CoreDump {
 pub struct PythonCoreDump {
     core: CoreDump,
     version: Version,
-    addresses: PythonProcessLayout,
+    layout: PythonProcessLayout,
 }
 
 impl PythonCoreDump {
@@ -236,22 +236,16 @@ impl PythonCoreDump {
             get_python_version(&python_info, &core).context("failed to get python version")?;
         info!("Got python version {}", version);
 
-        let addresses = PythonProcessLayout::new(&python_info, &core, &version, config)?;
+        let layout = PythonProcessLayout::new(&python_info, &core, &version, config)?;
 
         // lets us figure out which thread has the GIL
-        info!(
-            "found interpreter at 0x{:016x}",
-            addresses.interpreter_address
-        );
-        info!(
-            "found threadstate at 0x{:016x}",
-            addresses.threadstate_address
-        );
+        info!("found interpreter at 0x{:016x}", layout.interpreter_address);
+        info!("found threadstate at 0x{:016x}", layout.threadstate_address);
 
         Ok(PythonCoreDump {
             core,
             version,
-            addresses,
+            layout,
         })
     }
 
@@ -275,24 +269,21 @@ impl PythonCoreDump {
         ) -> Result<Vec<StackTrace>, Error> {
             core._get_stack::<I>(config)
         }
-        dispatch_by_version!(self.version, get_traces, self, config)
+        dispatch_by_version!(
+            self.version,
+            self.layout.free_threaded,
+            get_traces,
+            self,
+            config
+        )
     }
 
     fn _get_stack<I: InterpreterState>(&self, config: &Config) -> Result<Vec<StackTrace>, Error> {
-        let mut traces = get_stack_traces::<I, CoreDump>(
-            self.addresses.interpreter_address,
-            &self.core,
-            self.addresses.threadstate_address,
-            Some(config),
-            &self.addresses.type_checks,
-        )?;
+        let mut traces = get_stack_traces::<I, CoreDump>(&self.layout, &self.core, Some(config))?;
 
-        let thread_names = thread_names_from_interpreter::<I, CoreDump>(
-            &self.addresses,
-            &self.core,
-            &self.version,
-        )
-        .ok();
+        let thread_names =
+            thread_names_from_interpreter::<I, CoreDump>(&self.layout, &self.core, &self.version)
+                .ok();
 
         for trace in &mut traces {
             if let Some(ref thread_names) = thread_names {
@@ -308,7 +299,7 @@ impl PythonCoreDump {
                             &self.version,
                             local.addr,
                             max_length,
-                            &self.addresses.type_checks,
+                            &self.layout,
                         );
                         local.repr = Some(repr.unwrap_or_else(|_| "?".to_owned()));
                     }
@@ -421,14 +412,24 @@ mod test {
             release_flags: "".to_owned(),
             build_metadata: None,
         };
+
+        use crate::python_bindings::v3_9_5;
+        let interpreter_address = 0x000055a8293dbe20;
+        let imports_modules_address =
+            interpreter_address + v3_9_5::PyInterpreterState::imports_modules_offset();
+        let threads_head_address =
+            interpreter_address + v3_9_5::PyInterpreterState::threads_head_offset();
+
         let core_dump = |type_checks| PythonCoreDump {
             core: CoreDump::new(&get_coredump_path("python_3_9_threads")).unwrap(),
             version: version.clone(),
-            addresses: PythonProcessLayout {
-                interpreter_address: 0x000055a8293dbe20,
+            layout: PythonProcessLayout {
+                interpreter_address,
                 threadstate_address: 0x000055a82745fe18,
-                imports_modules_address: 0x55a8293dc178,
+                imports_modules_address,
+                threads_head_address,
                 type_checks,
+                free_threaded: false,
             },
         };
         let python_core = core_dump(TypeChecks::Disabled);
