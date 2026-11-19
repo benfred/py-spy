@@ -394,17 +394,16 @@ jobs:
         with:
           pattern: wheels-*
           merge-multiple: true
+          path: dist/
       - uses: actions/setup-python@v7
         with:
           python-version: 3.14
       - name: Push to PyPi
         uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: .
       - name: Create GitHub Release
         uses: fnkr/github-action-ghr@v1.3
         env:
-          GHR_PATH: .
+          GHR_PATH: dist/
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Install Dependencies
         run: |
