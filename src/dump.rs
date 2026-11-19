@@ -12,7 +12,22 @@ use remoteprocess::Pid;
 pub fn print_traces(pid: Pid, config: &Config, parent: Option<Pid>) -> Result<(), Error> {
     let stdout = std::io::stdout();
     let mut out = stdout.lock();
-    write_traces(&mut out, pid, config, parent)
+    match write_traces(&mut out, pid, config, parent) {
+        Err(err) if is_broken_pipe(&err) => Ok(()),
+        other => other,
+    }
+}
+
+fn is_broken_pipe(err: &Error) -> bool {
+    use std::io::ErrorKind;
+    err.chain().any(|cause| {
+        matches!(
+            cause
+                .downcast_ref::<std::io::Error>()
+                .map(std::io::Error::kind),
+            Some(ErrorKind::BrokenPipe)
+        )
+    })
 }
 
 pub fn write_traces<W: Write>(
@@ -160,4 +175,29 @@ pub fn write_trace<W: Write>(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn broken_pipe_is_detected() {
+        let err = Error::new(std::io::Error::from(std::io::ErrorKind::BrokenPipe));
+        assert!(is_broken_pipe(&err));
+    }
+
+    #[test]
+    fn broken_pipe_with_context_is_detected() {
+        let err = Error::new(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
+            .context("failed to write traces");
+        assert!(is_broken_pipe(&err));
+    }
+
+    #[test]
+    fn other_errors_are_not_broken_pipe() {
+        let err = Error::new(std::io::Error::from(std::io::ErrorKind::PermissionDenied));
+        assert!(!is_broken_pipe(&err));
+        assert!(!is_broken_pipe(&anyhow::format_err!("broken pipe")));
+    }
 }
