@@ -2,6 +2,7 @@ use std::io::Write;
 
 use anyhow::{Context, Error};
 use console::{style, Term};
+use log::warn;
 
 use crate::config::Config;
 use crate::python_spy::PythonSpy;
@@ -21,7 +22,7 @@ pub fn write_traces<W: Write>(
     config: &Config,
     parent: Option<Pid>,
 ) -> Result<(), Error> {
-    let mut process = PythonSpy::new(pid, config)?;
+    let mut process = PythonSpy::retry_new(pid, config, 5)?;
     if config.dump_json {
         let traces = process
             .get_stack_traces()
@@ -67,15 +68,19 @@ pub fn write_traces<W: Write>(
             .child_processes()
             .expect("failed to get subprocesses")
         {
+            // child_processes() returns the whole process tree, since we're recursing here
+            // though we could end up printing grandchild processes multiple times. Limit down
+            // to just once
+            if parentpid != pid {
+                continue;
+            }
             let term = Term::stdout();
             let (_, width) = term.size();
 
             writeln!(out, "\n{}", &style("-".repeat(width as usize)).dim())?;
-            // child_processes() returns the whole process tree, since we're recursing here
-            // though we could end up printing grandchild processes multiple times. Limit down
-            // to just once
-            if parentpid == pid {
-                write_traces(out, childpid, config, Some(parentpid))?;
+            if let Err(err) = write_traces(out, childpid, config, Some(parentpid)) {
+                // Matches record/top: a non-Python child shouldn't abort the whole dump.
+                warn!("Failed to dump process {}: {:#}", childpid, err);
             }
         }
     }
