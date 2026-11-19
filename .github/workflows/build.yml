@@ -394,6 +394,13 @@ jobs:
         with:
           pattern: wheels-*
           merge-multiple: true
+      - uses: actions/setup-python@v7
+        with:
+          python-version: 3.14
+      - name: Push to PyPi
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: .
       - name: Create GitHub Release
         uses: fnkr/github-action-ghr@v1.3
         env:
@@ -404,11 +411,6 @@ jobs:
           sudo apt update
           sudo apt install libunwind-dev
         if: runner.os == 'Linux'
-      - uses: actions/setup-python@v7
-        with:
-          python-version: 3.14
-      - name: Push to PyPi
-        uses: pypa/gh-action-pypi-publish@release/v1
       - uses: actions/checkout@v7
       - name: Push to crates.io
         env:
